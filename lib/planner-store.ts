@@ -370,7 +370,13 @@ interface PlannerStore {
   changeItemType: (id: string, toType: string, opts?: { repeat?: ConvertRepeat }) => void;
   deleteTask: (id: string) => void;
   toggleTaskStatus: (id: string, status?: TaskStatus, date?: Date) => void;
-  scheduleTask: (id: string, bucket: TimeBucket, time?: string, date?: string) => void;
+  /**
+   * `date` absent keeps the task's start date. `opts.landsOn` is the day the
+   * user put it on when that is not `date` (a series moved in time keeps its
+   * start date but lands on the day it was dropped on): the receipt reads it,
+   * nothing is written from it.
+   */
+  scheduleTask: (id: string, bucket: TimeBucket, time?: string, date?: string, opts?: { landsOn?: string }) => void;
   assignTaskToBucket: (id: string, bucket: TimeBucket) => void;
   unscheduleTask: (id: string) => void;
   /**
@@ -3714,11 +3720,11 @@ export const usePlannerStore = create<PlannerStore>()(
         }
       },
 
-      scheduleTask: (id, bucket, time, date) => {
+      scheduleTask: (id, bucket, time, date, opts) => {
         const task = findTaskLike(id);
         setNextActionLabel(
           `Schedule task: ${task?.title || 'Unknown'}`,
-          landingReceipt(get(), [id], date ?? startDateOf(task))
+          landingReceipt(get(), [id], opts?.landsOn ?? date ?? startDateOf(task))
         );
         const updates: Partial<Task> = { ...scheduleTaskPatch(bucket, time), ...(date ? { startDate: date } : {}) };
 

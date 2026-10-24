@@ -169,6 +169,35 @@ describe('the iOS change filter', () => {
     }
   });
 
+  it('matches the shared block drop rule, and not the web drop that maps it', () => {
+    // The rule (lib/block-moves.ts planBlockDrop, PR 7) and what it reads: the
+    // registry's dateAnchored and pausable, Move to Braindump's gate
+    // (lib/row-moves.ts), "already listed" (lib/braindump-members.ts), the
+    // hour's part of day (lib/time-bucket.ts), and the fixture BlockMoves.swift
+    // is checked against.
+    for (const p of [
+      'lib/block-moves.ts',
+      'lib/row-moves.ts',
+      'lib/item-registry.ts',
+      'lib/braindump-members.ts',
+      'lib/time-bucket.ts',
+      'lib/recurrence.ts',
+      'tests/fixtures/day/block-moves.json',
+    ]) {
+      expect(filter.test(p), p).toBe(true);
+    }
+    // The web maps the rule's answers to store calls (PR 11); the phone maps
+    // them to intents of its own, so none of these is ported.
+    for (const p of [
+      'lib/dnd/handle-drag-end.ts',
+      'lib/dnd/sidebar-drop.ts',
+      'components/shell/app-shell.tsx',
+      'components/sidebar/braindump.tsx',
+    ]) {
+      expect(filter.test(p), p).toBe(false);
+    }
+  });
+
   it('matches what Organize ports, and the fixtures that pin it', () => {
     for (const p of [
       'tests/fixtures/organize/labels.json',

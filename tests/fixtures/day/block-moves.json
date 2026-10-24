@@ -1,0 +1,5076 @@
+{
+  "cases": [
+    {
+      "name": "one-off: a new hour on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "one-off: its own time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "one-off: an hour in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-08",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "one-off: an evening hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "one-off: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "one-off: Anytime in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      }
+    },
+    {
+      "name": "one-off: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "braindump"
+      }
+    },
+    {
+      "name": "repeating task: a new hour on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "repeating task: its own time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "repeating task: an hour in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "repeating task: an evening hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "repeating task: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "repeating task: Anytime in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "another-day"
+      }
+    },
+    {
+      "name": "repeating task: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "not-braindump"
+      }
+    },
+    {
+      "name": "repeating task in a project block: a new hour on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000387",
+        "title": "standup notes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "weekdays",
+        "project": "Work",
+        "previousStartTime": "08:00",
+        "previousStartDate": "2026-06-30"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-01",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "repeating task in a project block: nine, having no time of its own",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000387",
+        "title": "standup notes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "weekdays",
+        "project": "Work",
+        "previousStartTime": "08:00",
+        "previousStartDate": "2026-06-30"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-01",
+        "startMin": 540
+      }
+    },
+    {
+      "name": "repeating task in a project block: an hour in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000387",
+        "title": "standup notes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "weekdays",
+        "project": "Work",
+        "previousStartTime": "08:00",
+        "previousStartDate": "2026-06-30"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-01",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "repeating task in a project block: an evening hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000387",
+        "title": "standup notes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "weekdays",
+        "project": "Work",
+        "previousStartTime": "08:00",
+        "previousStartDate": "2026-06-30"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-01",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "repeating task in a project block: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000387",
+        "title": "standup notes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "weekdays",
+        "project": "Work",
+        "previousStartTime": "08:00",
+        "previousStartDate": "2026-06-30"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "in-block"
+      }
+    },
+    {
+      "name": "repeating task in a project block: Anytime in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000387",
+        "title": "standup notes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "weekdays",
+        "project": "Work",
+        "previousStartTime": "08:00",
+        "previousStartDate": "2026-06-30"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "in-block"
+      }
+    },
+    {
+      "name": "repeating task in a project block: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000387",
+        "title": "standup notes",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "weekdays",
+        "project": "Work",
+        "previousStartTime": "08:00",
+        "previousStartDate": "2026-06-30"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "not-braindump"
+      }
+    },
+    {
+      "name": "habit: a new hour on its own day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "habit: its own time",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 450
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "habit: an hour in another column",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "habit: an evening hour",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "habit: Anytime on its own day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "habit: Anytime in another column",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "another-day"
+      }
+    },
+    {
+      "name": "habit: the braindump",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "pause"
+      }
+    },
+    {
+      "name": "untimed habit: a new hour on its own day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000389",
+        "title": "read",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "anytime",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "untimed habit: nine, having no time of its own",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000389",
+        "title": "read",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "anytime",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 540
+      }
+    },
+    {
+      "name": "untimed habit: an hour in another column",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000389",
+        "title": "read",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "anytime",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "untimed habit: an evening hour",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000389",
+        "title": "read",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "anytime",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "untimed habit: Anytime on its own day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000389",
+        "title": "read",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "anytime",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "untimed habit: Anytime in another column",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000389",
+        "title": "read",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "anytime",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "another-day"
+      }
+    },
+    {
+      "name": "untimed habit: the braindump",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000389",
+        "title": "read",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "anytime",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "pause"
+      }
+    },
+    {
+      "name": "done one-off: a new hour on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038a",
+        "title": "call the bank",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "done one-off: its own time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038a",
+        "title": "call the bank",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "done one-off: an hour in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038a",
+        "title": "call the bank",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-08",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "done one-off: an evening hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038a",
+        "title": "call the bank",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "done one-off: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038a",
+        "title": "call the bank",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "done one-off: Anytime in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038a",
+        "title": "call the bank",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      }
+    },
+    {
+      "name": "done one-off: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038a",
+        "title": "call the bank",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "not-braindump"
+      }
+    },
+    {
+      "name": "in-block one-off: a new hour on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038b",
+        "title": "draft the brief",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "project": "Work"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "in-block one-off: nine, having no time of its own",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038b",
+        "title": "draft the brief",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "project": "Work"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 540
+      }
+    },
+    {
+      "name": "in-block one-off: an hour in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038b",
+        "title": "draft the brief",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "project": "Work"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-08",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "in-block one-off: an evening hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038b",
+        "title": "draft the brief",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "project": "Work"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "in-block one-off: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038b",
+        "title": "draft the brief",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "project": "Work"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "in-block"
+      }
+    },
+    {
+      "name": "in-block one-off: Anytime in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038b",
+        "title": "draft the brief",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "project": "Work"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "in-block"
+      }
+    },
+    {
+      "name": "in-block one-off: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038b",
+        "title": "draft the brief",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "duration": 30,
+        "inProjectBlock": true,
+        "completedDates": [],
+        "skippedDates": [],
+        "project": "Work"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "not-braindump"
+      }
+    },
+    {
+      "name": "milestone: a new hour on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "milestone: nine, having no time of its own",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 540
+      }
+    },
+    {
+      "name": "milestone: an hour in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-08",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "milestone: an evening hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "milestone: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "milestone: Anytime in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      }
+    },
+    {
+      "name": "milestone: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "not-braindump"
+      }
+    },
+    {
+      "name": "row in the braindump: a new hour on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038d",
+        "title": "idea",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "row in the braindump: nine, having no time of its own",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038d",
+        "title": "idea",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 540
+      }
+    },
+    {
+      "name": "row in the braindump: an hour in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038d",
+        "title": "idea",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-08",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "row in the braindump: an evening hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038d",
+        "title": "idea",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "row in the braindump: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038d",
+        "title": "idea",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      }
+    },
+    {
+      "name": "row in the braindump: Anytime in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038d",
+        "title": "idea",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      }
+    },
+    {
+      "name": "row in the braindump: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038d",
+        "title": "idea",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "dated row in the braindump: a new hour on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "dentist",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "dated row in the braindump: nine, having no time of its own",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "dentist",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 540
+      }
+    },
+    {
+      "name": "dated row in the braindump: an hour in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "dentist",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-08",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "dated row in the braindump: an evening hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "dentist",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "dated row in the braindump: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "dentist",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "dated row in the braindump: Anytime in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "dentist",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      }
+    },
+    {
+      "name": "dated row in the braindump: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "dentist",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "custom one-off: a new hour on its own day",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-00000000038f",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "custom one-off: its own time",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-00000000038f",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "custom one-off: an hour in another column",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-00000000038f",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-08",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "custom one-off: an evening hour",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-00000000038f",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "custom one-off: Anytime on its own day",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-00000000038f",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "custom one-off: Anytime in another column",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-00000000038f",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      }
+    },
+    {
+      "name": "custom one-off: the braindump",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-00000000038f",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "braindump"
+      }
+    },
+    {
+      "name": "custom repeating: a new hour on its own day",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-000000000390",
+        "title": "market run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand",
+        "repeatFrequency": "weekdays"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "custom repeating: its own time",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-000000000390",
+        "title": "market run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand",
+        "repeatFrequency": "weekdays"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "custom repeating: an hour in another column",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-000000000390",
+        "title": "market run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand",
+        "repeatFrequency": "weekdays"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "custom repeating: an evening hour",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-000000000390",
+        "title": "market run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand",
+        "repeatFrequency": "weekdays"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "custom repeating: Anytime on its own day",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-000000000390",
+        "title": "market run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand",
+        "repeatFrequency": "weekdays"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "custom repeating: Anytime in another column",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-000000000390",
+        "title": "market run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand",
+        "repeatFrequency": "weekdays"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "another-day"
+      }
+    },
+    {
+      "name": "custom repeating: the braindump",
+      "item": {
+        "type": "custom",
+        "id": "00000000-0000-4000-8000-000000000390",
+        "title": "market run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "customType": "errand",
+        "repeatFrequency": "weekdays"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "not-braindump"
+      }
+    },
+    {
+      "name": "let-go one-off: a new hour on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000391",
+        "title": "old plan",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "let-go one-off: its own time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000391",
+        "title": "old plan",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "let-go one-off: an hour in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000391",
+        "title": "old plan",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-08",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "let-go one-off: an evening hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000391",
+        "title": "old plan",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "let-go one-off: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000391",
+        "title": "old plan",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "let-go one-off: Anytime in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000391",
+        "title": "old plan",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      }
+    },
+    {
+      "name": "let-go one-off: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000391",
+        "title": "old plan",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "not-braindump"
+      }
+    },
+    {
+      "name": "one-off under Anytime: a new hour on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000392",
+        "title": "tidy desk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "one-off under Anytime: nine, having no time of its own",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000392",
+        "title": "tidy desk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 540
+      }
+    },
+    {
+      "name": "one-off under Anytime: an hour in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000392",
+        "title": "tidy desk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-08",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "one-off under Anytime: an evening hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000392",
+        "title": "tidy desk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "one-off under Anytime: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000392",
+        "title": "tidy desk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "one-off under Anytime: Anytime in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000392",
+        "title": "tidy desk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      }
+    },
+    {
+      "name": "one-off under Anytime: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000392",
+        "title": "tidy desk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "braindump"
+      }
+    },
+    {
+      "name": "repeating task with no start date: a new hour on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000393",
+        "title": "floss",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "repeating task with no start date: its own time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000393",
+        "title": "floss",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 540
+      }
+    },
+    {
+      "name": "repeating task with no start date: an hour in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000393",
+        "title": "floss",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-08",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "repeating task with no start date: an evening hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000393",
+        "title": "floss",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "repeating task with no start date: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000393",
+        "title": "floss",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      }
+    },
+    {
+      "name": "repeating task with no start date: Anytime in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000393",
+        "title": "floss",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      }
+    },
+    {
+      "name": "repeating task with no start date: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000393",
+        "title": "floss",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "not-braindump"
+      }
+    },
+    {
+      "name": "one-off with a legacy ISO date: a new hour on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000394",
+        "title": "renew pass",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04T00:00:00.000Z",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "one-off with a legacy ISO date: its own time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000394",
+        "title": "renew pass",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04T00:00:00.000Z",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 540
+      }
+    },
+    {
+      "name": "one-off with a legacy ISO date: an hour in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000394",
+        "title": "renew pass",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04T00:00:00.000Z",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-08",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "one-off with a legacy ISO date: an evening hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000394",
+        "title": "renew pass",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04T00:00:00.000Z",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "one-off with a legacy ISO date: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000394",
+        "title": "renew pass",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04T00:00:00.000Z",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "one-off with a legacy ISO date: Anytime in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000394",
+        "title": "renew pass",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04T00:00:00.000Z",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      }
+    },
+    {
+      "name": "one-off with a legacy ISO date: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000394",
+        "title": "renew pass",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04T00:00:00.000Z",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "braindump"
+      }
+    },
+    {
+      "name": "habit subtask: a new hour on its own day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000395",
+        "title": "warm up",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "parentItemId": "00000000-0000-4000-8000-000000000388"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 615
+      }
+    },
+    {
+      "name": "habit subtask: its own time",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000395",
+        "title": "warm up",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "parentItemId": "00000000-0000-4000-8000-000000000388"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 450
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "habit subtask: an hour in another column",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000395",
+        "title": "warm up",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "parentItemId": "00000000-0000-4000-8000-000000000388"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "habit subtask: an evening hour",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000395",
+        "title": "warm up",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "parentItemId": "00000000-0000-4000-8000-000000000388"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1155
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 1155
+      }
+    },
+    {
+      "name": "habit subtask: Anytime on its own day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000395",
+        "title": "warm up",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "parentItemId": "00000000-0000-4000-8000-000000000388"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "habit subtask: Anytime in another column",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000395",
+        "title": "warm up",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "parentItemId": "00000000-0000-4000-8000-000000000388"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "another-day"
+      }
+    },
+    {
+      "name": "habit subtask: the braindump",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000395",
+        "title": "warm up",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "parentItemId": "00000000-0000-4000-8000-000000000388"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "not-pausable"
+      }
+    },
+    {
+      "name": "skipped occurrence: a new hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000396",
+        "title": "run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [
+          "2026-07-04"
+        ],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": true
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "skipped"
+      }
+    },
+    {
+      "name": "skipped occurrence: another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000396",
+        "title": "run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [
+          "2026-07-04"
+        ],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": true
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "skipped"
+      }
+    },
+    {
+      "name": "skipped occurrence: Anytime",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000396",
+        "title": "run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [
+          "2026-07-04"
+        ],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": true
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "skipped"
+      }
+    },
+    {
+      "name": "skipped occurrence: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000396",
+        "title": "run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [
+          "2026-07-04"
+        ],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": true
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "skipped"
+      }
+    },
+    {
+      "name": "skipped habit: a new hour",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000397",
+        "title": "journal",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [
+          "2026-07-04"
+        ],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": true
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 615
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "skipped"
+      }
+    },
+    {
+      "name": "repeating task skipped on another day: a new hour",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000396",
+        "title": "run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [
+          "2026-07-08"
+        ],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 480
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 480
+      }
+    },
+    {
+      "name": "one-off: the braindump while milestones are unknown",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": null,
+      "expected": {
+        "kind": "refused",
+        "reason": "milestones-unknown"
+      }
+    },
+    {
+      "name": "milestone: the braindump while milestones are unknown",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": null,
+      "expected": {
+        "kind": "refused",
+        "reason": "milestones-unknown"
+      }
+    },
+    {
+      "name": "milestone: the braindump once no goal holds it",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038c",
+        "title": "first 10K",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [],
+      "expected": {
+        "kind": "braindump"
+      }
+    },
+    {
+      "name": "habit: the braindump while milestones are unknown",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": null,
+      "expected": {
+        "kind": "pause"
+      }
+    },
+    {
+      "name": "one-off: minute -15",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": -15
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "invalid"
+      }
+    },
+    {
+      "name": "habit: minute -15",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": -15
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "invalid"
+      }
+    },
+    {
+      "name": "one-off: minute 1440",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1440
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "invalid"
+      }
+    },
+    {
+      "name": "habit: minute 1440",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000388",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "07:30",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1440
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "invalid"
+      }
+    },
+    {
+      "name": "one-off: midnight",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 0
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 0
+      }
+    },
+    {
+      "name": "one-off: the last minute",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1439
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 1439
+      }
+    },
+    {
+      "name": "one-off: noon",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 720
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 720
+      }
+    },
+    {
+      "name": "one-off: five in the afternoon",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "post the letter",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 1020
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 1020
+      }
+    },
+    {
+      "name": "one-off filed under the wrong part of day: its own time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000398",
+        "title": "pay rent",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "afternoon",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 540
+      }
+    },
+    {
+      "name": "one-off holding a stashed time: its own time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000399",
+        "title": "gym bag",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "previousStartTime": "08:00"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-04",
+        "startMin": 540
+      }
+    },
+    {
+      "name": "repeating task holding a stashed date: its own time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000039a",
+        "title": "vitamins",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily",
+        "previousStartDate": "2026-06-30"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-04",
+        "startMin": 540
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "retime",
+        "startMin": 540
+      }
+    },
+    {
+      "name": "one-off under Anytime, not on the grid: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000039b",
+        "title": "sort mail",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "one-off under Anytime holding a stashed time: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000039c",
+        "title": "water the fern",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "previousStartTime": "08:00"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "one-off under Anytime holding a stashed date: Anytime on its own day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000039d",
+        "title": "file receipts",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "anytime",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "previousStartDate": "2026-06-30"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "habit under Anytime holding a stashed time: Anytime on its own day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000039e",
+        "title": "breathe",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "timeBucket": "anytime",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "previousStartTime": "07:00"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-04"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": null
+      }
+    },
+    {
+      "name": "repeating habit with no part of day: the braindump",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000039f",
+        "title": "hydrate",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "pause"
+      }
+    },
+    {
+      "name": "habit that does not repeat, with no part of day: the braindump",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003a0",
+        "title": "try yoga",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "none",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "repeating habit subtask with no part of day: the braindump",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000003a1",
+        "title": "refill bottle",
+        "streak": 0,
+        "status": "pending",
+        "repeatFrequency": "daily",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "parentItemId": "00000000-0000-4000-8000-00000000039f"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "not-pausable"
+      }
+    },
+    {
+      "name": "let-go row in the braindump: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000003a2",
+        "title": "old idea",
+        "status": "cancelled",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "not-braindump"
+      }
+    },
+    {
+      "name": "one-off with a part of day and no date: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000003a3",
+        "title": "call back",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": []
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "not-braindump"
+      }
+    },
+    {
+      "name": "one-off subtask: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000003a4",
+        "title": "buy stamps",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-07-04",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "parentItemId": "00000000-0000-4000-8000-000000000385"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "refused",
+        "reason": "not-braindump"
+      }
+    },
+    {
+      "name": "repeating task in the braindump with a start date: an hour in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000003a5",
+        "title": "stretch calves",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "hour",
+        "date": "2026-07-08",
+        "startMin": 840
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "place",
+        "date": "2026-07-08",
+        "startMin": 840
+      }
+    },
+    {
+      "name": "repeating task in the braindump with a start date: Anytime in another column",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000003a5",
+        "title": "stretch calves",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "anytime",
+        "date": "2026-07-08"
+      }
+    },
+    {
+      "name": "repeating task in the braindump with a start date: the braindump",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000003a5",
+        "title": "stretch calves",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-07-01",
+        "duration": 30,
+        "inProjectBlock": false,
+        "completedDates": [],
+        "skippedDates": [],
+        "repeatFrequency": "daily"
+      },
+      "from": {
+        "date": "2026-07-04",
+        "skipped": false
+      },
+      "target": {
+        "kind": "braindump"
+      },
+      "milestoneIds": [
+        "00000000-0000-4000-8000-00000000038c"
+      ],
+      "expected": {
+        "kind": "none"
+      }
+    }
+  ]
+}
