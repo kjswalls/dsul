@@ -217,6 +217,55 @@ describe('braindump: where a dragged item will land', () => {
   });
 });
 
+/**
+ * Week and blocks PR 11: a canvas task comes back only where the shared drop
+ * rule sends it (lib/block-moves.ts, Move to Braindump's gate), so a repeating
+ * or finished task lights nothing, and a selection lights only what will land.
+ */
+describe('braindump: what the shared drop rule keeps on the canvas lights nothing', () => {
+  const series = task('s', 'Sprout', {
+    project: 'Work',
+    isScheduled: true,
+    timeBucket: 'morning',
+    startDate: '2026-09-01',
+    repeatFrequency: 'daily',
+  });
+  const done = task('d', 'Damson', {
+    project: 'Work',
+    status: 'completed',
+    isScheduled: true,
+    timeBucket: 'afternoon',
+    startDate: '2026-09-30',
+  });
+  beforeEach(() => {
+    const next = [...items, series, done];
+    usePlannerStore.setState({ items: next, tasks: next.filter((i) => i.type === 'task') as never });
+  });
+
+  it.each([
+    ['a repeating task', 's'],
+    ['a finished task', 'd'],
+  ])('lights nothing for %s from the canvas', (_name, id) => {
+    useDragStore.getState().startDrag(id, 'pointer');
+    over.add('sidebar');
+    renderBraindump();
+
+    expect(screen.queryByTestId('braindump-landing')).toBeNull();
+    expect(screen.getByTestId('braindump').dataset.dndActs).toBe('false');
+  });
+
+  it('lights only the one-off of a selection that holds a series', () => {
+    useSelectionStore.setState({ selectedIds: new Set(['m', 's']) });
+    useDragStore.getState().startDrag('s', 'pointer');
+    over.add('sidebar');
+    renderBraindump();
+
+    const landings = screen.getAllByTestId('braindump-landing').map((el) => el.textContent);
+    expect(landings).toEqual(['Mango']);
+    expect(screen.getByTestId('braindump').dataset.dndActs).toBe('true');
+  });
+});
+
 describe('list drop zone', () => {
   const renderZone = (dateStr: string) =>
     render(

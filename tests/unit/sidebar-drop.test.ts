@@ -41,6 +41,67 @@ describe('sidebarDropPlan', () => {
   });
 
   it('splits a mixed selection into both verbs', () => {
-    expect(plan(['placed', 'daily'])).toEqual({ unschedule: ['placed'], pause: ['daily'] });
+    const { unschedule, pause } = plan(['placed', 'daily']);
+    expect({ unschedule, pause }).toEqual({ unschedule: ['placed'], pause: ['daily'] });
+  });
+});
+
+/**
+ * Week and blocks PR 11: the group's half of a braindump drop asks the same
+ * gate as the single drop (lib/block-moves.ts planBlockDrop, whose braindump
+ * answer is Move to Braindump's, lib/row-moves.ts canSendToBraindump). A
+ * series, a finished task, one in a project block and a milestone stay where
+ * they are; a row already in the braindump is already there. Habits pause as
+ * before. Ran on the code before the rule, where the first case failed (it
+ * unscheduled the series, the finished rows and the in-block row) and the
+ * other two passed.
+ */
+describe('sidebarDropPlan follows the shared drop rule (PR 11)', () => {
+  const custom = (id: string, extra: Partial<Task> = {}) =>
+    ({ type: 'custom', customType: 'errand', id, title: id, status: 'pending', ...extra }) as unknown as Task;
+  const placed = { isScheduled: true, timeBucket: 'morning', startDate: '2026-10-01' } as const;
+  const more = [
+    ...tasks,
+    task('series', { ...placed, startDate: '2026-09-01', repeatFrequency: 'daily' }),
+    task('done', { ...placed, status: 'completed' }),
+    task('let-go', { ...placed, status: 'cancelled' }),
+    task('in-block', { ...placed, inProjectBlock: true }),
+    task('dated-row', { startDate: '2026-10-01' }),
+    custom('custom-placed', { ...placed }),
+    custom('custom-series', { ...placed, repeatFrequency: 'weekdays' }),
+  ];
+  const planOf = (ids: string[]) => sidebarDropPlan(ids, more, habits, new Set(['milestone']), '2026-10-01', 'UTC');
+  const ALL = more.map((t) => t.id);
+
+  it('unschedules only the placed, open, one-off rows outside a block that are not milestones', () => {
+    expect(planOf(ALL).unschedule).toEqual(['placed', 'custom-placed']);
+  });
+
+  it('unschedules a placed one-off and a custom one as before', () => {
+    expect(planOf(['placed', 'custom-placed']).unschedule).toEqual(['placed', 'custom-placed']);
+  });
+
+  it('pauses the same habits as before', () => {
+    expect(planOf([...ALL, 'daily', 'paused', 'resumed', 'loose', 'sub']).pause).toEqual(['daily', 'resumed']);
+  });
+
+  // `rewrite` is what the shell's group drop hands unscheduleTasks
+  // (app-shell.tsx handleDragEnd). Before the rule that was every task-like in
+  // the selection minus milestones; now a canvas task the rule keeps is left
+  // out, and a row already in the braindump is still written again.
+  it('rewrites the rows the group wrote before when no canvas task is kept', () => {
+    expect(plan(['placed', 'loose', 'milestone', 'daily']).rewrite).toEqual(['placed', 'loose']);
+    expect(plan(['loose', 'milestone']).rewrite).toEqual(['loose']);
+    expect(plan(['milestone', 'daily']).rewrite).toEqual([]);
+  });
+
+  it('leaves out every canvas task the rule keeps, and keeps the braindump rows', () => {
+    expect(planOf(ALL).rewrite).toEqual(['placed', 'loose', 'dated-row', 'custom-placed']);
+    expect(planOf(['series', 'dated-row', 'daily']).rewrite).toEqual(['dated-row']);
+  });
+
+  it('writes nothing when a kept canvas task is all that would move, so the drop falls through', () => {
+    expect(planOf(['series', 'dated-row'])).toEqual({ unschedule: [], pause: [], rewrite: [] });
+    expect(planOf(['series', 'done', 'milestone']).rewrite).toEqual([]);
   });
 });

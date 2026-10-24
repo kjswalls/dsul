@@ -68,9 +68,16 @@ import { useDragStore } from '@/lib/drag-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { hoveredItem } from '@/lib/hovered-item';
 import { renameInPanel, startRename } from '@/lib/item-rename';
-import { listGroupMovers, parseProjectBlockId, placementOf, resolveDrop } from '@/lib/dnd/handle-drag-end';
+import {
+  listGroupMovers,
+  parseProjectBlockId,
+  placementOf,
+  resolveDrop,
+  type DropContext,
+} from '@/lib/dnd/handle-drag-end';
 import { reorderTargetAt } from '@/lib/dnd/reorder-sections';
 import { sidebarDropPlan } from '@/lib/dnd/sidebar-drop';
+import type { Item } from '@/lib/planner-types';
 import { toDateStr } from '@/lib/recurrence';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
 import { useCommandContext } from '@/hooks/use-command-context';
@@ -496,7 +503,16 @@ export function AppShell() {
     // branch below — the user's saved tz, matching how days are derived.
     const userTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    const command = resolveDrop(itemId, over.id as string, {
+    // DELIBERATELY NOT GATED on the Goals extension, unlike every other
+    // goal read in the app. This set is what stops a bulk date verb from
+    // overwriting a milestone's target date, and that write is not
+    // recoverable by switching the extension back on: the date it replaced
+    // is gone. A gate here would make "off" destructive, which is the one
+    // thing off must never be. See lib/extension-gates.ts. The single drop's
+    // braindump answer reads it too (Move to Braindump's gate, lib/block-moves.ts).
+    const milestoneIds = milestoneItemIds(planner.goals);
+
+    const dropCtx: DropContext = {
       itemType: draggedTask ? 'task' : draggedHabit ? 'habit' : null,
       // Re-derived from the same activator event the store was seeded with, not
       // read back from the store: one source, so the gate that mounted the
@@ -511,6 +527,15 @@ export function AppShell() {
           ? tasks.find((t) => t.id === refId)?.startTime
           : habits.find((h) => h.id === refId)?.startTime,
       inferDropTime,
+    };
+    // The dragged item and the milestones let a canvas task's hour and
+    // braindump drops ask the shared block drop rule (resolveDrop's
+    // blockDropCommand): a series moves in time and keeps its start date, and
+    // the braindump takes back only what Move to Braindump would.
+    const command = resolveDrop(itemId, over.id as string, {
+      ...dropCtx,
+      draggedItem: (draggedTask ?? draggedHabit) as Item | undefined,
+      milestoneIds,
     });
 
     // Group drag: when the dragged row is part of a multi-selection (>=2), the
@@ -526,19 +551,16 @@ export function AppShell() {
       // unschedule and date-move no-op on habits, so gate `acted` on this so a
       // fully-ineligible group falls through instead of silently clearing.
       const taskLikeIds = groupIds.filter((id) => tasks.some((t) => t.id === id));
-      // DELIBERATELY NOT GATED on the Goals extension, unlike every other
-      // goal read in the app. This set is what stops a bulk date verb from
-      // overwriting a milestone's target date, and that write is not
-      // recoverable by switching the extension back on — the date it replaced
-      // is gone. A gate here would make "off" destructive, which is the one
-      // thing off must never be. See lib/extension-gates.ts.
-      const milestoneIds = milestoneItemIds(planner.goals);
-      // What the primary drop resolved to: a bucket always, and — for a TIMED
-      // slot (an hour cell) — a clock time. A timed target schedules the whole
+      // What the target slot resolves to: a bucket always, and (for a TIMED
+      // slot, an hour cell) a clock time. A timed target schedules the whole
       // group AT that time so they land as visible blocks; an untimed target
       // (bare bucket / Anytime / week column) assigns the bucket untimed.
-      const targetBucket = command && 'bucket' in command ? command.bucket : undefined;
-      const targetTime = command && 'time' in command ? command.time : undefined;
+      // Asked of the id alone, without the dragged item: the slot is the
+      // group's, and the primary's own answer (nothing, for a block let go
+      // where it was) must not stop the rest of the selection moving.
+      const slot = resolveDrop(itemId, overId, dropCtx);
+      const targetBucket = slot && 'bucket' in slot ? slot.bucket : undefined;
+      const targetTime = slot && 'time' in slot ? slot.time : undefined;
       const selectedDayStr = toDateStr(selectedDate, userTz);
       let acted = false;
       if (overId === 'sidebar') {
@@ -558,17 +580,21 @@ export function AppShell() {
           toDateStr(new Date(), userTz),
           userTz
         );
-        const writable = taskLikeIds.filter((id) => !milestoneIds.has(id));
+        // A canvas task goes back only where the single drop's rule sends it
+        // (plan.unschedule): a series, a finished task, one in a project block
+        // or a milestone stays where it is. A row already in the braindump is
+        // written again, as the single drop writes it (plan.rewrite).
+        const writable = plan.rewrite;
         const pauseAll = () => plan.pause.forEach((id) => planner.setItemPaused(id, true));
         if (writable.length && plan.pause.length) {
           const n = writable.length + plan.pause.length;
           batchHistory(`Set aside: ${n} items`, n, () => {
-            planner.unscheduleTasks(groupIds);
+            planner.unscheduleTasks(writable);
             pauseAll();
           });
           acted = true;
         } else if (writable.length) {
-          planner.unscheduleTasks(groupIds);
+          planner.unscheduleTasks(writable);
           acted = true;
         } else if (plan.pause.length > 1) {
           batchHistory(`Pause habit: ${plan.pause.length} items`, plan.pause.length, pauseAll);
@@ -640,7 +666,9 @@ export function AppShell() {
 
     switch (command.kind) {
       case 'schedule-task':
-        planner.scheduleTask(command.taskId, command.bucket, command.time, command.dateStr);
+        planner.scheduleTask(command.taskId, command.bucket, command.time, command.dateStr, {
+          landsOn: command.landsOn,
+        });
         break;
       case 'schedule-habit':
         planner.scheduleHabit(command.habitId, command.bucket, command.time);

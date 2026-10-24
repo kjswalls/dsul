@@ -43,14 +43,32 @@ the id. **Both tasks and habits are drag sources** (`components/primitives/task-
 | `unscheduled:{bucket}` | Untimed section of a bucket | `scheduleTask(id, bucket, undefined, selectedDateStr)` / `assignHabitToBucket(id, bucket)` |
 | `anytime` \| `morning` \| `afternoon` \| `evening` | Bare outer bucket (fallback) | same as `unscheduled:{bucket}` |
 | `week:{yyyy-MM-dd}:{bucket}` | Week-view day cell | `scheduleTask(id, bucket, undefined, date)` / `scheduleHabit(id, bucket)` |
-| `hour:{H}` | Day-schedule grid slot (0–23) | schedule at `HH:00`; bucket = morning <12, afternoon <17, else evening |
-| `weekhour:{yyyy-MM-dd}:{H}` | Week-schedule grid slot | schedule task on that day at `HH:00` (habit: time only, no date) |
+| `hour:{H}` | Day-schedule grid slot (0–23) | schedule at `HH:00`; bucket = morning <12, afternoon <17, else evening. A task on the canvas asks the shared block drop rule (see below): a one-off `scheduleTask(id, bucket, time, selectedDateStr)`; a repeating task `scheduleTask(id, bucket, time)`, its start date kept (in a project block, its own start date, which releases it); nothing when it is already at that time. A task from the braindump and a habit as before |
+| `weekhour:{yyyy-MM-dd}:{H}` | Week-schedule grid slot | schedule task on that day at `HH:00` (habit: time only, no date). A repeating task on the canvas takes the time on its own days, its start date kept, whatever the column (the shared rule, as `hour:{H}`) |
 | `week:{yyyy-MM-dd}:anytime` | Week-schedule per-day Anytime strip | schedule on that day, `anytime` bucket, no time |
 | `projectblock:{date}:{projectName}` | Project block in day view and in each Week × Buckets column | `moveTaskToProjectBlock(id)` — only if `task.project === projectName`; habits ignored. The move is date-agnostic: `{date}` (the column's day, the selected day in Day view) only keeps the id unique when a recurring block renders in several columns at once (#214) |
-| `sidebar` | Braindump | a task: `unscheduleTask(id)`. A habit on the canvas: `setItemPaused(id, true)` (command `pause-item`), so it shows in the Paused section; a habit already in the braindump, or one that can't pause or already is, no-ops. A selection does both in one undo (`sidebarDropPlan`, lib/dnd/sidebar-drop.ts) |
+| `sidebar` | Braindump | a task from the canvas: `unscheduleTask(id)` only where the shared rule sends it back, which is Move to Braindump's gate (`canSendToBraindump`): a repeating, finished, let-go, in-block or milestone task stays where it is. A task already in the braindump: `unscheduleTask(id)`. A habit on the canvas: `setItemPaused(id, true)` (command `pause-item`), so it shows in the Paused section; a habit already in the braindump, or one that can't pause or already is, no-ops. A selection does both in one undo (`sidebarDropPlan`, lib/dnd/sidebar-drop.ts), asking the same rule of each canvas task; one whose canvas tasks the rule all keeps, with no habit to pause, writes nothing and falls through to the dragged row |
 | `list:{yyyy-MM-dd}` | Day × List body, or one Week × List day | Task from the braindump: `scheduleTask(id, 'anytime', undefined, date)`. Task from the canvas onto another day: `moveTaskToDate(id, date)`, keeping bucket and time. Nothing for: the day it is already on, a recurring canvas task (its date is the series anchor), any habit (`listDropCommand`). Group: `moveTasksToDate` over `listGroupMovers` |
 
 `{bucket}` ∈ `anytime | morning | afternoon | evening` (`TimeBucket`).
+
+### A canvas task's hour and braindump drops ask the shared block drop rule
+
+`planBlockDrop` (`lib/block-moves.ts`) is the one answer to "what does dropping this block
+do", shared with the iPhone (DsulCore `BlockMoves.swift`, checked against
+`tests/fixtures/day/block-moves.json`). `resolveDrop` asks it (`blockDropCommand`) for a
+task on the canvas (`placementOf(item).placed`) dropped on `hour:*`, `weekhour:*` or
+`sidebar`, and maps the answer to the store call that writes the same row: `place` is
+`scheduleTask` with the date, `retime` is `scheduleTask` without one (the date stays),
+`braindump` is `unscheduleTask`, and `none` or `refused` is nothing at all (no write, no undo
+entry). A move that keeps another date than the drop's day carries that day as `landsOn`, so
+the undo toast's "hidden where it landed" receipt is judged where the block was let go, not on
+a series' anchor. Habits, a row from the braindump, and every other id answer as the table always
+said; so do group drops onto the grid, which ask `resolveDrop` for the slot alone, without
+the dragged item. The rule keys on the registry (`dateAnchored`, whether it repeats), never
+on task vs habit. The Anytime strips are not routed through it yet: they share their ids
+with the Buckets cells, and the rule would refuse drops there (a task in a project block, a
+series on another day) that write today.
 
 ### Not every target is offered to every input
 
@@ -283,9 +301,10 @@ it, which is the reversal this design exists to avoid.
 ## Store actions consumed
 
 `reorderItems(sequence)` (the reorder above, never from `resolveDrop`) ·
-`scheduleTask(id, bucket, time?, dateStr?)` · `scheduleHabit(id, bucket, time?)` ·
-`assignHabitToBucket(id, bucket)` · `unscheduleTask(id)` · `moveTaskToProjectBlock(id)`
-(all `lib/planner-store.ts`).
+`scheduleTask(id, bucket, time?, dateStr?, { landsOn? })` (no `dateStr` keeps the task's date;
+`landsOn` is only the receipt's day) ·
+`scheduleHabit(id, bucket, time?)` · `assignHabitToBucket(id, bucket)` · `unscheduleTask(id)` ·
+`moveTaskToProjectBlock(id)` (all `lib/planner-store.ts`).
 
 ## Definition sites
 

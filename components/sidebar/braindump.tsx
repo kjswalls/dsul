@@ -55,7 +55,6 @@ import { pausedShelf } from '@/lib/paused-shelf';
 import { toDateStr } from '@/lib/recurrence';
 import { useDragStore } from '@/lib/drag-store';
 import { useSelectionStore } from '@/lib/selection-store';
-import { placementOf } from '@/lib/dnd/handle-drag-end';
 import { sidebarDropPlan } from '@/lib/dnd/sidebar-drop';
 import { milestoneItemIds } from '@/lib/goals';
 import { braindumpMembers } from '@/lib/braindump-members';
@@ -554,22 +553,29 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
     if (!isOver) return none;
     const activeId = useDragStore.getState().activeId;
     if (!activeId) return none;
-    const moves = (id: string) => {
-      if (suppressedIds.has(id)) return false;
-      const task = tasks.find((t) => t.id === id);
-      return !!task && placementOf(task).placed;
-    };
     // The group branch in app-shell.tsx's handleDragEnd: the whole selection,
     // minus milestones (unscheduleTasks refuses them) — and when nothing in it
-    // is writable, the drop falls through to the dragged row alone.
+    // is writable, the drop falls through to the dragged row alone. Either way
+    // a canvas task comes back only where the shared drop rule sends it
+    // (sidebarDropPlan), so a series or a finished row never lights.
     const { selectedIds } = useSelectionStore.getState();
-    if (selectedIds.has(activeId) && selectedIds.size >= 2) {
-      const milestones = milestoneItemIds(goals);
-      const group = [...selectedIds].filter((id) => !milestones.has(id) && moves(id));
-      if (group.length) return new Set(group);
+    const group = selectedIds.has(activeId) && selectedIds.size >= 2;
+    const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const { unschedule } = sidebarDropPlan(
+      group ? [...selectedIds] : [activeId],
+      tasks,
+      habits,
+      milestoneItemIds(goals),
+      toDateStr(new Date(), tz),
+      tz
+    );
+    const moves = (id: string) => !suppressedIds.has(id) && unschedule.includes(id);
+    if (group) {
+      const landing = [...selectedIds].filter(moves);
+      if (landing.length) return new Set(landing);
     }
     return moves(activeId) ? new Set([activeId]) : none;
-  }, [isOver, tasks, goals, suppressedIds]);
+  }, [isOver, tasks, habits, goals, suppressedIds, userTimezone]);
 
   /**
    * The habits a drop here would PAUSE (see sidebarDropPlan). They have no row

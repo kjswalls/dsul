@@ -199,6 +199,9 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `weekStartOf` and `addDaysStr` in `lib/container-schedule.ts`), checked
   against `tests/fixtures/day/week.json` (WeekFixtureTests) and the
   `untimed` rows of `timed.json`.
+  Week and blocks' PR 7 adds `BlockMoves.swift` (← `lib/block-moves.ts`:
+  `planBlockDrop`, `startTimeOf`), checked against
+  `tests/fixtures/day/block-moves.json` (BlockMovesFixtureTests).
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -2088,6 +2091,115 @@ read the same files, and CI fails when they disagree. ios.yml's `changes`
 filter includes every mirrored TS file and the app routes, so a web edit
 re-runs the Swift tests.
 
+## Dropping a block
+Week and blocks PRs 7 and 11 of `ios-app/week-and-blocks/design.md` (§5.5,
+§6.1, Q3), shipped as one PR; the builders' notes are in `week/pr7/`. What
+dropping a schedule block somewhere does is written once, in TS, and both
+clients ask it: the web's drops from this PR, the phone's from PR 8. Nothing
+on the phone calls it yet, so the app draws and does nothing new.
+
+- **The rule.** `planBlockDrop(item, from, target, ctx)` in
+  `lib/block-moves.ts`, pure, keyed on the registry's `dateAnchored` (for a
+  custom item, its slug's) and on whether the item repeats, never on task vs
+  habit (B21). `from` is the day the block was drawn on and whether that
+  occurrence is skipped; the target is an hour (`startMin` on a day), a
+  day's Anytime or the braindump; `ctx` holds the goals' milestone ids, null
+  while unknown. It answers an end state, never a write: `place {date,
+  startMin}`, `retime {startMin}` (its date untouched), `anytime {date}`
+  (null keeps its date), `braindump`, `pause`, `none` (already there) or
+  `refused` with a reason (`skipped`, `in-block`, `another-day`,
+  `not-braindump`, `milestones-unknown`, `not-pausable`, `invalid`).
+  - A skipped occurrence is refused wherever it lands.
+  - An hour: a one-off (or a series with no start date, or one still in
+    the braindump, which is not a block yet) is placed on the hour's day. A
+    dated series on the canvas and a type with no date are retimed on their
+    own days, whatever column took the drop (B7, B18), except a dated series
+    in a project block, which is placed on its own start date so the move
+    releases it.
+  - Anytime: refused for a task in a project block. What may not change its
+    date takes only its own day's Anytime (`another-day` otherwise); a dated
+    one-off moves to that day's.
+  - The braindump: a row it already lists stays (`none`, B24; a let-go row
+    is not listed); a type with no date pauses where the registry lets it; a
+    dated row goes back only where PR 3's `canSendToBraindump` takes it (B16,
+    B19), with the verb's and the server's checks beside it (a start date,
+    not a subtask), so never a series, a done or let-go task, one in a
+    project block, a goal's milestone, an undated row or a subtask.
+- **Pinned.** `tests/unit/block-moves.test.ts`, and
+  `tests/fixtures/day/block-moves.json` (153 cases written from the real TS
+  by `block-moves-fixtures.test.ts`: seventeen items by seven targets, then
+  skipped origins, unknown or empty milestones, the minute edges, four rows
+  stored just off their own place, and twelve for branches the items leave
+  out: a stash under Anytime, a habit with no part of day, a let-go,
+  undated or subtask row on the braindump, and a series still in the
+  braindump).
+  DsulCore `BlockMoves.swift` ports it (`planBlockDrop(_:from:target:context:)`,
+  `startTimeOf`, `BlockOrigin`, `BlockTarget`, `BlockDropContext`,
+  `BlockDrop`, `BlockDropRefusal`), checked by `BlockMovesFixtureTests`,
+  which also asks every custom row again as a task and every retime from
+  other columns. ios.yml's filter gains `block-moves`.
+- **The web follows it (PR 11; Kirby's Q3, Match iPhone, 2026-10-24).**
+  `resolveDrop` (lib/dnd/handle-drag-end.ts) asks it for a task on the
+  canvas dropped on `hour:`, `weekhour:` or `sidebar`, and maps each answer
+  to the store call that writes the same row: `place` and `retime` are
+  `scheduleTask` with and without the date, `braindump` is
+  `unscheduleTask`, `none` and a refusal write nothing. A move that keeps
+  its date carries the day it was let go on (`landsOn`), so the undo toast's
+  "hidden where it landed" receipt is judged there, not on the series'
+  anchor. `sidebarDropPlan` asks it of each task in a selection dropped on
+  the braindump, and says what the group writes (`rewrite`). So on the
+  web a repeating task's block dropped on a new time keeps its start date,
+  and every earlier day keeps its occurrence; a repeating, done, let-go,
+  in-block or milestone task dropped on the braindump stays where it was; a
+  placed habit dropped there still pauses; and every other drop ends in the
+  row it did before. lib/dnd/CONTRACT.md's table says which ids ask.
+- **How the phone will map it (PR 8).** `place` sends `schedule {date,
+  startTime}`; `retime` sends `time {timeBucket, startTime}` with the hour's
+  part of day, which never carries the date (M1); `anytime` with a null date
+  sends `time {timeBucket: "anytime", startTime: null}`; `braindump` sends
+  PR 3's `unschedule`. Two answers the web takes are refused on the phone in
+  v1, by that mapping and not by the rule: `pause` (B15: the phone's
+  braindump never lists a paused habit) and `anytime` with a day (B22:
+  another column's Anytime would be two writes that can land half). The
+  context is `BlockDropContext(milestoneIds: planner.milestoneIds)`, the set
+  Move to Braindump already reads.
+- **Where it departs from the design.**
+  - The web's Anytime strips (`unscheduled:anytime`, `week:{date}:anytime`)
+    don't ask the rule yet, though PR 11's file list names the week's: they
+    share their ids with the Buckets cells, where the rule would refuse
+    drops that write today (an in-block one-off's, and a series' on another
+    day). So a series dropped on the web's Anytime still takes that day as
+    its start date.
+  - A group dropped on an hour still takes the selected day's date, a
+    series' included, since groups were to stay as they were. A group
+    dropped on the braindump does ask the rule and leaves out what it
+    refuses ("the group path asks the same gate").
+  - A let-go task dropped on the braindump stays put as well: the gate's
+    "open on its date" refuses it as it refuses a done one.
+  - A selection dropped on the braindump whose only canvas tasks are ones
+    the rule keeps, with no habit to pause, writes nothing and falls through
+    to the dragged row alone, as a refused single drop does, rather than
+    rewriting the braindump rows in it with nothing landing.
+  - A series still in the braindump is not a block: an hour places it on
+    that day and another day's Anytime moves it there, as the web's
+    braindump-to-grid drop does (the web itself never asks the rule for a
+    braindump row). The braindump answer also asks for a start date and no
+    subtask, as Move to Braindump's verb and the server's `unschedule` do.
+  - On the web `none` now writes nothing, where it was a schedule to the
+    same place with an undo entry; the row is the same.
+  - The skip is an input (`from.skipped`): the client knows it drew a
+    skipped strip. In the Swift, dates stay strings (a legacy ISO start date
+    has to compare as the web's does) and minutes are an `Int`.
+- **Files.** lib/block-moves.ts; lib/dnd/handle-drag-end.ts,
+  lib/dnd/sidebar-drop.ts and CONTRACT.md; lib/planner-store.ts
+  (`scheduleTask`'s `landsOn`); components/shell/app-shell.tsx;
+  components/sidebar/braindump.tsx (its landing preview lights only what the
+  drop would send back); DsulCore BlockMoves.swift; tests block-moves,
+  block-moves-fixtures, block-drop-receipt, handle-drag-end, sidebar-drop,
+  braindump-landing and ios-change-filter, the e2e dnd spec's braindump
+  refusal, and BlockMovesFixtureTests; .github/workflows/ios.yml. No app
+  file, view or hosted test, and no new device check in ios/README.md.
+
 ## The drag spike
 The braindump sheet (detents `.peek` = 96pt, `.medium`, `.large`; background
 interaction up through `.medium`) sits over the Schedule grid. Rows use the
@@ -2123,7 +2235,9 @@ web then lists the item as a plain member, with no notice), the Beeminder row,
 the Streaks, Organize and Goals switches, which the phone honours but can't
 turn on or off, the thread and Ask, Focus), universal links (the email link
 uses the custom scheme), resize and moving existing blocks from the phone
-(and a block's own Move to Braindump, from its menu or a drop; the sheet's ⋯
+(the rule a drop will follow is built, see Dropping a block, though nothing
+on the phone asks it yet; and a block's own Move to Braindump, from its
+menu or a drop; the sheet's ⋯
 has it), the overdue tray, sinking completed rows, filters and
 `showPausedOnGrid` (the phone uses the defaults), Focus as a Live Activity,
 and a local-stack password grant for development. App Store review will also
