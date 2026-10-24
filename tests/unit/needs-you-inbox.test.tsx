@@ -15,6 +15,7 @@ vi.mock('@/lib/open-chat', () => ({ openItemFromAsk: (...a: unknown[]) => openIt
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
 
 import { usePlannerStore } from '@/lib/planner-store';
+import { usePrepPacksStore } from '@/lib/prep-packs-store';
 import { useNeedsYouStore, UNDO_MS } from '@/lib/needs-you-store';
 import { askers, askerInitial, badgeLine } from '@/lib/needs-you';
 import { AskerCard } from '@/components/ai/needs-you/asker-card';
@@ -22,6 +23,13 @@ import { NeedsYouBadge } from '@/components/ai/needs-you/needs-you-badge';
 import { BlockAsk } from '@/components/ai/needs-you/block-ask';
 import type { AgentItem } from '@/lib/ask-home';
 import type { Item } from '@/lib/planner-types';
+
+// Radix's switch measures itself; jsdom has no ResizeObserver.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as never;
 
 const item = (id: string, assignee: string, aiResult: string, at: string): AgentItem =>
   ({
@@ -158,6 +166,33 @@ describe('NeedsYouBadge', () => {
     expect(within(inbox).getAllByTestId('asker-card').map((c) => c.dataset.asker)).toEqual(['openclaw', 'claude']);
     act(() => void useNeedsYouStore.getState().answer(B, 'that one'));
     expect(badge).toHaveTextContent('2 to answer');
+  });
+
+  it("counts your AI's prep questions and answers them first, on the same card", () => {
+    const task = { id: 'p', type: 'task', title: 'budgets?', status: 'pending', isScheduled: false, order: 0 };
+    usePlannerStore.setState({ items: [task] as unknown as Item[] });
+    usePrepPacksStore.setState({
+      packs: {
+        p: {
+          itemId: 'p',
+          madeFor: 'budgets?',
+          updatedAt: '2026-10-23T01:00:00Z',
+          pack: { kind: 'question', question: 'What are you budgeting for?', options: ['The Europe trip', 'Monthly spending'] },
+        },
+      },
+    });
+    render(<NeedsYouBadge />);
+    expect(screen.getByTestId('needs-you-badge')).toHaveTextContent('1 to answer');
+    act(() => useNeedsYouStore.getState().openInbox());
+    const card = within(screen.getByTestId('needs-you-inbox')).getByTestId('prep-asker-card');
+    expect(card).toHaveTextContent('Your AI · about budgets?');
+    expect(card).toHaveTextContent('What are you budgeting for?');
+    const submit = within(card).getByTestId('prep-pack-submit') as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.keyDown(within(card).getAllByTestId('prep-pack-option')[0], { key: 'b' });
+    expect(within(card).getAllByTestId('prep-pack-option')[1].getAttribute('aria-pressed')).toBe('true');
+    expect(submit.disabled).toBe(false);
+    usePrepPacksStore.setState({ packs: {} });
   });
 
   it('is not there while nobody is waiting', () => {

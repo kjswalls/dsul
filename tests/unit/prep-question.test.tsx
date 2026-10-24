@@ -49,17 +49,20 @@ function mount() {
 }
 
 describe('a question pack', () => {
-  it('shows the question and its answers, with no Copy or Open', () => {
+  it('shows the question and its lettered answers, with no Copy, Open or Done', () => {
     mount();
     expect(screen.getByText('Which invoice?')).toBeTruthy();
-    expect(screen.getAllByTestId('prep-pack-option').map((b) => b.textContent)).toEqual(['March', 'April']);
+    expect(screen.getAllByTestId('prep-pack-option').map((b) => b.textContent)).toEqual(['AMarch', 'BApril']);
     expect(screen.queryByTestId('prep-pack-primary')).toBeNull();
+    expect(screen.queryByTestId('prep-pack-done')).toBeNull();
     expect(screen.getByText('Your AI needs one thing first')).toBeTruthy();
   });
 
   it('answers into the notes, drops the question, and asks again', () => {
     const { updateTask, fetchMock } = mount();
     fireEvent.click(screen.getByText('April'));
+    expect(updateTask).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('prep-pack-submit'));
     expect(updateTask).toHaveBeenCalledWith('a', { notes: 'Which invoice? April' }, expect.anything());
     expect(usePrepPacksStore.getState().packs.a).toBeUndefined();
     const calls = fetchMock.mock.calls as unknown as [string, RequestInit?][];
@@ -71,7 +74,7 @@ describe('a question pack', () => {
   it('takes a typed answer too', () => {
     const { updateTask } = mount();
     fireEvent.change(screen.getByTestId('prep-pack-answer'), { target: { value: 'the May one' } });
-    fireEvent.click(screen.getByText('Answer'));
+    fireEvent.click(screen.getByTestId('prep-pack-submit'));
     expect(updateTask).toHaveBeenCalledWith('a', { notes: 'Which invoice? the May one' }, expect.anything());
   });
 });

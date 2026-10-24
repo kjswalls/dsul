@@ -56,7 +56,7 @@ import { daysBetween } from '@/lib/container-schedule';
 import { ContainerCreateForm } from '../container-create-form';
 import { GOAL_STATES, heldElsewhere } from '../container-fields';
 import { cn } from '@/lib/utils';
-import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
+import { ItemTick, animateItemCheck } from '@/components/primitives/item-check';
 import { cadenceLabel } from '@/lib/cadence';
 import type { Goal, Item } from '@/lib/planner-types';
 
@@ -455,7 +455,7 @@ function GoalDetail({
         <button
           type="button"
           onClick={(e) => {
-            if (!done) springItemCheck(e.currentTarget);
+            if (!done) animateItemCheck(e.currentTarget);
             toggleTaskStatus(item.id);
           }}
           data-testid="goal-milestone-check"
@@ -467,8 +467,8 @@ function GoalDetail({
             'relative flex size-4 shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow]',
             'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
             done
-              ? 'inset-ring-primary bg-primary'
-              : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-primary'
+              ? 'inset-ring-check-fill bg-check-fill'
+              : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-muted-foreground'
           )}
         >
           {done && <ItemTick />}

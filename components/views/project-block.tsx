@@ -4,7 +4,7 @@ import { type MouseEvent as ReactMouseEvent } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { ItemContextMenu } from '@/components/planner/item-context-menu';
 import { ContainerContextMenu } from '@/components/planner/container-context-menu';
-import { Check, GripVertical, ChevronsRight, ArrowRight, Clock } from 'lucide-react';
+import { GripVertical, ChevronsRight, ArrowRight, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowTitleText } from '@/components/primitives/row-title-text';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -14,6 +14,7 @@ import type { Task, Project } from '@/lib/planner-types';
 import { CategoryIcon } from '@/lib/category-icons';
 import { WEEK_PROJECT_BLOCK_MAX_H } from '@/lib/schedule-constants';
 import { cn } from '@/lib/utils';
+import { ItemTick, animateItemCheck } from '@/components/primitives/item-check';
 
 /**
  * Recurring project time block (ported from timeline.tsx in P5b, compact
@@ -98,14 +99,18 @@ function BlockTask({ task, onClick, date }: { task: Task; onClick: () => void; d
           <button
             onClick={(e) => {
               e.stopPropagation();
+              if (!done) animateItemCheck(e.currentTarget);
               toggleTaskStatus(task.id, undefined, recurring ? blockDate : undefined);
             }}
+            aria-label={done ? 'Mark incomplete' : 'Mark complete'}
             className={cn(
-              'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 transition-colors',
-              done ? 'border-primary bg-primary' : 'border-muted-foreground/40 hover:border-primary'
+              'relative flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow]',
+              done
+                ? 'inset-ring-check-fill bg-check-fill'
+                : 'inset-ring-muted-foreground/45 hover:inset-ring-muted-foreground'
             )}
           >
-            {done && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+            {done && <ItemTick />}
           </button>
           <span
             data-row-title={done ? 'muted' : 'open'}

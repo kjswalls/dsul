@@ -86,7 +86,7 @@ const MAX_ROWS = 1;
  * waiting notice stays here because `useWaitingNotice` closes its tray on
  * unmount, so it must be called from exactly one place in the tree.
  */
-function useDockNotices(): DockNotice[] {
+function useDockNotices(surface: 'desktop' | 'phone'): DockNotice[] {
   const waiting = useWaitingNotice();
   const eod = useEodNotice();
   const sweep = useSweepNotice();
@@ -95,7 +95,8 @@ function useDockNotices(): DockNotice[] {
   // anchor: the surfaces it would sit on are the ones the AI gate has hidden.
   const ai = useAINotice();
   // What the AI got ready, said once for the account instead of on every row.
-  const aiWork = useAIWorkNotice();
+  // The desktop's questions are counted by the header's Needs you badge.
+  const aiWork = useAIWorkNotice({ questions: surface === 'phone' });
   const live = useLiveNoticeAnchors();
 
   // What is left after every notice with a mounted object has gone to it. The
@@ -313,7 +314,7 @@ function OverflowRow({
  * session.
  */
 export function DockNotices({ alwaysVisible = false }: { alwaysVisible?: boolean } = {}) {
-  const notices = useDockNotices();
+  const notices = useDockNotices('desktop');
   const { visible, overflow, isExpanded, setExpanded } = useCappedStack(notices, MAX_ROWS);
   const leftSidebarOpen = useSidebarStore((s) => s.leftSidebarOpen);
   const leftSidebarHovered = useSidebarStore((s) => s.leftSidebarHovered);
@@ -366,7 +367,7 @@ export function DockNotices({ alwaysVisible = false }: { alwaysVisible?: boolean
  * Trays are Drawers rather than Popovers — a 420px tray does not exist here.
  */
 export function DockNoticesMobile() {
-  const notices = useDockNotices();
+  const notices = useDockNotices('phone');
   // max 1, so capNotices' last-slot rule folds the FIRST notice away as soon as
   // there is a second, and the single row becomes "2 to answer". That is the
   // right trade at this width: one row speaking for itself, or one row speaking

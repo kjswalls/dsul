@@ -49,7 +49,7 @@ import { PrepWorking } from '@/components/ai/ai-work-badge';
 import type { Task, HabitItem, HabitStatus, Item } from '@/lib/planner-types';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { ItemTick, springItemCheck } from '@/components/primitives/item-check';
+import { ItemTick, animateItemCheck } from '@/components/primitives/item-check';
 
 /**
  * Canonical item row (components/primitives): checkbox + Inter Medium title +
@@ -670,8 +670,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
           data-checked={completed ? 'true' : multiPartial ? 'partial' : 'false'}
           onClick={(e) => {
             e.stopPropagation();
-            // Every press toward done springs; the press that clears it doesn't.
-            if (!completed) springItemCheck(e.currentTarget);
+            // Every press toward done animates; the press that clears it doesn't.
+            if (!completed) animateItemCheck(e.currentTarget);
             if (isTask) handleTaskToggle();
             else handleHabitToggle();
           }}
@@ -689,16 +689,16 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
             // (item-check.tsx).
             'relative z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] inset-ring transition-[background-color,box-shadow]',
             completed
-              ? 'inset-ring-primary bg-primary'
+              ? 'inset-ring-check-fill bg-check-fill'
               : multiPartial
-                ? 'inset-ring-primary/60 bg-surface-3 hover:inset-ring-primary'
-                : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-primary'
+                ? 'inset-ring-muted-foreground/60 bg-surface-3 hover:inset-ring-muted-foreground'
+                : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-muted-foreground'
           )}
         >
           {multiPartial && (
             <span
               aria-hidden="true"
-              className="absolute inset-x-0 bottom-0 bg-primary transition-[height] duration-150"
+              className="absolute inset-x-0 bottom-0 bg-check-fill transition-[height] duration-150"
               style={{ height: `${multiPct}%` }}
             />
           )}

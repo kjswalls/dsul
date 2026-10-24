@@ -163,7 +163,7 @@ describe('a card with several questions', () => {
     fireEvent.click(screen.getByText("Who's going"));
     expect(updateTask).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('Two weeks'));
-    fireEvent.click(screen.getByTestId('prep-pack-answer-all'));
+    fireEvent.click(screen.getByTestId('prep-pack-submit'));
     expect(updateTask).toHaveBeenCalledWith(
       'a',
       { notes: "What's settled already? Dates, Who's going\nHow long? Two weeks" },
@@ -174,7 +174,7 @@ describe('a card with several questions', () => {
 
   it('waits for at least one answer', () => {
     mount(stored);
-    expect((screen.getByTestId('prep-pack-answer-all') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('prep-pack-submit') as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
@@ -205,6 +205,7 @@ describe('what your AI knows', () => {
     const { fetchMock } = mount(stored);
     fireEvent.click(screen.getByTestId('prep-pack-remember'));
     fireEvent.click(screen.getByText('My dog'));
+    fireEvent.click(screen.getByTestId('prep-pack-submit'));
     expect(setConfigValue).toHaveBeenCalledWith('u1', EXT_DO_STUFF, 'knows', "Who's Sammy? My dog");
     expect(JSON.parse(String(asked(fetchMock)?.[1]?.body)).knows).toBe("Who's Sammy? My dog");
   });
@@ -219,7 +220,8 @@ describe('what your AI knows', () => {
       updatedAt: '2026-10-23T06:00:00.000Z',
       pack: { kind: 'question', question: 'Which?', options: ['A', 'B'] },
     });
-    fireEvent.click(screen.getByText('A'));
+    fireEvent.click(screen.getAllByTestId('prep-pack-option')[0]);
+    fireEvent.click(screen.getByTestId('prep-pack-submit'));
     expect(setConfigValue).not.toHaveBeenCalled();
   });
 });
