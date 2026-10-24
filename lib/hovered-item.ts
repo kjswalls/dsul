@@ -10,12 +10,16 @@
 
 export type HoveredItemType = 'task' | 'habit' | null;
 
-export const hoveredItem: { id: string | null; type: HoveredItemType } = {
+export const hoveredItem: { id: string | null; type: HoveredItemType; dateStr: string | null } = {
   id: null,
   type: null,
+  // The day the hovered row is drawn for, so rename_hovered opens the field on
+  // that row and not on every copy of a recurring item in a week.
+  dateStr: null,
 };
 
-export function setHoveredItemRef(id: string | null, type: HoveredItemType) {
+export function setHoveredItemRef(id: string | null, type: HoveredItemType, dateStr: string | null = null) {
   hoveredItem.id = id;
   hoveredItem.type = type;
+  hoveredItem.dateStr = dateStr;
 }

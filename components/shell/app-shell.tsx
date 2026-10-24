@@ -66,6 +66,7 @@ import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { hoveredItem } from '@/lib/hovered-item';
+import { renameInPanel, startRename } from '@/lib/item-rename';
 import { listGroupMovers, parseProjectBlockId, placementOf, resolveDrop } from '@/lib/dnd/handle-drag-end';
 import { sidebarDropPlan } from '@/lib/dnd/sidebar-drop';
 import { toDateStr } from '@/lib/recurrence';
@@ -639,6 +640,19 @@ export function AppShell() {
     }
   }, []);
 
+  // F2: the row under the mouse renames in place; with none, the open item's
+  // panel selects its title (lib/item-rename.ts).
+  const handleShortcutRename = useCallback(() => {
+    if (hoveredItem.id) {
+      startRename(hoveredItem.id, hoveredItem.dateStr);
+      return;
+    }
+    const dialog = useUIStore.getState().activeDialog;
+    if (dialog?.type !== 'edit-item') return;
+    const live = usePlannerStore.getState().items.find((i) => i.id === dialog.item.id);
+    if (live) renameInPanel(live);
+  }, []);
+
   const handleShortcutDelete = useCallback(() => {
     // A genuine multi-selection (>=2) wins over the hovered item: Backspace
     // deletes the whole selection (one confirm, one undo). A single selected row
@@ -681,10 +695,11 @@ export function AppShell() {
   }, []);
 
   // Every other binding is owned by its command in lib/commands/registry.ts.
-  // These two stay here because they act on the item under the mouse, which
+  // These stay here because they act on the item under the mouse, which
   // only the shell can resolve.
   useCommandShortcuts(commandContext, {
     edit_hovered: handleShortcutEdit,
+    rename_hovered: handleShortcutRename,
     delete_hovered: handleShortcutDelete,
   });
 

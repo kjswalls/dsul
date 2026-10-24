@@ -1173,7 +1173,7 @@ describe('lifecycle', () => {
     startPreview(<Canvas />, CACHED());
     setHoveredItemRef('a', 'task');
     land(FRESH());
-    expect(hoveredItem).toEqual({ id: null, type: null });
+    expect(hoveredItem).toEqual({ id: null, type: null, dateStr: null });
   });
 
   it('drops a scope that remounted under the landing (a mobile tab switch); the others still settle', () => {
