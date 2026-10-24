@@ -216,7 +216,8 @@ struct ProjectChipMenu: View {
     let choices: [ProjectChoice]
     /// `ItemSheetModel.offersNoProject` for the item's type.
     let offersNone: Bool
-    /// A project's dot colour, by name (`ProjectPalette`).
+    /// A project's dot colour, by name (`SamplePlanner.projectAccent`): the
+    /// chip's and every row's, so the two agree.
     let color: (String) -> Color
     let onPick: (ProjectChoice?) -> Void
 
@@ -351,7 +352,8 @@ struct AddPropertyMenu: View {
     /// Season ▸.
     let routines: [MembershipChoice]
     let seasons: [MembershipChoice]
-    /// A project's dot colour, by name (`ProjectPalette`).
+    /// A project's dot colour, by name (`SamplePlanner.projectAccent`), as
+    /// the project chip's menu draws it.
     let projectColor: (String) -> Color
     let onPriority: (String?) -> Void
     let onDate: (DateChoice) -> Void

@@ -4,7 +4,9 @@ import DsulCore
 
 // The web's own answers for how a container looks (lib/accent-colors.ts,
 // lib/category-icons.ts, and the token values in app/globals.css), checked
-// against ContainerLook.swift: tests/fixtures/organize/look.json.
+// against ContainerLook.swift: tests/fixtures/organize/look.json. Today's
+// project dot (`projectAccent`, O15) is checked against the same sections:
+// `projectColor` for the token, `tokens` and `colors` for what it draws.
 
 private struct ThemeValue: Decodable, Sendable {
     let l: Double
@@ -162,6 +164,114 @@ private func same(_ a: String?, _ b: String?) -> Bool {
                 #expect(got.light.hex == c.expected.light, "\(c.name): hex kept exactly")
             }
         }
+    }
+
+    /// Today's project dot (O15) is the grid's token (`projectColor`, the
+    /// web's `projectColorToken`) drawn with globals.css' values (`tokens`): a
+    /// readable token is that token, and free text the phone cannot read is
+    /// what the grid draws with no colour.
+    @Test func projectAccentDrawsTheGridsToken() throws {
+        let f = try load()
+        for c in f.projectColor {
+            let got = projectAccent(c.input, projects: c.projects)
+            let folded = Array(jsLowercased(c.input).utf16)
+            let stored = c.projects.first { Array(jsLowercased($0.name).utf16) == folded }?.color ?? ""
+            if let token = ContainerLook.token(css: c.expected) {
+                #expect(got.source == (stored.isEmpty ? .name : .token), "\(c.name): source")
+                #expect(same(got.token, c.expected), "\(c.name): token")
+                #expect(got.light == token.light.srgb && got.dark == token.dark.srgb, "\(c.name): value")
+                let row = try #require(f.tokens.first { same($0.css, c.expected) }, "\(c.name): no row")
+                #expect(near(got.light, row.light.hex), "\(c.name): light \(got.light.hex) vs \(row.light.hex)")
+                #expect(near(got.dark, row.dark.hex), "\(c.name): dark \(got.dark.hex) vs \(row.dark.hex)")
+            } else if SRGBColor(hex: c.expected) != nil {
+                #expect(got.source == .hex, "\(c.name): source")
+                #expect(got.light.hex == c.expected.lowercased() && got.dark == got.light, "\(c.name): hex")
+            } else {
+                // Stored free text ("blue"): the grid's no-colour answer.
+                #expect(!stored.isEmpty, "\(c.name): free text is stored")
+                #expect(got.source == .name, "\(c.name): source")
+                #expect(got == projectAccent(c.input, projects: []), "\(c.name): as if uncoloured")
+                #expect(same(got.token, projectColorToken(c.input, projects: [])), "\(c.name): token")
+            }
+        }
+    }
+
+    /// A project storing a colour Organize's tile reads (a theme token or a
+    /// `#rrggbb`) draws the same dot on Today as the tile, whatever its name:
+    /// every such `colors` row, through a project of that name. A row the
+    /// tile cannot read (no colour, "", free text) draws the grid's own
+    /// no-colour answer instead, which is the tile's only for some names
+    /// (`theDotFollowsTheGridWhereTheTwoRulesDiffer`), so it is checked
+    /// against that and never against the tile.
+    @Test func projectAccentDrawsWhatTheTileDrawsForAStoredColour() throws {
+        var readable = 0
+        for c in try load().colors {
+            let project = Project(id: "p", name: c.containerName, color: c.color)
+            let got = projectAccent(c.containerName, projects: [project])
+            guard c.expected.source != "name" else {
+                #expect(got.source == .name, "\(c.name): source")
+                #expect(got == projectAccent(c.containerName, projects: []), "\(c.name): as if uncoloured")
+                continue
+            }
+            readable += 1
+            #expect(got.source.rawValue == c.expected.source, "\(c.name): source")
+            #expect(same(got.token, c.expected.token), "\(c.name): token")
+            #expect(near(got.light, c.expected.light), "\(c.name): light \(got.light.hex)")
+            #expect(near(got.dark, c.expected.dark), "\(c.name): dark \(got.dark.hex)")
+            #expect(got == containerAccent(c.color, name: c.containerName), "\(c.name): the tile's")
+        }
+        #expect(readable > 0, "a readable stored colour")
+    }
+
+    /// Every token a project can store, the swatches, the lime and the legacy
+    /// three alike, is its own dot. The README's check: a project coloured
+    /// Teal on the web is teal on Today.
+    @Test func everyStoredTokenIsItsOwnDot() throws {
+        let f = try load()
+        for row in f.tokens {
+            let project = Project(id: "p", name: "Errands", color: row.css)
+            let got = projectAccent("ERRANDS", projects: [project])
+            #expect(got.source == .token, "\(row.name): source")
+            #expect(same(got.token, row.css), "\(row.name): token")
+            #expect(near(got.light, row.light.hex), "\(row.name): light \(got.light.hex) vs \(row.light.hex)")
+            #expect(near(got.dark, row.dark.hex), "\(row.name): dark \(got.dark.hex) vs \(row.dark.hex)")
+        }
+        let teal = try #require(f.tokens.first { $0.swatch == "Teal" })
+        let dot = projectAccent("Home", projects: [Project(id: "p-home", name: "Home", color: teal.css)])
+        #expect(dot.source == .token && dot.token == "var(--accent-2)")
+        #expect(near(dot.light, teal.light.hex) && near(dot.dark, teal.dark.hex))
+    }
+
+    /// Where the grid's rule and Organize's differ, the dot follows the
+    /// grid's, as the web's own grid and tiles differ.
+    @Test func theDotFollowsTheGridWhereTheTwoRulesDiffer() {
+        // An uncoloured "Work" is the legacy token on the grid, plum on its tile.
+        let work = [Project(id: "p-work", name: "Work")]
+        #expect(projectAccent("Work", projects: work).token == "var(--habit-work)")
+        #expect(projectAccent("Work", projects: work).source == .name)
+        #expect(containerAccent(nil, name: "Work").token == "var(--accent-4)")
+        for (key, token) in ContainerLook.legacyProjectTokens {
+            #expect(projectAccent(key.uppercased(), projects: []).token == token, "\(key)")
+        }
+        // "" is no colour, as the web's truthiness says.
+        #expect(projectAccent("work", projects: [Project(id: "p", name: "Work", color: "")]).token == "var(--habit-work)")
+        // An unreadable colour is the grid's no-colour answer, legacy first.
+        #expect(projectAccent("Work", projects: [Project(id: "p", name: "Work", color: "blue")]).token == "var(--habit-work)")
+        // The FOLDED name's step: U+0100 sums to step 1, its lowercase U+0101
+        // to step 2. The tile hashes the raw name.
+        let macron = "\u{0100}"
+        #expect(projectAccent(macron, projects: []).token == "var(--accent-2)")
+        #expect(projectAccent(macron, projects: [Project(id: "p", name: macron, color: "blue")]).token == "var(--accent-2)")
+        #expect(containerAccent("blue", name: macron).token == "var(--accent-1)")
+        // A name no project row folds to still has a colour: its step, never gray.
+        #expect(projectAccent("Fitness", projects: work).token == "var(--accent-5)")
+        // Two rows that fold equal: the first wins, as the web's `find` does.
+        let twins = [Project(id: "a", name: "home", color: "var(--accent-7)"),
+                     Project(id: "b", name: "Home", color: "var(--accent-2)")]
+        #expect(projectAccent("HOME", projects: twins).token == "var(--accent-7)")
+        // A raw hex, lowercased and the same in both themes.
+        let hex = projectAccent("x", projects: [Project(id: "p", name: "X", color: "#1A2B3C")])
+        #expect(hex.source == .hex && hex.token == nil && hex.light.hex == "#1a2b3c" && hex.dark == hex.light)
     }
 
     @Test func resolveCategoryIconNameMatchesTheWeb() throws {

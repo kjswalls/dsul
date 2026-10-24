@@ -113,9 +113,11 @@ struct WeekList: View {
                 onOpen: { planner.open(item.id, day: .on(day)) })
     }
 
+    /// A project caption's dot, in the project's own colour
+    /// (`SamplePlanner.projectAccent`), as Day's section wears it.
     private func color(for section: ListSection) -> Color? {
         guard section.kind == .project else { return nil }
-        return ProjectPalette.color(for: section.title, in: planner.projects)
+        return planner.projectAccent(for: section.title).color
     }
 }
 

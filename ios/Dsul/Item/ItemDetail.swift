@@ -460,7 +460,7 @@ struct ItemDetail: View {
                                     projects: projects,
                                     routines: routines,
                                     seasons: seasons,
-                                    projectColor: { ProjectPalette.color(for: $0, in: planner.projects) },
+                                    projectColor: { planner.projectAccent(for: $0).color },
                                     onPriority: { pick(.priority($0), settling: .priority) },
                                     onDate: { setDate($0) },
                                     onTime: { editor = .time(item.id) },
@@ -519,7 +519,7 @@ struct ItemDetail: View {
             } else if chip.kind == .project {
                 ProjectChipMenu(chip: chip, item: item, choices: projects,
                                 offersNone: ItemSheetModel.offersNoProject(planner.caps(for: item)),
-                                color: { ProjectPalette.color(for: $0, in: planner.projects) },
+                                color: { planner.projectAccent(for: $0).color },
                                 onPick: { pick(ItemSheetModel.projectEdit($0), settling: .project) })
                     .accessibilityFocused($chipVoiceOver, equals: .chip(.project))
             } else if let kind = ItemSheetModel.containerKind(chip.kind) {
@@ -547,10 +547,10 @@ struct ItemDetail: View {
     }
 
     /// Part 1's chip: no chevron, no trait, no hint; a project's wears its
-    /// colour dot.
+    /// colour dot (`SamplePlanner.projectAccent`, as its menu's rows do).
     private func readOnlyChip(_ chip: SheetChip) -> some View {
         ChipView(chip: chip,
-                 dot: chip.kind == .project ? ProjectPalette.color(for: chip.text, in: planner.projects) : nil)
+                 dot: chip.kind == .project ? planner.projectAccent(for: chip.text).color : nil)
             .chipSlot()
     }
 

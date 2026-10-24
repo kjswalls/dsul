@@ -480,6 +480,19 @@
       "expected": "var(--habit-wellness)"
     },
     {
+      "name": "an empty colour is no colour",
+      "input": "Work",
+      "projects": [
+        {
+          "id": "p-work",
+          "name": "Work",
+          "emoji": "",
+          "color": ""
+        }
+      ],
+      "expected": "var(--habit-work)"
+    },
+    {
       "name": "no colour: the folded name’s ramp step",
       "input": "Health",
       "projects": [

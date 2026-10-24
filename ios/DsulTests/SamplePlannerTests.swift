@@ -902,6 +902,95 @@ import Testing
         #expect(routinePage.header.symbol == ContainerLook.lucideToSymbol["Coffee"])
     }
 
+    // MARK: Project colours (O15)
+
+    /// Today's project dots, the item sheet's project chip and its menu rows
+    /// wear the web's grid colour (`projectAccent`, planner-store
+    /// `getProjectColor`), never a place in the project list. No sample
+    /// project stores a colour, so each wears its folded name's ramp step,
+    /// and Work the legacy `--habit-work`. A name in another case wears its
+    /// project's (Standup is filed "work"), and a name no project holds has
+    /// its own step, never gray: Fitness is Coral, Errands Lime.
+    @Test func theSamplesProjectDotsAreTheWebsGridColours() {
+        let planner = makePlanner()
+        var tokens: [String: String] = [:]
+        for name in planner.projects {
+            let accent = planner.projectAccent(for: name)
+            #expect(accent.source == .name, "\(name) stores no colour")
+            tokens[name] = accent.token
+        }
+        #expect(tokens == ["Work": "var(--habit-work)", "Home": "var(--accent-2)", "Writing": "var(--accent-5)",
+                           "dsul": "var(--accent-1)", "Health": "var(--accent-7)"])
+        #expect(first(planner, "Standup").project == "work")
+        #expect(planner.projectAccent(for: "work") == planner.projectAccent(for: "Work"))
+        #expect(planner.projectAccent(for: "HOME") == planner.projectAccent(for: "Home"))
+        #expect(planner.projectAccent(for: "Fitness").token == "var(--accent-5)")
+        #expect(planner.projectAccent(for: "Errands").token == "var(--accent-8)")
+        // DsulCore's rule over the records, colours and all.
+        for name in planner.projects + ["work", "Fitness"] {
+            #expect(planner.projectAccent(for: name) == projectAccent(name, projects: planner.projectRecords))
+        }
+    }
+
+    /// A project coloured Teal (Icon and color…, or on the web) shows teal on
+    /// Today at once, the same teal as its Organize tile in both themes; a
+    /// stored colour beats Work's legacy token; Auto gives the name's own
+    /// step back. With nothing stored the dot and the tile agree but for
+    /// Work, which is `--habit-work` on Today and Plum on its tile, as on the
+    /// web.
+    @Test func aColouredProjectsDotIsItsTilesColour() throws {
+        let planner = makePlanner()
+        let teal = try #require(ContainerLook.token(css: "var(--accent-2)"))
+        #expect(teal.swatch == "Teal")
+        func tile(_ id: String) -> ContainerAccent? {
+            guard case .list(let sections, _, _) = planner.organize else { return nil }
+            return sections.flatMap(\.rows).first { $0.kind == .project && $0.containerId == id }?.accent
+        }
+        for project in planner.projectRecords where project.name != "Work" {
+            #expect(tile(project.id) != nil, "\(project.name) has a tile")
+            #expect(planner.projectAccent(for: project.name).token == tile(project.id)?.token, "\(project.name)")
+        }
+        #expect(planner.projectAccent(for: "Work").token == "var(--habit-work)")
+        #expect(tile("sample-work")?.token == "var(--accent-4)")
+
+        let writing = ContainerRef(kind: .project, id: "sample-writing")
+        planner.editContainer(writing, .color(teal.css))
+        let dot = planner.projectAccent(for: "Writing")
+        #expect(dot == ContainerAccent(source: .token, token: teal.css, light: teal.light.srgb, dark: teal.dark.srgb))
+        #expect(dot == tile("sample-writing"))
+        planner.editContainer(ContainerRef(kind: .project, id: "sample-work"), .color(teal.css))
+        #expect(planner.projectAccent(for: "work") == dot)
+        #expect(tile("sample-work") == dot)
+        planner.editContainer(writing, .color(nil))
+        #expect(planner.projectAccent(for: "Writing").token == "var(--accent-5)")
+        #expect(planner.projectAccent(for: "Writing").source == .name)
+    }
+
+    /// Signed in, the dots follow the fetched projects' colours: a stored
+    /// token; a stored hex, the same in both themes; and free text an agent
+    /// stored (the payload fixture's Admin is "blue"), which the phone can't
+    /// read, so it draws the grid's own answer for no colour, as "" is.
+    @Test func theDotsFollowAFetchsColours() {
+        let planner = makePlanner()
+        planner.apply(PlannerPayload(userId: UUID(), fetchedAt: "colours", settings: planner.settings,
+                                     items: planner.items,
+                                     projects: [Project(id: "p-errands", name: "Errands", color: "var(--accent-2)"),
+                                                Project(id: "p-garden", name: "Garden", color: "#3BACA6"),
+                                                Project(id: "p-admin", name: "Admin", color: "blue"),
+                                                Project(id: "p-work", name: "Work", color: "")]))
+        let errands = planner.projectAccent(for: "errands")
+        #expect(errands.source == .token)
+        #expect(errands.token == "var(--accent-2)")
+        let garden = planner.projectAccent(for: "Garden")
+        #expect(garden.source == .hex)
+        #expect(garden.light == garden.dark)
+        #expect(garden.light == SRGBColor(hex: "#3baca6"))
+        let admin = planner.projectAccent(for: "Admin")
+        #expect(admin.source == .name)
+        #expect(admin.token == "var(--accent-2)")
+        #expect(planner.projectAccent(for: "Work").token == "var(--habit-work)")
+    }
+
     // MARK: Layout and formatting
 
     @Test func layoutsStepAndWrap() {
