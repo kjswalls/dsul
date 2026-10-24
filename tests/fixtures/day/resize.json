@@ -1,0 +1,7423 @@
+{
+  "constants": {
+    "RESIZE_SNAP_MIN": 15,
+    "RESIZE_MIN_DURATION": 15,
+    "DAY_END_MIN": 1440
+  },
+  "deltaMin": [
+    {
+      "name": "0pt at 75",
+      "deltaPx": 0,
+      "hourPx": 75,
+      "expected": 0
+    },
+    {
+      "name": "1pt at 75",
+      "deltaPx": 1,
+      "hourPx": 75,
+      "expected": 0.8
+    },
+    {
+      "name": "9.3pt at 75",
+      "deltaPx": 9.3,
+      "hourPx": 75,
+      "expected": 7.44
+    },
+    {
+      "name": "9.375pt at 75",
+      "deltaPx": 9.375,
+      "hourPx": 75,
+      "expected": 7.5
+    },
+    {
+      "name": "9.4pt at 75",
+      "deltaPx": 9.4,
+      "hourPx": 75,
+      "expected": 7.52
+    },
+    {
+      "name": "18.75pt at 75",
+      "deltaPx": 18.75,
+      "hourPx": 75,
+      "expected": 15
+    },
+    {
+      "name": "-18.75pt at 75",
+      "deltaPx": -18.75,
+      "hourPx": 75,
+      "expected": -15
+    },
+    {
+      "name": "37.5pt at 75",
+      "deltaPx": 37.5,
+      "hourPx": 75,
+      "expected": 30
+    },
+    {
+      "name": "-37.5pt at 75",
+      "deltaPx": -37.5,
+      "hourPx": 75,
+      "expected": -30
+    },
+    {
+      "name": "75pt at 75",
+      "deltaPx": 75,
+      "hourPx": 75,
+      "expected": 60
+    },
+    {
+      "name": "-150pt at 75",
+      "deltaPx": -150,
+      "hourPx": 75,
+      "expected": -120
+    },
+    {
+      "name": "1800pt at 75",
+      "deltaPx": 1800,
+      "hourPx": 75,
+      "expected": 1440
+    },
+    {
+      "name": "0pt at 52",
+      "deltaPx": 0,
+      "hourPx": 52,
+      "expected": 0
+    },
+    {
+      "name": "1pt at 52",
+      "deltaPx": 1,
+      "hourPx": 52,
+      "expected": 1.153846153846154
+    },
+    {
+      "name": "9.3pt at 52",
+      "deltaPx": 9.3,
+      "hourPx": 52,
+      "expected": 10.730769230769232
+    },
+    {
+      "name": "9.375pt at 52",
+      "deltaPx": 9.375,
+      "hourPx": 52,
+      "expected": 10.817307692307692
+    },
+    {
+      "name": "9.4pt at 52",
+      "deltaPx": 9.4,
+      "hourPx": 52,
+      "expected": 10.846153846153847
+    },
+    {
+      "name": "18.75pt at 52",
+      "deltaPx": 18.75,
+      "hourPx": 52,
+      "expected": 21.634615384615383
+    },
+    {
+      "name": "-18.75pt at 52",
+      "deltaPx": -18.75,
+      "hourPx": 52,
+      "expected": -21.634615384615383
+    },
+    {
+      "name": "37.5pt at 52",
+      "deltaPx": 37.5,
+      "hourPx": 52,
+      "expected": 43.26923076923077
+    },
+    {
+      "name": "-37.5pt at 52",
+      "deltaPx": -37.5,
+      "hourPx": 52,
+      "expected": -43.26923076923077
+    },
+    {
+      "name": "75pt at 52",
+      "deltaPx": 75,
+      "hourPx": 52,
+      "expected": 86.53846153846153
+    },
+    {
+      "name": "-150pt at 52",
+      "deltaPx": -150,
+      "hourPx": 52,
+      "expected": -173.07692307692307
+    },
+    {
+      "name": "1800pt at 52",
+      "deltaPx": 1800,
+      "hourPx": 52,
+      "expected": 2076.9230769230767
+    },
+    {
+      "name": "0pt at 40",
+      "deltaPx": 0,
+      "hourPx": 40,
+      "expected": 0
+    },
+    {
+      "name": "1pt at 40",
+      "deltaPx": 1,
+      "hourPx": 40,
+      "expected": 1.5
+    },
+    {
+      "name": "9.3pt at 40",
+      "deltaPx": 9.3,
+      "hourPx": 40,
+      "expected": 13.950000000000001
+    },
+    {
+      "name": "9.375pt at 40",
+      "deltaPx": 9.375,
+      "hourPx": 40,
+      "expected": 14.0625
+    },
+    {
+      "name": "9.4pt at 40",
+      "deltaPx": 9.4,
+      "hourPx": 40,
+      "expected": 14.100000000000001
+    },
+    {
+      "name": "18.75pt at 40",
+      "deltaPx": 18.75,
+      "hourPx": 40,
+      "expected": 28.125
+    },
+    {
+      "name": "-18.75pt at 40",
+      "deltaPx": -18.75,
+      "hourPx": 40,
+      "expected": -28.125
+    },
+    {
+      "name": "37.5pt at 40",
+      "deltaPx": 37.5,
+      "hourPx": 40,
+      "expected": 56.25
+    },
+    {
+      "name": "-37.5pt at 40",
+      "deltaPx": -37.5,
+      "hourPx": 40,
+      "expected": -56.25
+    },
+    {
+      "name": "75pt at 40",
+      "deltaPx": 75,
+      "hourPx": 40,
+      "expected": 112.5
+    },
+    {
+      "name": "-150pt at 40",
+      "deltaPx": -150,
+      "hourPx": 40,
+      "expected": -225
+    },
+    {
+      "name": "1800pt at 40",
+      "deltaPx": 1800,
+      "hourPx": 40,
+      "expected": 2700
+    }
+  ],
+  "preview": [
+    {
+      "name": "bottom: 10:00 for 60, 0",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 600,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 10:00 for 60, +3.2",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 600,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 10:00 for 60, +7.4",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 600,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 10:00 for 60, +7.5",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 600,
+        "duration": 75
+      },
+      "write": {
+        "duration": 75
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 60, -7.5",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 600,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 10:00 for 60, -7.6",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 600,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 60, +15",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 600,
+        "duration": 75
+      },
+      "write": {
+        "duration": 75
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 60, -15",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 600,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 60, +30",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 600,
+        "duration": 90
+      },
+      "write": {
+        "duration": 90
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 60, -30",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 600,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 60, +90",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 600,
+        "duration": 150
+      },
+      "write": {
+        "duration": 150
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 60, -90",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 60, +600",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 600,
+        "duration": 660
+      },
+      "write": {
+        "duration": 660
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 60, +1500",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 600,
+        "duration": 840
+      },
+      "write": {
+        "duration": 840
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 60, -1500",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, 0",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 550,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, +3.2",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 550,
+        "duration": 60
+      },
+      "write": {
+        "duration": 60
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, +7.4",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 550,
+        "duration": 60
+      },
+      "write": {
+        "duration": 60
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, +7.5",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 550,
+        "duration": 60
+      },
+      "write": {
+        "duration": 60
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, -7.5",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 550,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, -7.6",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 550,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, +15",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 550,
+        "duration": 60
+      },
+      "write": {
+        "duration": 60
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, -15",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 550,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, +30",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 550,
+        "duration": 75
+      },
+      "write": {
+        "duration": 75
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, -30",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 550,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, +90",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 550,
+        "duration": 135
+      },
+      "write": {
+        "duration": 135
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, -90",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 550,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, +600",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 550,
+        "duration": 645
+      },
+      "write": {
+        "duration": 645
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, +1500",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 550,
+        "duration": 890
+      },
+      "write": {
+        "duration": 890
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 50, -1500",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 550,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 30, 0",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 550,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 9:10 for 30, +3.2",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 550,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 9:10 for 30, +7.4",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 550,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 9:10 for 30, +7.5",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 550,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 30, -7.5",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 550,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 9:10 for 30, -7.6",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 550,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 30, +15",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 550,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 30, -15",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 550,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 30, +30",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 550,
+        "duration": 60
+      },
+      "write": {
+        "duration": 60
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 30, -30",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 550,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 30, +90",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 550,
+        "duration": 120
+      },
+      "write": {
+        "duration": 120
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 30, -90",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 550,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 30, +600",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 550,
+        "duration": 630
+      },
+      "write": {
+        "duration": 630
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 30, +1500",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 550,
+        "duration": 890
+      },
+      "write": {
+        "duration": 890
+      }
+    },
+    {
+      "name": "bottom: 9:10 for 30, -1500",
+      "edge": "bottom",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 550,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, 0",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, +3.2",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, +7.4",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, +7.5",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, -7.5",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, -7.6",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, +15",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, -15",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, +30",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 600,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, -30",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, +90",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 600,
+        "duration": 90
+      },
+      "write": {
+        "duration": 90
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, -90",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, +600",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 600,
+        "duration": 600
+      },
+      "write": {
+        "duration": 600
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, +1500",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 600,
+        "duration": 840
+      },
+      "write": {
+        "duration": 840
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 0, -1500",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, 0",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, +3.2",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, +7.4",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, +7.5",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, -7.5",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, -7.6",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, +15",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 600,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, -15",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, +30",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 600,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, -30",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, +90",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 600,
+        "duration": 105
+      },
+      "write": {
+        "duration": 105
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, -90",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, +600",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 600,
+        "duration": 615
+      },
+      "write": {
+        "duration": 615
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, +1500",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 600,
+        "duration": 840
+      },
+      "write": {
+        "duration": 840
+      }
+    },
+    {
+      "name": "bottom: 10:00 for 10, -1500",
+      "edge": "bottom",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 600,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 11:00 for 120, 0",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 660,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 11:00 for 120, +3.2",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 660,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 11:00 for 120, +7.4",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 660,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 11:00 for 120, +7.5",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 660,
+        "duration": 135
+      },
+      "write": {
+        "duration": 135
+      }
+    },
+    {
+      "name": "bottom: 11:00 for 120, -7.5",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 660,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 11:00 for 120, -7.6",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 660,
+        "duration": 105
+      },
+      "write": {
+        "duration": 105
+      }
+    },
+    {
+      "name": "bottom: 11:00 for 120, +15",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 660,
+        "duration": 135
+      },
+      "write": {
+        "duration": 135
+      }
+    },
+    {
+      "name": "bottom: 11:00 for 120, -15",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 660,
+        "duration": 105
+      },
+      "write": {
+        "duration": 105
+      }
+    },
+    {
+      "name": "bottom: 11:00 for 120, +30",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 660,
+        "duration": 150
+      },
+      "write": {
+        "duration": 150
+      }
+    },
+    {
+      "name": "bottom: 11:00 for 120, -30",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 660,
+        "duration": 90
+      },
+      "write": {
+        "duration": 90
+      }
+    },
+    {
+      "name": "bottom: 11:00 for 120, +90",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 660,
+        "duration": 210
+      },
+      "write": {
+        "duration": 210
+      }
+    },
+    {
+      "name": "bottom: 11:00 for 120, -90",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 660,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 11:00 for 120, +600",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 660,
+        "duration": 720
+      },
+      "write": {
+        "duration": 720
+      }
+    },
+    {
+      "name": "bottom: 11:00 for 120, +1500",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 660,
+        "duration": 780
+      },
+      "write": {
+        "duration": 780
+      }
+    },
+    {
+      "name": "bottom: 11:00 for 120, -1500",
+      "edge": "bottom",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 660,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 16:30 for 60, 0",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 990,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 16:30 for 60, +3.2",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 990,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 16:30 for 60, +7.4",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 990,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 16:30 for 60, +7.5",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 990,
+        "duration": 75
+      },
+      "write": {
+        "duration": 75
+      }
+    },
+    {
+      "name": "bottom: 16:30 for 60, -7.5",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 990,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 16:30 for 60, -7.6",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 990,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 16:30 for 60, +15",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 990,
+        "duration": 75
+      },
+      "write": {
+        "duration": 75
+      }
+    },
+    {
+      "name": "bottom: 16:30 for 60, -15",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 990,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 16:30 for 60, +30",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 990,
+        "duration": 90
+      },
+      "write": {
+        "duration": 90
+      }
+    },
+    {
+      "name": "bottom: 16:30 for 60, -30",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 990,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 16:30 for 60, +90",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 990,
+        "duration": 150
+      },
+      "write": {
+        "duration": 150
+      }
+    },
+    {
+      "name": "bottom: 16:30 for 60, -90",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 990,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 16:30 for 60, +600",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 990,
+        "duration": 450
+      },
+      "write": {
+        "duration": 450
+      }
+    },
+    {
+      "name": "bottom: 16:30 for 60, +1500",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 990,
+        "duration": 450
+      },
+      "write": {
+        "duration": 450
+      }
+    },
+    {
+      "name": "bottom: 16:30 for 60, -1500",
+      "edge": "bottom",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 990,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 0:30 for 60, 0",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 30,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:30 for 60, +3.2",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 30,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:30 for 60, +7.4",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 30,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:30 for 60, +7.5",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 30,
+        "duration": 75
+      },
+      "write": {
+        "duration": 75
+      }
+    },
+    {
+      "name": "bottom: 0:30 for 60, -7.5",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 30,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:30 for 60, -7.6",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 30,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 0:30 for 60, +15",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 30,
+        "duration": 75
+      },
+      "write": {
+        "duration": 75
+      }
+    },
+    {
+      "name": "bottom: 0:30 for 60, -15",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 30,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 0:30 for 60, +30",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 30,
+        "duration": 90
+      },
+      "write": {
+        "duration": 90
+      }
+    },
+    {
+      "name": "bottom: 0:30 for 60, -30",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 30,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 0:30 for 60, +90",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 30,
+        "duration": 150
+      },
+      "write": {
+        "duration": 150
+      }
+    },
+    {
+      "name": "bottom: 0:30 for 60, -90",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 30,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 0:30 for 60, +600",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 30,
+        "duration": 660
+      },
+      "write": {
+        "duration": 660
+      }
+    },
+    {
+      "name": "bottom: 0:30 for 60, +1500",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 30,
+        "duration": 1410
+      },
+      "write": {
+        "duration": 1410
+      }
+    },
+    {
+      "name": "bottom: 0:30 for 60, -1500",
+      "edge": "bottom",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 30,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, 0",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 0,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, +3.2",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 0,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, +7.4",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 0,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, +7.5",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 0,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, -7.5",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 0,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, -7.6",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 0,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, +15",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 0,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, -15",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 0,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, +30",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 0,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, -30",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 0,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, +90",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 0,
+        "duration": 105
+      },
+      "write": {
+        "duration": 105
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, -90",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 0,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, +600",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 0,
+        "duration": 615
+      },
+      "write": {
+        "duration": 615
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, +1500",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": {
+        "duration": 1440
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 10, -1500",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 23:00 for 30, 0",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 1380,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:00 for 30, +3.2",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 1380,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:00 for 30, +7.4",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 1380,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:00 for 30, +7.5",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 1380,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 23:00 for 30, -7.5",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 1380,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:00 for 30, -7.6",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 1380,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 23:00 for 30, +15",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 1380,
+        "duration": 45
+      },
+      "write": {
+        "duration": 45
+      }
+    },
+    {
+      "name": "bottom: 23:00 for 30, -15",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 1380,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 23:00 for 30, +30",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 1380,
+        "duration": 60
+      },
+      "write": {
+        "duration": 60
+      }
+    },
+    {
+      "name": "bottom: 23:00 for 30, -30",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 1380,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 23:00 for 30, +90",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 1380,
+        "duration": 60
+      },
+      "write": {
+        "duration": 60
+      }
+    },
+    {
+      "name": "bottom: 23:00 for 30, -90",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 1380,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 23:00 for 30, +600",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 1380,
+        "duration": 60
+      },
+      "write": {
+        "duration": 60
+      }
+    },
+    {
+      "name": "bottom: 23:00 for 30, +1500",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 1380,
+        "duration": 60
+      },
+      "write": {
+        "duration": 60
+      }
+    },
+    {
+      "name": "bottom: 23:00 for 30, -1500",
+      "edge": "bottom",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 1380,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, 0",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, +3.2",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, +7.4",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, +7.5",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, -7.5",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, -7.6",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, +15",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, -15",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, +30",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, -30",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, +90",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, -90",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 1410,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, +600",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, +1500",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "duration": 30
+      }
+    },
+    {
+      "name": "bottom: 23:30 for 60, -1500",
+      "edge": "bottom",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 1410,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 23:50 for 10, 0",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, +3.2",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, +7.4",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, +7.5",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, -7.5",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, -7.6",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, +15",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, -15",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, +30",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, -30",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, +90",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, -90",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, +600",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, +1500",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 23:50 for 10, -1500",
+      "edge": "bottom",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 1430,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:00 for 1440, 0",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:00 for 1440, +3.2",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:00 for 1440, +7.4",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:00 for 1440, +7.5",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:00 for 1440, -7.5",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:00 for 1440, -7.6",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 0,
+        "duration": 1425
+      },
+      "write": {
+        "duration": 1425
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 1440, +15",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:00 for 1440, -15",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 0,
+        "duration": 1425
+      },
+      "write": {
+        "duration": 1425
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 1440, +30",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:00 for 1440, -30",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 0,
+        "duration": 1410
+      },
+      "write": {
+        "duration": 1410
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 1440, +90",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:00 for 1440, -90",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 0,
+        "duration": 1350
+      },
+      "write": {
+        "duration": 1350
+      }
+    },
+    {
+      "name": "bottom: 0:00 for 1440, +600",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:00 for 1440, +1500",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 0:00 for 1440, -1500",
+      "edge": "bottom",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 15
+      },
+      "write": {
+        "duration": 15
+      }
+    },
+    {
+      "name": "bottom: 24:00 for 30, 0",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, +3.2",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, +7.4",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, +7.5",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, -7.5",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, -7.6",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, +15",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, -15",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, +30",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, -30",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, +90",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, -90",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, +600",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, +1500",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:00 for 30, -1500",
+      "edge": "bottom",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 1440,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, 0",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, +3.2",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, +7.4",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, +7.5",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, -7.5",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, -7.6",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, +15",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, -15",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, +30",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, -30",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, +90",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, -90",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, +600",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, +1500",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: 24:15 for 30, -1500",
+      "edge": "bottom",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 1455,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, 0",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, +3.2",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, +7.4",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, +7.5",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, -7.5",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, -7.6",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, +15",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, -15",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, +30",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, -30",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, +90",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, -90",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, +600",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, +1500",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 15, -1500",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, 0",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, +3.2",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, +7.4",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, +7.5",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, -7.5",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, -7.6",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, +15",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, -15",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, +30",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, -30",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, +90",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, -90",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, +600",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, +1500",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "bottom: -1:05 for 120, -1500",
+      "edge": "bottom",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": -65,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "top: 10:00 for 60, 0",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 600,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "top: 10:00 for 60, +3.2",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 600,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "top: 10:00 for 60, +7.4",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 600,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "top: 10:00 for 60, +7.5",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 615,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "10:15",
+        "duration": 45,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 60, -7.5",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 600,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "top: 10:00 for 60, -7.6",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 585,
+        "duration": 75
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 75,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 60, +15",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 615,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "10:15",
+        "duration": 45,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 60, -15",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 585,
+        "duration": 75
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 75,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 60, +30",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 630,
+        "duration": 30
+      },
+      "write": {
+        "startTime": "10:30",
+        "duration": 30,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 60, -30",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 570,
+        "duration": 90
+      },
+      "write": {
+        "startTime": "09:30",
+        "duration": 90,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 60, +90",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 645,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "10:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 60, -90",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 510,
+        "duration": 150
+      },
+      "write": {
+        "startTime": "08:30",
+        "duration": 150,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 60, +600",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 645,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "10:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 60, +1500",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 645,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "10:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 60, -1500",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 60,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 660
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 660,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, 0",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 555,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "09:15",
+        "duration": 45,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, +3.2",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 555,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "09:15",
+        "duration": 45,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, +7.4",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 555,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "09:15",
+        "duration": 45,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, +7.5",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 555,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "09:15",
+        "duration": 45,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, -7.5",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 540,
+        "duration": 60
+      },
+      "write": {
+        "startTime": "09:00",
+        "duration": 60,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, -7.6",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 540,
+        "duration": 60
+      },
+      "write": {
+        "startTime": "09:00",
+        "duration": 60,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, +15",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 570,
+        "duration": 30
+      },
+      "write": {
+        "startTime": "09:30",
+        "duration": 30,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, -15",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 540,
+        "duration": 60
+      },
+      "write": {
+        "startTime": "09:00",
+        "duration": 60,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, +30",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, -30",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 525,
+        "duration": 75
+      },
+      "write": {
+        "startTime": "08:45",
+        "duration": 75,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, +90",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, -90",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 465,
+        "duration": 135
+      },
+      "write": {
+        "startTime": "07:45",
+        "duration": 135,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, +600",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, +1500",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 50, -1500",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 50,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 600
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 600,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, 0",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 555,
+        "duration": 25
+      },
+      "write": {
+        "startTime": "09:15",
+        "duration": 25,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, +3.2",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 555,
+        "duration": 25
+      },
+      "write": {
+        "startTime": "09:15",
+        "duration": 25,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, +7.4",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 555,
+        "duration": 25
+      },
+      "write": {
+        "startTime": "09:15",
+        "duration": 25,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, +7.5",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 555,
+        "duration": 25
+      },
+      "write": {
+        "startTime": "09:15",
+        "duration": 25,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, -7.5",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 540,
+        "duration": 40
+      },
+      "write": {
+        "startTime": "09:00",
+        "duration": 40,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, -7.6",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 540,
+        "duration": 40
+      },
+      "write": {
+        "startTime": "09:00",
+        "duration": 40,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, +15",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 565,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:25",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, -15",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 540,
+        "duration": 40
+      },
+      "write": {
+        "startTime": "09:00",
+        "duration": 40,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, +30",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 565,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:25",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, -30",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 525,
+        "duration": 55
+      },
+      "write": {
+        "startTime": "08:45",
+        "duration": 55,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, +90",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 565,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:25",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, -90",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 465,
+        "duration": 115
+      },
+      "write": {
+        "startTime": "07:45",
+        "duration": 115,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, +600",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 565,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:25",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, +1500",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 565,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:25",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 9:10 for 30, -1500",
+      "edge": "top",
+      "startMin": 550,
+      "duration": 30,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 580
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 580,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, 0",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, +3.2",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, +7.4",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, +7.5",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, -7.5",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, -7.6",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, +15",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, -15",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, +30",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, -30",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 570,
+        "duration": 30
+      },
+      "write": {
+        "startTime": "09:30",
+        "duration": 30,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, +90",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, -90",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 510,
+        "duration": 90
+      },
+      "write": {
+        "startTime": "08:30",
+        "duration": 90,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, +600",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, +1500",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 585,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 0, -1500",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 0,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 600
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 600,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, 0",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 595,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:55",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, +3.2",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 595,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:55",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, +7.4",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 595,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:55",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, +7.5",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 595,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:55",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, -7.5",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 595,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:55",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, -7.6",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 585,
+        "duration": 25
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 25,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, +15",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 595,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:55",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, -15",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 585,
+        "duration": 25
+      },
+      "write": {
+        "startTime": "09:45",
+        "duration": 25,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, +30",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 595,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:55",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, -30",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 570,
+        "duration": 40
+      },
+      "write": {
+        "startTime": "09:30",
+        "duration": 40,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, +90",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 595,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:55",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, -90",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 510,
+        "duration": 100
+      },
+      "write": {
+        "startTime": "08:30",
+        "duration": 100,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, +600",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 595,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:55",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, +1500",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 595,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "09:55",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 10:00 for 10, -1500",
+      "edge": "top",
+      "startMin": 600,
+      "duration": 10,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 610
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 610,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 11:00 for 120, 0",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 660,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "top: 11:00 for 120, +3.2",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 660,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "top: 11:00 for 120, +7.4",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 660,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "top: 11:00 for 120, +7.5",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 675,
+        "duration": 105
+      },
+      "write": {
+        "startTime": "11:15",
+        "duration": 105,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 11:00 for 120, -7.5",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 660,
+        "duration": 120
+      },
+      "write": null
+    },
+    {
+      "name": "top: 11:00 for 120, -7.6",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 645,
+        "duration": 135
+      },
+      "write": {
+        "startTime": "10:45",
+        "duration": 135,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 11:00 for 120, +15",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 675,
+        "duration": 105
+      },
+      "write": {
+        "startTime": "11:15",
+        "duration": 105,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 11:00 for 120, -15",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 645,
+        "duration": 135
+      },
+      "write": {
+        "startTime": "10:45",
+        "duration": 135,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 11:00 for 120, +30",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 690,
+        "duration": 90
+      },
+      "write": {
+        "startTime": "11:30",
+        "duration": 90,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 11:00 for 120, -30",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 630,
+        "duration": 150
+      },
+      "write": {
+        "startTime": "10:30",
+        "duration": 150,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 11:00 for 120, +90",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 750,
+        "duration": 30
+      },
+      "write": {
+        "startTime": "12:30",
+        "duration": 30,
+        "timeBucket": "afternoon"
+      }
+    },
+    {
+      "name": "top: 11:00 for 120, -90",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 570,
+        "duration": 210
+      },
+      "write": {
+        "startTime": "09:30",
+        "duration": 210,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 11:00 for 120, +600",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 765,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "12:45",
+        "duration": 15,
+        "timeBucket": "afternoon"
+      }
+    },
+    {
+      "name": "top: 11:00 for 120, +1500",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 765,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "12:45",
+        "duration": 15,
+        "timeBucket": "afternoon"
+      }
+    },
+    {
+      "name": "top: 11:00 for 120, -1500",
+      "edge": "top",
+      "startMin": 660,
+      "duration": 120,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 780
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 780,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 16:30 for 60, 0",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 990,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "top: 16:30 for 60, +3.2",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 990,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "top: 16:30 for 60, +7.4",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 990,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "top: 16:30 for 60, +7.5",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 1005,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "16:45",
+        "duration": 45,
+        "timeBucket": "afternoon"
+      }
+    },
+    {
+      "name": "top: 16:30 for 60, -7.5",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 990,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "top: 16:30 for 60, -7.6",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 975,
+        "duration": 75
+      },
+      "write": {
+        "startTime": "16:15",
+        "duration": 75,
+        "timeBucket": "afternoon"
+      }
+    },
+    {
+      "name": "top: 16:30 for 60, +15",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 1005,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "16:45",
+        "duration": 45,
+        "timeBucket": "afternoon"
+      }
+    },
+    {
+      "name": "top: 16:30 for 60, -15",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 975,
+        "duration": 75
+      },
+      "write": {
+        "startTime": "16:15",
+        "duration": 75,
+        "timeBucket": "afternoon"
+      }
+    },
+    {
+      "name": "top: 16:30 for 60, +30",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 1020,
+        "duration": 30
+      },
+      "write": {
+        "startTime": "17:00",
+        "duration": 30,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 16:30 for 60, -30",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 960,
+        "duration": 90
+      },
+      "write": {
+        "startTime": "16:00",
+        "duration": 90,
+        "timeBucket": "afternoon"
+      }
+    },
+    {
+      "name": "top: 16:30 for 60, +90",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 1035,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "17:15",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 16:30 for 60, -90",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 900,
+        "duration": 150
+      },
+      "write": {
+        "startTime": "15:00",
+        "duration": 150,
+        "timeBucket": "afternoon"
+      }
+    },
+    {
+      "name": "top: 16:30 for 60, +600",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 1035,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "17:15",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 16:30 for 60, +1500",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 1035,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "17:15",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 16:30 for 60, -1500",
+      "edge": "top",
+      "startMin": 990,
+      "duration": 60,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 1050
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 1050,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:30 for 60, 0",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 30,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:30 for 60, +3.2",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 30,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:30 for 60, +7.4",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 30,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:30 for 60, +7.5",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 45,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "00:45",
+        "duration": 45,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:30 for 60, -7.5",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 30,
+        "duration": 60
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:30 for 60, -7.6",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 15,
+        "duration": 75
+      },
+      "write": {
+        "startTime": "00:15",
+        "duration": 75,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:30 for 60, +15",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 45,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "00:45",
+        "duration": 45,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:30 for 60, -15",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 15,
+        "duration": 75
+      },
+      "write": {
+        "startTime": "00:15",
+        "duration": 75,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:30 for 60, +30",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 60,
+        "duration": 30
+      },
+      "write": {
+        "startTime": "01:00",
+        "duration": 30,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:30 for 60, -30",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 0,
+        "duration": 90
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 90,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:30 for 60, +90",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 75,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "01:15",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:30 for 60, -90",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 0,
+        "duration": 90
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 90,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:30 for 60, +600",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 75,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "01:15",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:30 for 60, +1500",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 75,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "01:15",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:30 for 60, -1500",
+      "edge": "top",
+      "startMin": 30,
+      "duration": 60,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 90
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 90,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:00 for 10, 0",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, +3.2",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, +7.4",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, +7.5",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, -7.5",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, -7.6",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, +15",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, -15",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, +30",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, -30",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, +90",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, -90",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, +600",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, +1500",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 10, -1500",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 10,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 10
+      },
+      "write": null
+    },
+    {
+      "name": "top: 23:00 for 30, 0",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 1380,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "top: 23:00 for 30, +3.2",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 1380,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "top: 23:00 for 30, +7.4",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 1380,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "top: 23:00 for 30, +7.5",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 1395,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:15",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:00 for 30, -7.5",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 1380,
+        "duration": 30
+      },
+      "write": null
+    },
+    {
+      "name": "top: 23:00 for 30, -7.6",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 1365,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "22:45",
+        "duration": 45,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:00 for 30, +15",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 1395,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:15",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:00 for 30, -15",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 1365,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "22:45",
+        "duration": 45,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:00 for 30, +30",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 1395,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:15",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:00 for 30, -30",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 1350,
+        "duration": 60
+      },
+      "write": {
+        "startTime": "22:30",
+        "duration": 60,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:00 for 30, +90",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 1395,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:15",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:00 for 30, -90",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 1290,
+        "duration": 120
+      },
+      "write": {
+        "startTime": "21:30",
+        "duration": 120,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:00 for 30, +600",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 1395,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:15",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:00 for 30, +1500",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 1395,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:15",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:00 for 30, -1500",
+      "edge": "top",
+      "startMin": 1380,
+      "duration": 30,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 1410
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 1410,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, 0",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "startTime": "23:30",
+        "duration": 30,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, +3.2",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "startTime": "23:30",
+        "duration": 30,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, +7.4",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "startTime": "23:30",
+        "duration": 30,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, +7.5",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, -7.5",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "startTime": "23:30",
+        "duration": 30,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, -7.6",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 1395,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "23:15",
+        "duration": 45,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, +15",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, -15",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 1395,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "23:15",
+        "duration": 45,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, +30",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, -30",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 1380,
+        "duration": 60
+      },
+      "write": {
+        "startTime": "23:00",
+        "duration": 60,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, +90",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, -90",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 1320,
+        "duration": 120
+      },
+      "write": {
+        "startTime": "22:00",
+        "duration": 120,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, +600",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, +1500",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:30 for 60, -1500",
+      "edge": "top",
+      "startMin": 1410,
+      "duration": 60,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 1440,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, 0",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, +3.2",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, +7.4",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, +7.5",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, -7.5",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, -7.6",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, +15",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, -15",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "startTime": "23:30",
+        "duration": 30,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, +30",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, -30",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 1395,
+        "duration": 45
+      },
+      "write": {
+        "startTime": "23:15",
+        "duration": 45,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, +90",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, -90",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 1335,
+        "duration": 105
+      },
+      "write": {
+        "startTime": "22:15",
+        "duration": 105,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, +600",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, +1500",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 23:50 for 10, -1500",
+      "edge": "top",
+      "startMin": 1430,
+      "duration": 10,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 1440,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:00 for 1440, 0",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 1440, +3.2",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 1440, +7.4",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 1440, +7.5",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 15,
+        "duration": 1425
+      },
+      "write": {
+        "startTime": "00:15",
+        "duration": 1425,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:00 for 1440, -7.5",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 1440, -7.6",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 1440, +15",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 15,
+        "duration": 1425
+      },
+      "write": {
+        "startTime": "00:15",
+        "duration": 1425,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:00 for 1440, -15",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 1440, +30",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 30,
+        "duration": 1410
+      },
+      "write": {
+        "startTime": "00:30",
+        "duration": 1410,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:00 for 1440, -30",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 1440, +90",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 90,
+        "duration": 1350
+      },
+      "write": {
+        "startTime": "01:30",
+        "duration": 1350,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:00 for 1440, -90",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "top: 0:00 for 1440, +600",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 600,
+        "duration": 840
+      },
+      "write": {
+        "startTime": "10:00",
+        "duration": 840,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 0:00 for 1440, +1500",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 0:00 for 1440, -1500",
+      "edge": "top",
+      "startMin": 0,
+      "duration": 1440,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": null
+    },
+    {
+      "name": "top: 24:00 for 30, 0",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, +3.2",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, +7.4",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, +7.5",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, -7.5",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, -7.6",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, +15",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, -15",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, +30",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, -30",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 1410,
+        "duration": 30
+      },
+      "write": {
+        "startTime": "23:30",
+        "duration": 30,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, +90",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, -90",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 1350,
+        "duration": 90
+      },
+      "write": {
+        "startTime": "22:30",
+        "duration": 90,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, +600",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, +1500",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:00 for 30, -1500",
+      "edge": "top",
+      "startMin": 1440,
+      "duration": 30,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 1440,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, 0",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, +3.2",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, +7.4",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, +7.5",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, -7.5",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, -7.6",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, +15",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, -15",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, +30",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, -30",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, +90",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, -90",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 1365,
+        "duration": 75
+      },
+      "write": {
+        "startTime": "22:45",
+        "duration": 75,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, +600",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, +1500",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 1425,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "23:45",
+        "duration": 15,
+        "timeBucket": "evening"
+      }
+    },
+    {
+      "name": "top: 24:15 for 30, -1500",
+      "edge": "top",
+      "startMin": 1455,
+      "duration": 30,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 1440
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 1440,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 15, 0",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, +3.2",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, +7.4",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, +7.5",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, -7.5",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, -7.6",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, +15",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, -15",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, +30",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, -30",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, +90",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, -90",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, +600",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, +1500",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 15, -1500",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 15,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": -65,
+        "duration": 15
+      },
+      "write": null
+    },
+    {
+      "name": "top: -1:05 for 120, 0",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 0,
+      "expected": {
+        "startMin": 0,
+        "duration": 55
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 55,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, +3.2",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 3.2,
+      "expected": {
+        "startMin": 0,
+        "duration": 55
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 55,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, +7.4",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 7.4,
+      "expected": {
+        "startMin": 0,
+        "duration": 55
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 55,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, +7.5",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 7.5,
+      "expected": {
+        "startMin": 0,
+        "duration": 55
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 55,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, -7.5",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": -7.5,
+      "expected": {
+        "startMin": 0,
+        "duration": 55
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 55,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, -7.6",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": -7.6,
+      "expected": {
+        "startMin": 0,
+        "duration": 55
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 55,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, +15",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 15,
+      "expected": {
+        "startMin": 0,
+        "duration": 55
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 55,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, -15",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": -15,
+      "expected": {
+        "startMin": 0,
+        "duration": 55
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 55,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, +30",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 30,
+      "expected": {
+        "startMin": 0,
+        "duration": 55
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 55,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, -30",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": -30,
+      "expected": {
+        "startMin": 0,
+        "duration": 55
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 55,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, +90",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 90,
+      "expected": {
+        "startMin": 30,
+        "duration": 25
+      },
+      "write": {
+        "startTime": "00:30",
+        "duration": 25,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, -90",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": -90,
+      "expected": {
+        "startMin": 0,
+        "duration": 55
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 55,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, +600",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 600,
+      "expected": {
+        "startMin": 40,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "00:40",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, +1500",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": 1500,
+      "expected": {
+        "startMin": 40,
+        "duration": 15
+      },
+      "write": {
+        "startTime": "00:40",
+        "duration": 15,
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "top: -1:05 for 120, -1500",
+      "edge": "top",
+      "startMin": -65,
+      "duration": 120,
+      "deltaMin": -1500,
+      "expected": {
+        "startMin": 0,
+        "duration": 55
+      },
+      "write": {
+        "startTime": "00:00",
+        "duration": 55,
+        "timeBucket": "morning"
+      }
+    }
+  ]
+}

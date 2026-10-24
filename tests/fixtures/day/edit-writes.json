@@ -2480,6 +2480,53 @@
       }
     },
     {
+      "name": "time-top-grip-anytime-stored",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004fb",
+        "title": "Team sync",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "anytime",
+        "startTime": "13:00",
+        "duration": 60
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "startTime": "11:30",
+        "duration": 150,
+        "timeBucket": "morning"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "duration": 150,
+        "startTime": "11:30",
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004fb",
+        "title": "Team sync",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "startTime": "11:30",
+        "duration": 150,
+        "inProjectBlock": false
+      }
+    },
+    {
       "name": "repeat-none-task",
       "item": {
         "type": "task",
