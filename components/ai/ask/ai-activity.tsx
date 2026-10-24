@@ -9,6 +9,7 @@ import { clockTime } from '@/lib/format-chat-timestamp';
 import { openConversation, openItemFromAsk } from '@/lib/open-chat';
 import type { AskSurface } from '@/lib/rail-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { agentKey, convKey, itemKey, type SyncKey } from '@/lib/sync-sheen';
 import { cn } from '@/lib/utils';
 
 type AgentRowState = Extract<ActivityRow, { kind: 'agent' }>['state'];
@@ -50,6 +51,8 @@ export function AIActivity({ rows, surface = 'desktop' }: { rows: readonly Activ
             {row.kind === 'agent' ? (
               <ActivityButton
                 focusKey={`item:${row.itemId}`}
+                titleKey={itemKey(row.itemId)}
+                metaKey={agentKey(row.itemId)}
                 onClick={() => openItem(row.itemId)}
                 glyph={<AgentGlyph state={row.state} />}
                 kind={AGENT_KIND[row.state]}
@@ -61,6 +64,8 @@ export function AIActivity({ rows, surface = 'desktop' }: { rows: readonly Activ
             ) : (
               <ActivityButton
                 focusKey={`conv:${row.conversationId}`}
+                titleKey={convKey(row.conversationId)}
+                metaKey={convKey(row.conversationId)}
                 onClick={() =>
                   openConversation(row.conversationId, surface === 'phone', { returnFocus: `conv:${row.conversationId}` })
                 }
@@ -98,6 +103,8 @@ function openItem(itemId: string) {
 
 function ActivityButton({
   focusKey,
+  titleKey,
+  metaKey,
   onClick,
   glyph,
   kind,
@@ -107,6 +114,9 @@ function ActivityButton({
   state,
 }: {
   focusKey: string;
+  /** What a pass of light finds the title and the meta by, when their words change elsewhere (lib/sync-sheen.ts). */
+  titleKey: SyncKey;
+  metaKey: SyncKey;
   onClick: () => void;
   glyph: ReactNode;
   /** The row's kind, said before its title ("Conversation", "Came back"). */
@@ -133,11 +143,11 @@ function ActivityButton({
       className="flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
       <span className="flex size-4 shrink-0 items-center justify-center">{glyph}</span>
-      <span className="min-w-0 flex-1 truncate">
+      <span data-sync-key={titleKey} className="min-w-0 flex-1 truncate">
         <span className="sr-only">{kind}: </span>
         {title}
       </span>
-      <span aria-hidden={metaSaid || undefined} className="shrink-0 text-xs text-muted-foreground">
+      <span data-sync-key={metaKey} aria-hidden={metaSaid || undefined} className="shrink-0 text-xs text-muted-foreground">
         {meta}
       </span>
     </button>

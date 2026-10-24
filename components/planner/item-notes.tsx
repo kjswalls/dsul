@@ -19,6 +19,7 @@ import { NOTE_COPY, cleanNoteBody, noteLength, noteRefusal, type ItemNote } from
 import { holdNoteEditor, saveNoteFrom, useItemNotesStore } from '@/lib/item-notes-store';
 import { noteIsLong, type NoteEntry } from '@/lib/item-timeline';
 import { noteDraftKey, useRailStore } from '@/lib/rail-store';
+import { noteKey } from '@/lib/sync-sheen';
 import { cn } from '@/lib/utils';
 
 /**
@@ -53,6 +54,8 @@ export function NoteBody({ note, clampable = true }: { note: ItemNote; clampable
           long && !open && 'line-clamp-8'
         )}
         data-testid="item-note-body"
+        // A note another device added or changed takes a pass of light (lib/sync-sheen.ts).
+        data-sync-key={noteKey(note.id)}
       >
         {note.body}
       </p>

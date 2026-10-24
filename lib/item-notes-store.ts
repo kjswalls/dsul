@@ -19,6 +19,7 @@ import {
 import { pinnedNote } from '@/lib/item-timeline';
 import { isPlannerPreviewing } from '@/lib/planner-ready';
 import { bindingKey, noteDraftKey, useRailStore } from '@/lib/rail-store';
+import { noteKey, syncSheen } from '@/lib/sync-sheen';
 
 /**
  * Notes on an item, as its timeline shows them (lib/item-notes.ts, migration
@@ -91,6 +92,8 @@ export function getItemNotesEpoch(): number {
 
 /** Per item, the ids each read now on its way must leave as they are on screen. */
 const racing = new Map<string, Set<Set<string>>>();
+/** Items whose notes have been read this epoch: a read after the first is news. */
+const reread = new Set<string>();
 /** Per item, how many writes are in flight for each note id. */
 const inflight = new Map<string, Map<string, number>>();
 
@@ -184,6 +187,17 @@ export const useItemNotesStore = create<ItemNotesState>((set, get) => {
           ...got.flatMap((n) => (since.has(n.id) ? (heldById.has(n.id) ? [heldById.get(n.id)!] : []) : [n])),
           ...held.filter((n) => since.has(n.id) && !gotIds.has(n.id)),
         ].sort(byCreated);
+        // A read over notes already shown (the tab back from another device):
+        // a pass of light over each note it added or changed (lib/sync-sheen.ts).
+        // The first read shows everything, so it takes none.
+        if (reread.has(itemId)) {
+          syncSheen(
+            got
+              .filter((n) => !since.has(n.id) && heldById.get(n.id)?.body !== n.body)
+              .map((n) => noteKey(n.id))
+          );
+        }
+        reread.add(itemId);
         return { available: true, byItem: { ...s.byItem, [itemId]: { status: 'ready', notes } } };
       });
     },
@@ -483,6 +497,7 @@ export async function saveNoteFrom(itemId: string, text: string, opts?: { placed
 export function clearItemNotesState(): void {
   epoch++;
   racing.clear();
+  reread.clear();
   inflight.clear();
   useItemNotesStore.setState({ available: null, byItem: {}, placedAt: {}, pending: {}, retry: {}, lost: {} });
 }

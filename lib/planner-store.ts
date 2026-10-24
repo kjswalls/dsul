@@ -118,6 +118,7 @@ import { conversionBlock, convertItem, type ConvertRepeat } from './item-convert
 import { recordReleased } from './sweep-grace';
 import { reportBulkFiled } from './filed-rows';
 import { wakeIfHandedOff } from './handoff-wake';
+import { agentKey, itemKey, syncSheen, type SyncKey } from './sync-sheen';
 // Type-only, so it is erased at compile time and lib/local-state.ts importing
 // this store back does not make a runtime cycle.
 import type { ClearScope } from './local-state';
@@ -4092,6 +4093,11 @@ export const usePlannerStore = create<PlannerStore>()(
         if (verbOps.length + containerOps.length + membershipOps.length + destructiveOps.length === 0) writePlan();
         else batchHistory(`Accept plan: ${proposal.summary}`, accepted.length, writePlan, { quiet: true });
 
+        // What the AI wrote, landing: a pass of light over every row the plan
+        // added or renamed (lib/sync-sheen.ts). Moves already glide.
+        const titleWas = new Map(state.items.map((i) => [i.id, i.title]));
+        syncSheen(get().items.filter((i) => titleWas.get(i.id) !== i.title).map((i) => itemKey(i.id)));
+
         return accepted.length;
       },
 
@@ -6302,6 +6308,8 @@ export function mergeAgentStates(rows: readonly AgentStateRow[]): number {
   } finally {
     isUpdatingUndoRedo = wasSuppressed;
   }
+  // The agent's news, in Ask home's rows (lib/sync-sheen.ts).
+  syncSheen([...changes.keys()].map(agentKey));
   return changes.size;
 }
 
@@ -6606,6 +6614,16 @@ async function runCatchUp(opts?: { heldItemIds?: () => ReadonlySet<string> }): P
   } finally {
     isUpdatingUndoRedo = wasSuppressed;
   }
+  // The other device's words, caught up: a pass of light over each title that
+  // changed or arrived, and over each agent state that moved (lib/sync-sheen.ts).
+  const sheen: SyncKey[] = [];
+  for (const [id, change] of items.put) {
+    if (!change.before || change.before.title !== change.after.title) sheen.push(itemKey(id));
+    if (change.before && !sameAgentFields(agentFieldsOf(change.before), agentFieldsOf(change.after))) {
+      sheen.push(agentKey(id));
+    }
+  }
+  syncSheen(sheen);
   return [...items.put.keys()];
 }
 
