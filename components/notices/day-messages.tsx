@@ -49,20 +49,19 @@ export function DayMessages({
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  // The popover hangs below the whole capsule, its right edge on the
-  // capsule's. Off the key alone it opened INSIDE the capsule, over its second
-  // row, and read as a strip of the header rather than a note about the day
-  // (Kirby, 2026-10-23). Measured as offsets from the key on each open; the
-  // phone's date row has no capsule, so there both stay at their defaults.
-  const [offsets, setOffsets] = useState({ side: 6, align: 0 });
+  // Where the popover opens (Kirby's pick B, 2026-10-24): BESIDE the capsule,
+  // its top level with the capsule's and a caret pointing at the key. That
+  // space is always empty canvas, so the note covers neither the toolbar nor
+  // the day. It replaced, in turn, a card off the key that opened over the
+  // capsule's second row, and one hung below the whole capsule (2026-10-23).
+  //
+  // Measured from the key on each open. Where the canvas has no room to the
+  // capsule's right it hangs below the capsule instead, right edge on the
+  // capsule's; the phone's date row has no capsule, so there it simply opens
+  // below the key.
+  const [place, setPlace] = useState<Placement>(BELOW_KEY);
   const onOpenChange = (next: boolean) => {
-    const key = triggerRef.current;
-    const capsule = key?.closest('[data-header-capsule]');
-    if (next && key && capsule) {
-      const k = key.getBoundingClientRect();
-      const c = capsule.getBoundingClientRect();
-      setOffsets({ side: c.bottom - k.bottom + 6, align: k.right - c.right });
-    }
+    if (next) setPlace(placementFor(triggerRef.current));
     setOpen(next);
   };
   const dayNotices = useDayHeaderNotices(scope);
@@ -111,13 +110,29 @@ export function DayMessages({
         </button>
       </PopoverTrigger>
       <PopoverContent
-        align="end"
-        sideOffset={offsets.side}
-        alignOffset={offsets.align}
+        side={place.side}
+        align={place.align}
+        sideOffset={place.sideOffset}
+        alignOffset={place.alignOffset}
+        // Placed, not flipped: Radix's flip would turn "beside" into "over the
+        // capsule"; placementFor already chose a side that fits.
+        avoidCollisions={place.side === 'bottom'}
         data-testid="day-messages-popover"
-        className="flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-0.5 p-1.5"
+        data-side={place.side}
+        className="relative flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-0.5 p-1.5"
         onClickCapture={closeOnAction}
       >
+        {/* The caret, pointing at the key. Drawn here rather than with Radix's
+            Arrow, whose fill-only triangle vanishes against the canvas: this
+            one carries the card's own border. */}
+        {place.side === 'right' && (
+          <span
+            aria-hidden
+            data-testid="day-messages-caret"
+            className="bg-popover absolute -left-[6px] size-[10px] rotate-45 border-b border-l"
+            style={{ top: place.caretTop - 5 }}
+          />
+        )}
         <DayHeaderNotice scope={scope} />
         <SeasonNotice
           scope={scope}
@@ -128,4 +143,36 @@ export function DayMessages({
       </PopoverContent>
     </Popover>
   );
+}
+
+interface Placement {
+  side: 'right' | 'bottom';
+  align: 'start' | 'end';
+  sideOffset: number;
+  alignOffset: number;
+  /** Where the key's middle falls, from the card's top (beside only). */
+  caretTop: number;
+}
+
+const BELOW_KEY: Placement = { side: 'bottom', align: 'end', sideOffset: 6, alignOffset: 0, caretTop: 0 };
+
+/** The popover's width (w-80) plus the gap to the capsule and a margin to the window's edge. */
+const BESIDE_ROOM = 320 + 10 + 16;
+
+/** Beside the capsule when there is room, else below it; below the key with no capsule. */
+export function placementFor(key: HTMLElement | null): Placement {
+  const capsule = key?.closest('[data-header-capsule]');
+  if (!key || !capsule) return BELOW_KEY;
+  const k = key.getBoundingClientRect();
+  const c = capsule.getBoundingClientRect();
+  if (window.innerWidth - c.right >= BESIDE_ROOM) {
+    return {
+      side: 'right',
+      align: 'start',
+      sideOffset: c.right - k.right + 10,
+      alignOffset: c.top - k.top,
+      caretTop: k.top + k.height / 2 - c.top,
+    };
+  }
+  return { side: 'bottom', align: 'end', sideOffset: c.bottom - k.bottom + 6, alignOffset: k.right - c.right, caretTop: 0 };
 }
