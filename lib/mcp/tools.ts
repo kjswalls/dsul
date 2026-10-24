@@ -383,6 +383,10 @@ export const MCP_TOOLS: McpTool[] = [
       'do the work, then report with dsul_report_progress. An item already sitting at ' +
       "'blocked' may have been answered, so read dsul_item_activity before assuming it is " +
       'still stuck. ' +
+      "Answering sends an item back to 'queued' with your last result still on it, so a queued " +
+      'item that already carries an aiResult is one the user has answered or sent back: read ' +
+      'dsul_item_activity first, carry on from their answer, and make your next report a reply ' +
+      'to what they said. ' +
       "An item at 'working' belongs to a run that is probably still going: LEAVE IT ALONE. " +
       'Its aiStatusAt is when that status was last written, not a heartbeat, so an ' +
       'old stamp on a long job is normal and proves nothing. ' +
@@ -480,7 +484,10 @@ export const MCP_TOOLS: McpTool[] = [
       "when you are STUCK (status 'blocked', with the question you need answered in result; " +
       'the user sees that text and it is the only way to ask them something). ' +
       'The result text is shown to a human on the item, so write it for them: what you did, ' +
-      'what you found, what you need. Not a log line. ' +
+      'what you found, what you need. Not a log line. done, failed and blocked are REFUSED ' +
+      'without a result, and done or failed is refused when the result only repeats the text ' +
+      'already on the item. When the user has answered your question, your next report is your ' +
+      'reply to them: answer what they said, never just mark the item done. ' +
       'ALSO call it periodically on anything long, at least every ' +
       `${QUIET_HOURS} hour(s), status 'working', with a line about where you are. ` +
       'That is the only thing that tells the user you are alive: the item shows how long it ' +
@@ -498,7 +505,10 @@ export const MCP_TOOLS: McpTool[] = [
           enum: [...AI_STATUSES],
           description: "Where the work stands now.",
         },
-        result: str('What to show the user: the outcome, the finding, or the question you are stuck on.'),
+        result: str(
+          'What to show the user: the outcome, the finding, or the question you are stuck on. ' +
+            'Required for done, failed and blocked.'
+        ),
         lastSeenAt: str(
           "The aiStatusAt you last read for this item, from dsul_my_work. The write is " +
             'refused if it no longer matches, which is what stops your report overwriting ' +
