@@ -21,7 +21,8 @@ import Foundation
 //   `accentColorForName` over the RAW name;
 // - `projectColorToken(_:projects:)`, the grid's: the stored colour of the
 //   project the name folds to, else a legacy `--habit-*` token, else
-//   `accentColorForName` over the FOLDED name.
+//   `accentColorForName` over the FOLDED name. `projectAccent(_:projects:)`
+//   is that token as the phone draws it (Today's project dots, O15).
 //
 // Glyphs are Lucide names on the web. `ContainerLook.lucideToSymbol` maps each
 // name in the curated library to an SF Symbol (Swift-only data, so it is not
@@ -132,15 +133,18 @@ public struct ColorToken: Sendable, Hashable {
     }
 }
 
-/// How Organize draws a container's colour (`containerAccent`): where it came
-/// from, the token when it is one, and the value in each theme.
+/// How the phone draws a container's colour, Organize's tile
+/// (`containerAccent`) or a project's dot on Today (`projectAccent`): where it
+/// came from, the token when it is one, and the value in each theme.
 public struct ContainerAccent: Sendable, Hashable {
     public enum Source: String, Sendable, Hashable {
         /// A stored theme token.
         case token
         /// A stored `#rrggbb`, the same in both themes.
         case hex
-        /// No usable stored colour: the name's ramp step.
+        /// No usable stored colour: drawn from the name. Its ramp step for
+        /// `containerAccent`; for `projectAccent`, a legacy `--habit-*` token
+        /// first, then the folded name's ramp step.
         case name
     }
 
@@ -529,14 +533,70 @@ public func accentColorForName(_ name: String) -> String {
 /// for a folded "wellness", "work" or "personal"; else the folded name's ramp
 /// step. Not Organize's rule (`containerAccent`).
 public func projectColorToken(_ name: String, projects: [Project]) -> String {
+    return storedProjectColor(name, projects: projects) ?? projectNameToken(name)
+}
+
+/// `projectColorToken`'s first step: the colour of the first project whose
+/// name folds equal to `name` (`sameContainerName`), when it is set and not
+/// "" (the web's `project?.color` truthiness); nil otherwise.
+private func storedProjectColor(_ name: String, projects: [Project]) -> String? {
+    let foldedUnits = Array(jsLowercased(name).utf16)
+    let project = projects.first { jsLowercased($0.name).utf16.elementsEqual(foldedUnits) }
+    guard let color = project?.color, !color.isEmpty else { return nil }
+    return color
+}
+
+/// `projectColorToken` with no stored colour: the legacy token for a folded
+/// "wellness", "work" or "personal" (own keys only, so "constructor" is just a
+/// name), else the folded name's ramp step. Always a token in
+/// `ContainerLook.tokens`.
+private func projectNameToken(_ name: String) -> String {
     let folded = jsLowercased(name)
     let foldedUnits = Array(folded.utf16)
-    let project = projects.first { jsLowercased($0.name).utf16.elementsEqual(foldedUnits) }
-    if let color = project?.color, !color.isEmpty { return color }
     if let legacy = ContainerLook.legacyProjectTokens.first(where: { $0.key.utf16.elementsEqual(foldedUnits) }) {
         return legacy.value
     }
     return accentColorForName(folded)
+}
+
+/// A project's colour on Today (O15): the grid's rule (`projectColorToken`,
+/// the web's `getProjectColor`) as the phone draws it, with the token values
+/// Organize draws. Today's List section dots and Week × List captions, the
+/// filter chips, and the item sheet's project chip and project menu rows all
+/// wear it, so a project is one colour on the web's grid and in every one of
+/// those places.
+///
+/// - A stored theme token (`ContainerLook.tokens`, the legacy three included)
+///   is drawn as stored (source `.token`).
+/// - A stored `#rrggbb` is drawn lowercased, the same in both themes
+///   (`.hex`).
+/// - With no stored colour, or one the phone cannot read (a CSS name such as
+///   "blue", `#abc`, an unknown token), it draws what the grid draws for a
+///   project with no colour: the legacy token for a folded "wellness", "work"
+///   or "personal", else the FOLDED name's ramp step (`.name`), as
+///   `containerAccent` falls back to Organize's own no-colour rule. Where the
+///   web hands CSS a value the phone cannot read, the phone and the web
+///   differ, as Organize's tile already does.
+///
+/// Every name has a colour, a name no project row folds to included: the web
+/// draws that one with the same no-colour answer (its legacy token, else its
+/// folded name's ramp step). Whether a row wears a dot at all (an item with
+/// no project wears none) is the caller's, not this.
+///
+/// Not Organize's rule: an uncoloured project named "Work" is `--habit-work`
+/// here and `accentColorForName("Work")` on its tile, as on the web.
+public func projectAccent(_ name: String, projects: [Project]) -> ContainerAccent {
+    if let stored = storedProjectColor(name, projects: projects) {
+        if let token = ContainerLook.token(css: stored) {
+            return ContainerAccent(source: .token, token: token.css, light: token.light.srgb, dark: token.dark.srgb)
+        }
+        if let raw = SRGBColor(hex: stored) {
+            return ContainerAccent(source: .hex, token: nil, light: raw, dark: raw)
+        }
+    }
+    // projectNameToken always names a token in the table, so this is found.
+    let token = ContainerLook.token(css: projectNameToken(name)) ?? ContainerLook.tokens[0]
+    return ContainerAccent(source: .name, token: token.css, light: token.light.srgb, dark: token.dark.srgb)
 }
 
 /// Organize's tile colour (the web's `color ?? accentColorForName(name)`),

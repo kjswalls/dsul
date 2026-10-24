@@ -12,8 +12,9 @@ account and everything in it.
 which needs no account and whose changes last until the app quits.
 
 Today shows one day in three layouts: List (filter chips, then sections per
-routine and per project), Buckets (Morning, Afternoon, Evening, Anytime) and
-Schedule (the hour grid, with the braindump sheet over it). List and Buckets
+routine and per project, each project's dot in its own colour, as on the
+web), Buckets (Morning, Afternoon, Evening, Anytime) and Schedule (the hour
+grid, with the braindump sheet over it). List and Buckets
 can show the day's whole week instead, seven days from your Week starts on
 setting. The capsule top right switches them: tap for the next, swipe along it
 to step, long-press for the menu, whose Show section picks Day or Week. Tap
@@ -59,9 +60,9 @@ or by pasting a list. A tap on a row's circle still just ticks it.
   app: which items show on a day, the braindump, routine grouping, what a
   tick means, the item sheet's verbs (when each is offered, what it writes)
   and the words its chips say, the sign-in requests, which reminder
-  notifications the phone will arm and in what words, and how a container
-  looks and is described on Organize (its colour, glyph, state and counts,
-  a goal's progress). It has no UI, so
+  notifications the phone will arm and in what words, a project's colour on
+  Today, and how a container looks and is described on Organize (its
+  colour, glyph, state and counts, a goal's progress). It has no UI, so
   `swift test` runs it on Linux as well as macOS.
 - `project.yml` describes the Xcode project. XcodeGen generates
   `Dsul.xcodeproj` from it; the generated project is never committed.
@@ -737,7 +738,8 @@ a delete, a reset or a chip.
      has, the Trash's included, through the agent API:
      `PATCH /api/agent/tasks/:id`, with your OpenClaw API key as the Bearer
      token and the body `{"project":"Fitness"}`. Pull to refresh and tap its
-     chip, "Fitness", with a gray dot: nothing is checked, and No project
+     chip, "Fitness", with a coral dot (the name's own colour, as the web
+     draws it; gray before O15): nothing is checked, and No project
      and each of your projects can be picked. Then send one of your
      projects' names in lowercase the same way (`{"project":"work"}` for
      Work): pull to refresh, and the menu checks that project.
@@ -1003,8 +1005,10 @@ a delete, a reset or a chip.
       comes up over the nested sheet.
     - With Increase Contrast on, the picked keys' blue is darker.
     - In the project menu, and in Add property's Project ▸, each project's
-      dot shows in its colour, not gray (an image drawn as is). If it is
-      gray, the rows drop the dot, and this line says so.
+      dot is drawn as is, in its own colour (the sample's are in Checking
+      Organize, check 82; Health's is Slate, a blue gray), not the label
+      colour on every row (a template image). If every row's dot is the
+      label colour, the rows drop the dot, and this line says so.
     - Picking the checked project runs its action (a Toggle's setter runs on
       every tap): on Standup, filed "work" with no link, the menu checks
       Work; pick Work and the chip reads "Work". On Draft Q4 roadmap,
@@ -1071,7 +1075,9 @@ Status (Active, Achieved, Set aside), a routine's usual time, a season's
 Runs, a goal's window and the notes (a goal's why); O9 the ⋯ menu's
 Rename… and Icon and color… on every page; O10 its Delete…; O11 the list's
 + and its name sheet; O12 a routine's Edit mode, its swipe Remove and "Add
-from your items…"; O13 a season's "Add a routine…" and its swipe Take out.
+from your items…"; O13 a season's "Add a routine…" and its swipe Take out;
+O15 Today's project dots, and the item sheet's, in each project's own
+colour.
 
 1. (O1) Sample: Organize shows Routines, Seasons, Goals and Projects, in that
    order. Morning routine has a honey sunrise tile, Wind down a plum moon,
@@ -1380,8 +1386,9 @@ from your items…"; O13 a season's "Add a routine…" and its swipe Take out.
     just stop being filed under Home. …". Nothing is sent from the sample.
 57. (O10) Delete Home: on Today's List, Call the dentist, Cook dinner and
     the rest move to No project at once. Their sheet's project chip still
-    reads "Home", with a gray dot, as any name no project holds does (the
-    agent API check under the item sheet). Signed in, do the same, then
+    reads "Home", its dot still teal: from O15 a name no project holds wears
+    its name's own colour, as on the web (the agent API check under the item
+    sheet), and Home's teal came from its name. Signed in, do the same, then
     reload the web: the items still name the deleted project, exactly as
     after a delete on the web and a reload (a known web limit), and the
     web's Trash lists the project.
@@ -1533,6 +1540,33 @@ from your items…"; O13 a season's "Add a routine…" and its swipe Take out.
     the system's red), the confirm's sentence and "Every routine is already
     here" wrap, and the picker's search field stays above the keyboard at
     the sheet's medium height.
+82. (O15) Sample: on Today's List, each project section's dot is the colour
+    the web's grid draws for that project: Home teal, Writing coral, dsul
+    moss and Health slate, each the colour of its tile on Organize, and Work
+    a muted blue (the web's own colour for a project named Work with none
+    picked), where Work's tile on Organize is plum, as on the web. The
+    project filter chips wear the same dots. The routines' sections and No
+    project have none, as before.
+83. (O15) Sample: open Writing on Organize, then ⋯, Icon and color…, pick
+    Teal and Done. Back on Today, Writing's section dot and its filter chip
+    are teal at once, the same teal as its tile. Open Morning pages: the
+    project chip's dot is teal, and in the chip's menu Writing's row is teal
+    too (Home's is the same teal, which its name gives it). On Lunch walk,
+    which has no project, Add property ▸ Project ▸ shows Writing teal. Give
+    Writing Auto again: coral comes back in all those places.
+84. (O15) Signed in: on the web, colour one of your projects Teal (the Teal
+    swatch in its colour picker) and file a task due today under it. Pull
+    to refresh on the phone: on Today's List the project's section dot and
+    its chip are teal, the same teal as its tile on Organize. Open the task:
+    its project chip's dot and the project's row in the chip's menu are both
+    teal, and in dark mode both are the tile's dark-mode teal. Then Week ×
+    List (hold the capsule, Show, Week): the project's caption is teal on
+    every day it has a row, and so is its chip above the days.
+85. (O15) Signed in: colour that project Lime on the web and pull. Its dot
+    on its Today section, its chip, its Week caption, the sheet's project
+    chip and its menu row are lime at full strength, in light and dark mode,
+    at rest and while a section header or a chip is pressed (a header fills
+    behind and a chip shrinks; neither fades). No word anywhere is lime.
 
 ## Checking Week
 
@@ -1551,7 +1585,8 @@ today.
    your Week starts on setting, each headed by its weekday and date. Today's
    heading has a lime dot by the weekday; the weekday and the date stay in
    ink. Each day shows its routines (with done/total), then its projects
-   (with their dot), then its loose rows under No project, in small captions
+   (with their dot, in each project's own colour from O15: Checking
+   Organize, check 84), then its loose rows under No project, in small captions
    that don't fold, as Day groups them. A day with nothing on it says
    "Nothing planned." The chips count the whole week's rows: on the sample a
    daily habit counts seven. They stay above the days as the week scrolls,

@@ -28,8 +28,10 @@ goal's Status, a routine's usual time, a season's Runs, a goal's window and
 the notes, O9 Rename… and Icon and color… on every page, O10 Delete…
 there, O11 the list's + menu, which makes a routine, season, goal or
 project from a name, O12 a routine's steps (Edit, reorder, "Add from your
-items…", Remove) and O13 a season's routines ("Add a routine…" with the
-attach confirm, Take out) (see Organize below).
+items…", Remove), O13 a season's routines ("Add a routine…" with the
+attach confirm, Take out) and O15 Today's project dots, the item sheet's
+project chip and its menus in each project's own colour, the web's (see
+Organize below).
 Designs, the stack comparison and the board images live in the project's
 shared folder (`ios-app/`): `stack.md` has a SwiftUI build note for every
 interaction, and `expo-vs-swiftui.md` ends with the fact-check.
@@ -888,14 +890,15 @@ words are fixed on every surface, below.
   "Mon Wed"; so seven days picked read "Daily" on the chip while its menu
   checks Custom days….
 - **Project** (2f). The project chip is a menu: No project (never on a type
-  whose container is required), then the projects in payload order with the
-  phone's dots, the current one checked by folded name; a name with no
-  project checks nothing, and a stored "none" (pre-#373 habits) reads as no
-  project, as the web's dialog reads it. A pick writes at once and No project
-  takes the chip away. Add property's Project ▸ lists the projects, with at
-  least one. Gated as `editAllowed(action: "project")` (not a subtask, a
-  type with the project axis). A task parked in its old project's block
-  leaves it, its own time and day back and the block's part of day kept, as
+  whose container is required), then the projects in payload order with
+  their dots (the web's colours since O15), the current one checked by
+  folded name; a name with no project checks nothing, and a stored "none"
+  (pre-#373 habits) reads as no project, as the web's dialog reads it. A
+  pick writes at once and No project takes the chip away. Add property's
+  Project ▸ lists the projects, with at least one. Gated as
+  `editAllowed(action: "project")` (not a subtask, a type with the project
+  axis). A task parked in its old project's block leaves it, its own time
+  and day back and the block's part of day kept, as
   the web's bulk Move to project, and from 2f its item dialog, release it
   (Q6). The dialog keeps a day or a time the same save set itself, and
   files such a time where it falls, as before. The stash (`previousStartTime`,
@@ -1014,7 +1017,7 @@ every decision and the PR plan, is the shared folder's
 `ios-app/organize/design.md`; each PR's builders leave notes beside it
 (`organize/o1/`, `organize/o2/` for O2 and O3, built as one PR,
 `organize/o6/` for O6, O7 and O8a, one PR too, `organize/o8b/` for O8b
-and O9, and `organize/o10/` for O10 and O11).
+and O9, `organize/o10/` for O10 and O11, and `organize/o15/` for O15).
 
 - **O1: the list, read-only.** The payload gains `goals` (null when
   unreadable) and `settings.organizeEnabled` / `settings.goalsEnabled`, from
@@ -1345,7 +1348,8 @@ and O9, and `organize/o10/` for O10 and O11).
   container off at once, the page pops itself (`OrganizePageHost`), and
   VoiceOver hears "Routine deleted" once the pop has settled. A deleted
   project's items stay filed by name, so the List puts them under No
-  project and their chip shows the name with a gray dot; on the web a
+  project and their chip shows the name (with a gray dot until O15, and
+  since then in the name's own colour, as on the web); on the web a
   reload still names the deleted project too (a known web limit).
 - **O11: + and the name sheet.** The bar's + (a `Menu` in the label colour,
   "New" to VoiceOver) lists New routine, New season, New goal and New
@@ -1432,10 +1436,50 @@ and O9, and `organize/o10/` for O10 and O11).
   `member_gone`, `anchor_gone` and `container_gone` are all one sentence on
   the phone ("It changed on another device. Showing the latest."), since a
   move and a hold send no name to quote back.
-- **Waits for later PRs:** Today's project colours (O15, Kirby's call). A
-  project's time block stays the web's (the project union has no time
-  action). Today keeps `ProjectPalette` until then, so a project's dot on
-  Today and its tile on Organize can differ.
+- **O15: Today's project colours (Kirby picked Switch, 2026-10-24).**
+  `ProjectPalette`, the index palette Today had worn since part 2f (a
+  project's place in the list picked one of seven system colours, and a
+  name no project held was gray), is gone. Every project dot now asks
+  `SamplePlanner.projectAccent(for:)`, which is DsulCore
+  `projectAccent(_:projects:)` over `projectRecords` (colours and all,
+  never `projects`, the names): the web's grid rule (planner-store
+  `getProjectColor`, lib/accent-colors.ts `projectColorToken`), so a
+  project is one colour on the web's grid and in every one of these
+  places. The stored colour of the project the name folds to wins; then
+  the legacy `--habit-wellness|work|personal` token for those folded
+  names; then the folded name's ramp step. `ContainerColor.swift`'s
+  `ContainerAccent.color` turns it into a `Color`, as it does Organize's
+  tiles, so there is one colour port. Callers: Today's List section dots
+  and filter chips (`ListLayout.swift`), Week × List's project captions
+  (`WeekList.swift`), and the item sheet's project chip, read-only or a
+  menu, the chip's menu rows and Add property ▸ Project ▸
+  (`ItemDetail.swift`, through `PropertyMenus.swift`'s colour closures),
+  so the chip and the row under it never disagree. A row with no project
+  still wears no dot, and No project and a routine's section none. Colour
+  is a mark only: a dot, never text. Because a dot can now be lime (a
+  project coloured Lime, or a name that hashes there, as "Errands" does),
+  List's section header and the filter chips press with `RowPressStyle`
+  and `PressScaleStyle` instead of `.plain`, which faded the label, dot
+  and all, on every press. Where the phone and the web part: a free-text
+  colour an agent stored (the payload fixture's Admin is "blue") is handed
+  to CSS on the web; the phone can't read it and draws the grid's own
+  answer for no colour. Where Today and Organize part, as the web's grid
+  and Organize part: where no colour the phone can read is stored, a Work,
+  Personal or Wellness wears its legacy token on Today and its raw name's
+  ramp step on its tile (the sample's Work: a muted blue on Today, plum on
+  Organize), and a name whose fold moves its ramp step (U+0100) wears the
+  folded name's step on Today and the raw name's on its tile. A name no
+  project holds (an agent's "Fitness", a deleted project's members) has
+  the grid's no-colour answer now (its legacy token, else its folded
+  name's step), not gray, as the web's item dialog draws it. Pinned by `look.json` in DsulCore (`LookFixtureTests`' four O15
+  tests), by `SamplePlannerTests`' three (the sample's dots, a recolour
+  through Icon and color… against the tile, and a fetch's token, hex and
+  free-text colours) and, on the xcode-27 runner only,
+  `OrganizeLookTests.aProjectDotIsItsTokenInEachAppearance` (the menu
+  row's `UIColor` keeps the light and the dark value); README "Checking
+  Organize", checks 82 to 85.
+- **Waits for later PRs:** a project's time block stays the web's (the
+  project union has no time action).
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -1942,9 +1986,8 @@ animations.
 ## Not yet
 Week × Schedule (Schedule draws Day in Week; the design's PR 10), density
 (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, the rest of Organize (Today's project
-colours: O15 in the Organize design; a project's time block stays the
-web's), undo right after a delete, an item's
+from the bar to the braindump sheet, the rest of Organize (a project's
+time block stays the web's), undo right after a delete, an item's
 or a container's (Organize's Trash restores either, O14),
 Change type, Duplicate and Copy link, the rest of the sheet
 (a routine's or a season's hold, the goal chip, which goals in the payload

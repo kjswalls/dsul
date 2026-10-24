@@ -221,7 +221,10 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     public var timeBucket: String?
     public var startTime: String?
     public var duration: Int?
-    /// The web's colour token and emoji. Decoded and drawn nowhere in part 2 (Q1 a).
+    /// The web's colour (usually a `var(--accent-N)` token, but free text an
+    /// agent stored passes through too) and emoji. The colour is drawn by
+    /// `containerAccent` on Organize's tile and by `projectAccent` on Today's
+    /// project dots and the item sheet's project chip and menu (O15).
     public var color: String?
     public var emoji: String?
     /// Free text, the project page's notes (from O3); nil when unset.

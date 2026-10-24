@@ -175,22 +175,6 @@ struct StreakLabel: View {
     }
 }
 
-/// The colour a project wears: its dot in the chips, the section headers and
-/// the item sheet, its project menu included. The project kind folds case
-/// (lib/container-registry.ts `caseFold`), so an item filed under "work"
-/// wears Work's colour. Folded as JavaScript does (DsulCore `jsLowercased`),
-/// as the project menu checks its rows (`ProjectChoice.key`), so the chip's
-/// dot and the menu's check agree on every name, a final sigma included.
-enum ProjectPalette {
-    private static let colors: [Color] = [.blue, .teal, .purple, .pink, .orange, .indigo, .mint]
-
-    static func color(for project: String, in projects: [String]) -> Color {
-        let folded = jsLowercased(project)
-        guard let i = projects.firstIndex(where: { jsLowercased($0) == folded }) else { return .gray }
-        return colors[i % colors.count]
-    }
-}
-
 /// A press that shrinks the label a little and never fades it. A lime mark
 /// (a done tick, "Now") must not dim through opacity, which `.plain` does on
 /// every press.

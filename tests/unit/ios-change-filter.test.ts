@@ -207,4 +207,29 @@ describe('the iOS change filter', () => {
       expect(filter.test(p), p).toBe(false);
     }
   });
+
+  it('matches the rule Today’s project dots read (O15), and not the web rows that draw it', () => {
+    // Today's dots and section marks, the item sheet's chip and its project
+    // menu rows are the grid's rule: projectColorToken (lib/accent-colors.ts),
+    // which planner-store's getProjectColor answers through, folding as the
+    // project kind does, pinned by look.json's projectColor, tokens and colors.
+    for (const p of [
+      'lib/accent-colors.ts',
+      'lib/planner-store.ts',
+      'lib/container-registry.ts',
+      'tests/fixtures/organize/look.json',
+    ]) {
+      expect(filter.test(p), p).toBe(true);
+    }
+    // The web's readers of getProjectColor: the rule lives in lib/, so how a
+    // web row draws its dot is not a port.
+    for (const p of [
+      'components/primitives/task-row.tsx',
+      'components/primitives/lane-cap.tsx',
+      'components/primitives/display-menu.tsx',
+      'components/shell/bulk-edit-menu.tsx',
+    ]) {
+      expect(filter.test(p), p).toBe(false);
+    }
+  });
 });

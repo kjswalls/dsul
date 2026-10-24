@@ -1467,6 +1467,8 @@ function buildLook() {
     { name: 'the work legacy name with no project takes its token', input: 'WORK', projects: withoutWork },
     { name: 'a legacy name with no colour takes its token', input: 'personal' },
     { name: 'a legacy name with no project takes its token', input: 'Wellness' },
+    // `project?.color` is truthiness: a stored "" is no colour (O15's dot).
+    { name: 'an empty colour is no colour', input: 'Work', projects: [project('p-work', 'Work', { color: '' })] },
     { name: 'no colour: the folded name’s ramp step', input: 'Health' },
     { name: 'no project: the folded name’s ramp step', input: 'Errands' },
     { name: 'folded before hashing', input: 'ERRANDS' },
@@ -3269,6 +3271,10 @@ describe('the cases say what they claim', () => {
     // map in DsulCore is pinned entry by entry.
     const reached = new Set(look.projectColor.map((c) => c.expected));
     for (const token of Object.values(LEGACY_PROJECT_TOKENS)) expect(reached.has(token), token).toBe(true);
+    // A stored "" never reaches CSS: the grid falls through to the legacy token.
+    expect(look.projectColor.find((c) => c.name === 'an empty colour is no colour')?.expected).toBe(
+      'var(--habit-work)',
+    );
     expect(look.hash.find((c) => c.input === 'evadgrga')?.hash).toBe(2 ** 31);
     expect(look.icons.find((c) => c.containerName === 'evadgrga')?.expected).toBe(
       CATEGORY_ICON_NAMES[2 ** 31 % CATEGORY_ICON_NAMES.length],

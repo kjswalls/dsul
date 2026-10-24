@@ -265,6 +265,25 @@ final class SamplePlanner {
     /// The project names, in container order: the chips, the sections, Organize.
     var projects: [String] { projectRecords.map(\.name) }
 
+    /// The colour a project wears on Today and in the item sheet (O15): the
+    /// dot on its List section, its filter chip and its Week caption, and on
+    /// the sheet's project chip and each project menu row. DsulCore
+    /// `projectAccent`, the web's grid rule (planner-store `getProjectColor`)
+    /// over the project records, colours and all: the stored colour of the
+    /// project the name folds to, else a legacy `--habit-*` token for a
+    /// folded "wellness", "work" or "personal", else the folded name's ramp
+    /// step. Folded as JavaScript does (`jsLowercased`), as the project menu
+    /// checks its rows (`ProjectChoice.key`), so an item filed "work" wears
+    /// Work's colour and the chip's dot and the menu's check agree on every
+    /// name, a final sigma included. A name no project holds still has a
+    /// colour, as on the web. Organize's tile is the other rule
+    /// (`containerAccent`): the two differ, as they do on the web, where no
+    /// colour the phone can read is stored and the name is Work, Personal or
+    /// Wellness, or folds to another ramp step.
+    func projectAccent(for name: String) -> ContainerAccent {
+        return DsulCore.projectAccent(name, projects: projectRecords)
+    }
+
     // MARK: Days
 
     var isOnToday: Bool { selectedDay == today }
@@ -995,7 +1014,8 @@ final class SamplePlanner {
     /// A delete (O10) takes the container out of its kind's list at once,
     /// as the route takes it to the Trash, and nothing else: its items keep
     /// their fields (a project's members their name and id, so their chips
-    /// say it with a gray dot), and the join rows stay on the server, which
+    /// still say it, the dot in the name's own colour, `projectAccent`, as on
+    /// the web), and the join rows stay on the server, which
     /// is what a restore brings back. Its Before is the container whole and
     /// its place, so a failed one comes back where it stood.
     func applyContainer(_ ref: ContainerRef, _ intent: ContainerIntent) {

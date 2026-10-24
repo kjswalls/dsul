@@ -78,9 +78,12 @@ struct ListLayout: View {
         withAnimation(.snappy) { planner.toggle(id) }
     }
 
+    /// A project section's dot, in the project's own colour
+    /// (`SamplePlanner.projectAccent`); a routine's section and No project
+    /// wear none.
     private func color(for section: ListSection) -> Color? {
         guard section.kind == .project else { return nil }
-        return ProjectPalette.color(for: section.title, in: planner.projects)
+        return planner.projectAccent(for: section.title).color
     }
 }
 
@@ -114,7 +117,9 @@ private struct SectionHeader: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        // A press fills behind the label and never fades it: a project's dot
+        // may be lime (O15), and `.plain` dims its label on every press.
+        .buttonStyle(RowPressStyle())
         .accessibilityLabel(Text("\(section.title), \(countText)"))
         .accessibilityValue(Text(collapsed ? "Collapsed" : "Expanded"))
     }
@@ -138,7 +143,7 @@ struct FilterChips: View {
                 chip("Habits", .habits, color: nil, in: counted)
                 ForEach(planner.chipProjects(in: counted), id: \.self) { project in
                     chip(project, .project(project),
-                         color: ProjectPalette.color(for: project, in: planner.projects), in: counted,
+                         color: planner.projectAccent(for: project).color, in: counted,
                          showCount: false)
                 }
             }
@@ -170,7 +175,9 @@ struct FilterChips: View {
             .foregroundStyle(selected ? Color(.systemBackground) : Color.primary)
             .background(Capsule().fill(selected ? Color.primary : Color(.secondarySystemFill)))
         }
-        .buttonStyle(.plain)
+        // Scales, never fades, as the item sheet's chips do: a project's dot
+        // may be lime (O15).
+        .buttonStyle(PressScaleStyle())
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
