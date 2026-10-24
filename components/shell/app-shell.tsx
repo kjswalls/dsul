@@ -76,6 +76,7 @@ import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
 import { useDeviceRegistration } from '@/hooks/use-device-registration';
 import { useLocalCueTick } from '@/hooks/use-local-cue-tick';
+import { usePlannerCatchUp } from '@/hooks/use-planner-catch-up';
 import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useAwaySettle } from '@/hooks/use-away-settle';
 import { useCompletionFiling } from '@/hooks/use-completion-filing';
@@ -303,6 +304,8 @@ export function AppShell() {
   // While someone is using this page, it claims due cues and rings them here
   // instead of everywhere (the page as a device, reminders PR-1b).
   useLocalCueTick();
+  // Another device's changes land here when the planner is looked at again.
+  usePlannerCatchUp();
   // Opt-in past-due decay (off by default). Mounted here, above the
   // desktop/mobile split, so the once-per-day sweep runs on every platform and
   // survives view changes — and declared AFTER useUndoToast so the batched

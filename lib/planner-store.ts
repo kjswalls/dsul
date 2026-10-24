@@ -1117,6 +1117,12 @@ let pendingActionLabel: string | null = null;
 let pendingActionReceipt: string | undefined;
 let pendingActionBatch: number | undefined;
 
+/**
+ * The planner as the server last answered it, row by row (see catchUpPlanner).
+ * Set by each load and each catch-up, dropped with the history on every reset.
+ */
+let serverBaseline: ServerBaseline | null = null;
+
 /*
  * Batch state (see batchHistory). `batchReceipts` collects the landing receipts
  * the looped verbs write, so the one entry can carry them. While `quietDepth`
@@ -3010,6 +3016,7 @@ export const usePlannerStore = create<PlannerStore>()(
         historyIndex = -1;
         actionLog = [];
         prevStateJson = null;
+        serverBaseline = null;
         // WITH the stack, not apart from it — `initializeStore` resets the pair
         // together for the same reason. The subscriber's lazy-baseline branch
         // fires only on `!hasInitializedHistory && historyStack.length === 0`,
@@ -3086,6 +3093,7 @@ export const usePlannerStore = create<PlannerStore>()(
         historyIndex = -1;
         actionLog = [];
         prevStateJson = null;
+        serverBaseline = null;
 
         set({
           userId,
@@ -3185,6 +3193,9 @@ export const usePlannerStore = create<PlannerStore>()(
 
           // Set prevStateJson so the subscriber doesn't double-save
           prevStateJson = JSON.stringify(snapshot);
+          // What the server held at this load: a catch-up tells another
+          // device's change from this one's by comparing against it.
+          serverBaseline = baselineOf(userId, { ...snapshot, itemTypes: itemTypesResult });
 
           isUpdatingUndoRedo = true;
           set({
@@ -3258,6 +3269,7 @@ export const usePlannerStore = create<PlannerStore>()(
         historyIndex = -1;
         actionLog = [];
         prevStateJson = null;
+        serverBaseline = null;
 
         hydrateCustomTypes([]);
         isUpdatingUndoRedo = true;
@@ -6265,6 +6277,301 @@ export function mergeAgentStates(rows: readonly AgentStateRow[]): number {
     isUpdatingUndoRedo = wasSuppressed;
   }
   return changes.size;
+}
+
+/* ── catching up with other devices ──────────────────────────────────── */
+
+type Keyed = { id: string };
+
+interface ServerBaseline {
+  userId: string;
+  items: Map<string, Item>;
+  projects: Map<string, Project>;
+  routines: Map<string, Routine> | null;
+  seasons: Map<string, Season> | null;
+  goals: Map<string, Goal> | null;
+  itemTypes: string | null;
+}
+
+const byIdOf = <T extends Keyed>(rows: readonly T[]): Map<string, T> => new Map(rows.map((r) => [r.id, r]));
+
+function baselineOf(
+  userId: string,
+  data: Pick<PlannerData, 'items' | 'projects' | 'routines' | 'seasons' | 'goals' | 'itemTypes'>,
+): ServerBaseline {
+  return {
+    userId,
+    items: byIdOf(data.items),
+    projects: byIdOf(data.projects),
+    routines: data.routines ? byIdOf(data.routines) : null,
+    seasons: data.seasons ? byIdOf(data.seasons) : null,
+    goals: data.goals ? byIdOf(data.goals) : null,
+    itemTypes: data.itemTypes ? JSON.stringify(data.itemTypes) : null,
+  };
+}
+
+/** One field read the same on both sides; an absent field and a null one are the same. */
+const sameValue = (a: unknown, b: unknown): boolean => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+const fieldsOf = (row: object): Record<string, unknown> => row as Record<string, unknown>;
+
+/** The fields that differ between two versions of one row, by key, whatever the key order. */
+function changedFields(a: object, b: object): string[] {
+  const ra = fieldsOf(a);
+  const rb = fieldsOf(b);
+  return [...new Set([...Object.keys(ra), ...Object.keys(rb)])].filter((k) => !sameValue(ra[k], rb[k]));
+}
+
+/** `row` with `fields` taken from `from` (a field `from` lacks is removed). */
+function withFields<T extends object>(row: T, from: object, fields: readonly string[]): T {
+  const next = { ...fieldsOf(row) };
+  const src = fieldsOf(from);
+  for (const k of fields) {
+    if (src[k] === undefined) delete next[k];
+    else next[k] = src[k];
+  }
+  return next as T;
+}
+
+/** What one catch-up changes in one slice: rows replaced or added, rows dropped, and the slice's next baseline. */
+interface SliceMerge<T extends Keyed> {
+  put: Map<string, { before: T | null; after: T; fields: string[] | null }>;
+  drop: Set<string>;
+  base: Map<string, T>;
+}
+
+/**
+ * A three-way merge of one slice, row by row and field by field: the server's
+ * answer now, the server's answer last time (`base`), and what this tab holds.
+ *
+ * A field the server changed since last time was changed by someone else (or
+ * is this tab's own save coming back, which already reads the same here), so
+ * it is taken. A field the server did NOT change keeps this tab's value,
+ * whether or not this tab changed it: a save still on the wire reads as the
+ * old value on the server, and taking it would put the old value back on
+ * screen until the next catch-up.
+ *
+ * Ids are judged against the baseline too. A row the server held last time and
+ * not now was deleted elsewhere. A row this tab holds that the server has never
+ * had is this tab's insert on its way, and stays. A row the server has that this
+ * tab has never held is new from elsewhere; one this tab has let go of (deleted
+ * here, or only ever in this tab's history) is this tab's delete on its way,
+ * and does not come back.
+ *
+ * `held` rows are left exactly as they are and keep their old baseline, so the
+ * next catch-up still sees what changed. `wholeRow` says when two versions are
+ * not comparable field by field (an item that changed type).
+ */
+function mergeSlice<T extends Keyed>(
+  local: readonly T[],
+  server: readonly T[],
+  base: Map<string, T>,
+  opts: {
+    held: (id: string) => boolean;
+    inHistory: (id: string) => boolean;
+    wholeRow?: (a: T, b: T) => boolean;
+  },
+): SliceMerge<T> {
+  const localById = byIdOf(local);
+  const serverIds = new Set(server.map((r) => r.id));
+  const put: SliceMerge<T>['put'] = new Map();
+  const drop = new Set<string>();
+  const next = new Map<string, T>();
+
+  for (const row of server) {
+    const was = base.get(row.id);
+    const mine = localById.get(row.id);
+    if (opts.held(row.id)) {
+      if (was) next.set(row.id, was);
+      continue;
+    }
+    if (!mine) {
+      if (was) {
+        // Deleted here, and the delete is still on its way.
+        next.set(row.id, was);
+      } else if (!opts.inHistory(row.id)) {
+        put.set(row.id, { before: null, after: row, fields: null });
+        next.set(row.id, row);
+      }
+      continue;
+    }
+    next.set(row.id, row);
+    // Never seen on the server before: this tab's own insert, landed. Its own
+    // values are the newest there are.
+    if (!was) continue;
+    if (opts.wholeRow?.(was, row)) {
+      if (changedFields(mine, row).length > 0) put.set(row.id, { before: mine, after: row, fields: null });
+      continue;
+    }
+    const theirs = changedFields(was, row);
+    if (theirs.length === 0) continue;
+    const merged = withFields(mine, row, theirs);
+    const fields = changedFields(mine, merged);
+    if (fields.length > 0) put.set(row.id, { before: mine, after: merged, fields });
+  }
+  for (const row of local) {
+    if (!serverIds.has(row.id) && base.has(row.id) && !opts.held(row.id)) drop.add(row.id);
+  }
+  return { put, drop, base: next };
+}
+
+/** Apply one slice's merge to a list of rows: the store's, or a history snapshot's. */
+function foldSlice<T extends Keyed>(rows: T[], merge: SliceMerge<T>, isSnapshot: boolean): T[] {
+  if (merge.put.size === 0 && merge.drop.size === 0) return rows;
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const row of rows) {
+    if (merge.drop.has(row.id)) continue;
+    const change = merge.put.get(row.id);
+    seen.add(row.id);
+    if (!change) {
+      out.push(row);
+      continue;
+    }
+    if (!isSnapshot || !change.before) {
+      out.push(change.after);
+    } else if (change.fields === null) {
+      // A whole-row change reaches a snapshot only where the row still reads as it did.
+      out.push(changedFields(row, change.before).length === 0 ? change.after : row);
+    } else {
+      // Field by field: a snapshot holding another value for a field (from
+      // before this tab's own edit of it) keeps it, so undoing that edit still
+      // undoes it.
+      const fields = change.fields.filter((k) => sameValue(fieldsOf(row)[k], fieldsOf(change.before!)[k]));
+      out.push(fields.length > 0 ? withFields(row, change.after, fields) : row);
+    }
+  }
+  for (const [id, change] of merge.put) if (!change.before && !seen.has(id)) out.push(change.after);
+  return out;
+}
+
+const changedItemType = (a: Item, b: Item): boolean => itemDbType(a) !== itemDbType(b);
+
+let catchUpInFlight: Promise<string[]> | null = null;
+
+/**
+ * Bring this tab up to date with what other devices changed: the phone, another
+ * tab, an agent. One read of the whole planner (load_planner), merged into the
+ * store by mergeSlice's rule, so a change made here and not yet saved is never
+ * put back to the server's older value.
+ *
+ * The server's news, not a user action, folded the way mergeAgentStates folds
+ * agent state: one set(), no undo entry, no write-back, and every history
+ * snapshot changed the same way (a field only where the snapshot still holds
+ * this tab's pre-merge value), so an undo of an unrelated edit never writes the
+ * other device's change away, and an added or deleted row neither vanishes nor
+ * returns on ⌘Z.
+ *
+ * Nothing lands while a load is in flight, in the preview, or for another
+ * account. A row changed in this tab while the read was out is left alone, as
+ * are `heldItemIds` (an item open in the panel, being renamed or dragged), and
+ * the next catch-up takes what it missed. Returns the ids of the items it
+ * changed or added. One at a time: a second call while one is out shares it.
+ */
+export function catchUpPlanner(opts?: { heldItemIds?: () => ReadonlySet<string> }): Promise<string[]> {
+  catchUpInFlight ??= runCatchUp(opts).finally(() => {
+    catchUpInFlight = null;
+  });
+  return catchUpInFlight;
+}
+
+async function runCatchUp(opts?: { heldItemIds?: () => ReadonlySet<string> }): Promise<string[]> {
+  const start = usePlannerStore.getState();
+  const userId = start.userId;
+  const base = serverBaseline;
+  if (!userId || start.isLoading || start.isPreview || !base || base.userId !== userId) return [];
+  const generation = loadGeneration;
+
+  let data: PlannerData;
+  try {
+    data = await loadPlannerData(userId, () => loadPlannerTables(userId));
+  } catch (err) {
+    console.warn('[planner] catch-up read failed', err);
+    return [];
+  }
+
+  const s = usePlannerStore.getState();
+  if (loadGeneration !== generation || s.userId !== userId || s.isLoading || s.isPreview) return [];
+  // A reset or a load since the read went out owns the baseline now.
+  if (serverBaseline !== base) return [];
+
+  const held = opts?.heldItemIds?.() ?? new Set<string>();
+  // Rows this tab changed while the read was out: the read may predate them.
+  const movedSince = <T extends Keyed>(then: readonly T[], now: readonly T[]) => {
+    const was = byIdOf(then);
+    const is = byIdOf(now);
+    return (id: string) => was.get(id) !== is.get(id);
+  };
+  const inHistory = <K extends keyof HistoryState>(key: K) => (id: string) =>
+    historyStack.some((snap) => (snap[key] as Keyed[] | undefined)?.some((r) => r.id === id));
+
+  const itemsMoved = movedSince(start.items, s.items);
+  const items = mergeSlice(s.items, data.items, base.items, {
+    held: (id) => held.has(id) || itemsMoved(id),
+    inHistory: inHistory('items'),
+    wholeRow: changedItemType,
+  });
+  const containerSlice = <T extends Keyed, K extends 'projects' | 'routines' | 'seasons' | 'goals'>(
+    key: K,
+    then: readonly T[],
+    now: readonly T[],
+    server: readonly T[] | null,
+    was: Map<string, T> | null,
+  ): SliceMerge<T> | null => {
+    if (!server || !was) return null;
+    const moved = movedSince(then, now);
+    return mergeSlice(now, server, was, { held: moved, inHistory: inHistory(key) });
+  };
+  const projects = containerSlice('projects', start.projects, s.projects, data.projects, base.projects);
+  const routines = containerSlice('routines', start.routines, s.routines, data.routines, base.routines);
+  const seasons = containerSlice('seasons', start.seasons, s.seasons, data.seasons, base.seasons);
+  const goals = containerSlice('goals', start.goals, s.goals, data.goals, base.goals);
+  const typesJson = data.itemTypes ? JSON.stringify(data.itemTypes) : null;
+  const typesChanged = data.itemTypes !== null && typesJson !== base.itemTypes;
+
+  serverBaseline = {
+    userId,
+    items: items.base,
+    projects: projects?.base ?? base.projects,
+    routines: routines?.base ?? base.routines,
+    seasons: seasons?.base ?? base.seasons,
+    goals: goals?.base ?? base.goals,
+    itemTypes: typesChanged ? typesJson : base.itemTypes,
+  };
+
+  const touched = (m: SliceMerge<Keyed> | null) => !!m && (m.put.size > 0 || m.drop.size > 0);
+  if (![items, projects, routines, seasons, goals].some((m) => touched(m as SliceMerge<Keyed> | null)) && !typesChanged) {
+    return [];
+  }
+
+  const fold = <T extends Keyed>(rows: T[], m: SliceMerge<T> | null, isSnapshot: boolean) =>
+    m ? foldSlice(rows, m, isSnapshot) : rows;
+
+  const wasSuppressed = isUpdatingUndoRedo;
+  isUpdatingUndoRedo = true;
+  try {
+    // Custom types must be resolvable before an item of a new one renders.
+    if (typesChanged && data.itemTypes) hydrateCustomTypes(data.itemTypes);
+    usePlannerStore.setState((cur) => ({
+      ...projectItems(fold(cur.items, items, false)),
+      projects: fold(cur.projects, projects, false),
+      routines: fold(cur.routines, routines, false),
+      seasons: fold(cur.seasons, seasons, false),
+      goals: fold(cur.goals, goals, false),
+      ...(typesChanged && data.itemTypes ? { itemTypes: data.itemTypes } : null),
+    }));
+    historyStack = historyStack.map((snapshot) => ({
+      items: fold(snapshot.items, items, true),
+      projects: fold(snapshot.projects, projects, true),
+      routines: fold(snapshot.routines, routines, true),
+      seasons: fold(snapshot.seasons, seasons, true),
+      goals: fold(snapshot.goals, goals, true),
+    }));
+    updatePrevStateBaseline(historySlice(usePlannerStore.getState()));
+  } finally {
+    isUpdatingUndoRedo = wasSuppressed;
+  }
+  return [...items.put.keys()];
 }
 
 /**
