@@ -5,7 +5,7 @@ import { Flame } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { AiChip, WorkingMark } from '@/components/ai/ai-work-badge';
 import { agentStatusView, showsAgentChip, type AgentStatusView } from '@/lib/agent-status';
-import { agentPrepReady } from '@/lib/ai-work';
+import { agentFinished, agentPrepReady } from '@/lib/ai-work';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { streakRunText } from '@/lib/item-edit';
 import type { Priority, RepeatFrequency } from '@/lib/planner-types';
@@ -744,6 +744,20 @@ export function AgentPill({
   // counted once, in the dock (components/notices/ai-work-notice.tsx), and read
   // in the item panel's agent block, so the row says nothing.
   if (agentPrepReady(item)) return null;
+  // Finished, and waiting for the user to check it and tick it off (agentFinished):
+  // the one done the row keeps saying, until the tick clears it. No clock: it
+  // says who, not how long ago.
+  if (agentFinished(item)) {
+    if (workingOnly) return null;
+    const who = assigneeLabel(item.assignee);
+    return (
+      <RailTooltip label="Agent" detail={`${who} finished this. Check it, then tick it off.`}>
+        <AiChip tone="ready" className={className} data-agent-finished="">
+          {who} finished
+        </AiChip>
+      </RailTooltip>
+    );
+  }
   // NO HOOKS HERE. This runs on every task row in the app, and hooks cannot be
   // skipped by an early return — an interval declared above this line would run
   // for all of them, ticking every minute to re-render a component that returns

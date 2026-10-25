@@ -131,18 +131,22 @@ const ONE_OFF = {
 let row: Record<string, unknown> | null;
 /** Whether the day reads as already done (the transition read's `contains`). */
 let doneBefore: boolean;
+/** user_settings.agents_may_complete (migration 085). */
+let mayComplete: boolean;
 
 beforeEach(() => {
   vi.clearAllMocks();
   queries = [];
   row = HABIT;
   doneBefore = false;
+  mayComplete = false;
   rpc = vi.fn(async () => ({ data: null, error: null }));
   h.resolveUserIdFromApiKey.mockResolvedValue(USER);
   h.reportLiveCompletion.mockResolvedValue({ ok: true, skipped: true });
   Object.assign(h.serviceClient, { from, rpc });
   respond = (q) => {
     if (q.table === 'item_events') return { data: null, error: null };
+    if (q.table === 'user_settings') return { data: { agents_may_complete: mayComplete }, error: null };
     if (q.table === 'routines' || q.table === 'seasons') return { data: { id: ROUTINE }, error: null };
     if (q.table === 'routine_items' || q.table === 'season_items') {
       return op(q) === 'select' ? { data: [{ sort_order: 3 }], error: null } : { data: null, error: null };
@@ -321,5 +325,36 @@ describe('the same side effects as the phone’s tick', () => {
     await settle();
     const event = queries.find((q) => q.table === 'item_events' && op(q) === 'insert')!;
     expect(called(event, 'insert')[0][0]).toEqual(expect.objectContaining({ user_id: USER, item_id: ITEM }));
+  });
+});
+
+describe('an item handed to an agent waits for the user', () => {
+  // Kirby, 2026-10-25: an agent's "done" is its report; the user checks the
+  // work and ticks it, unless they let agents finish it (lib/agent-finish.ts).
+  it('refuses the tick, says what to do instead, and writes nothing', async () => {
+    row = { ...ONE_OFF, assignee: 'claude' };
+    const res = await act({ action: 'complete', date: DATE, done: true });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/dsul_report_progress/);
+    expect(itemUpdates()).toEqual([]);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('takes the tick once the account lets agents finish', async () => {
+    row = { ...ONE_OFF, assignee: 'claude' };
+    mayComplete = true;
+    expect((await act({ action: 'complete', date: DATE, done: true })).status).toBe(200);
+  });
+
+  it('always takes an untick, and never asks the setting for it', async () => {
+    row = { ...ONE_OFF, assignee: 'openclaw' };
+    expect((await act({ action: 'complete', date: DATE, done: false })).status).toBe(200);
+    expect(queries.some((q) => q.table === 'user_settings')).toBe(false);
+  });
+
+  it('leaves an item nobody handed off alone', async () => {
+    row = { ...ONE_OFF, assignee: null };
+    expect((await act({ action: 'complete', date: DATE, done: true })).status).toBe(200);
+    expect(queries.some((q) => q.table === 'user_settings')).toBe(false);
   });
 });

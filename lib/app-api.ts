@@ -66,6 +66,7 @@ import { EXT_GOALS, EXT_ORGANIZE, EXT_STREAKS, resolveEnabled } from './extensio
 import { capabilityShape, isPausableRow, resolveItemPause } from './item-pause';
 import { DEFAULT_APP_ICON, isAppIcon, type AppIcon } from './app-icons';
 import { getBucketForTime } from './time-bucket';
+import { AGENT_FINISH_REFUSED, agentsMayComplete } from './agent-finish';
 import { reportLiveCompletion } from './stakes/live';
 import { notifyPlugins } from './openclaw-registry';
 import { createServiceClient } from './supabase-service';
@@ -933,7 +934,7 @@ export async function postAgentItemAction(
   if (!(AGENT_ITEM_ACTIONS as readonly string[]).includes(body.action)) {
     return invalid({ formErrors: [`action must be one of: ${AGENT_ITEM_ACTIONS.join(', ')}`], fieldErrors: {} });
   }
-  return runItemWrite({ ...scope, ownerScoped: true, webhook: true }, rawId.toLowerCase(), body, opts);
+  return runItemWrite({ ...scope, ownerScoped: true, webhook: true, agentDoor: true }, rawId.toLowerCase(), body, opts);
 }
 
 /**
@@ -942,13 +943,17 @@ export async function postAgentItemAction(
  * `user_id` to every row update, since RLS does not scope that client.
  */
 async function runItemWrite(
-  scope: { userId: string; client: Client; ownerScoped?: boolean; webhook?: boolean },
+  scope: { userId: string; client: Client; ownerScoped?: boolean; webhook?: boolean; agentDoor?: boolean },
   id: string,
   body: ItemWrite,
   opts: AppWriteOptions,
 ): Promise<Response> {
   const { userId, client } = scope;
-  const extra = EDIT_COLUMNS[body.action];
+  // The agent door's review rule (lib/agent-finish.ts) asks who holds the item.
+  const extra =
+    [EDIT_COLUMNS[body.action], scope.agentDoor && body.action === 'complete' ? 'assignee' : null]
+      .filter(Boolean)
+      .join(', ') || undefined;
   const { data, error } = await client
     .from('items')
     .select(extra ? `${WRITE_ROW_COLUMNS}, ${extra}` : WRITE_ROW_COLUMNS)
@@ -959,6 +964,15 @@ async function runItemWrite(
   if (error) return dbErrorResponse(error, 'app/items/:id');
   const row = data as WriteRow | null;
   if (!row) return body.action === 'delete' ? deleteTrashed(client, userId, id) : notFound();
+
+  // An agent ticking off an item handed to it waits for the user, unless the
+  // account lets agents finish their own work (lib/agent-finish.ts).
+  if (scope.agentDoor && body.action === 'complete' && body.done !== false) {
+    const holder = (row as { assignee?: string | null }).assignee;
+    if (holder?.trim() && !(await agentsMayComplete(client, userId))) {
+      return NextResponse.json({ error: AGENT_FINISH_REFUSED, code: 'review_first' }, { status: 403 });
+    }
+  }
 
   // The id as the route was asked, which the row read matched.
   const ctx: WriteContext = { ...writeContextFor(userId, client, row, { ownerScoped: scope.ownerScoped }), id };

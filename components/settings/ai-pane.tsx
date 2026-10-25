@@ -32,6 +32,7 @@ import { setUseAI } from '@/lib/no-ai';
 import { settingById, type SettingCtx, type SettingRecord } from '@/lib/settings/manifest';
 import { highlightRuns, type MatchRange } from '@/lib/settings/search';
 import { cn } from '@/lib/utils';
+import { AgentFinishSection } from './agent-finish';
 import { ConnectedAppsSection } from './connected-apps';
 import { AgentKeysSection } from './agent-keys';
 import { OpenClawConnect } from './openclaw-connect';
@@ -196,6 +197,7 @@ export function AIPane({
           own AI, and Disconnect has to be reachable either way. */}
       <ConnectedAppsSection />
       <AgentKeysSection />
+      <AgentFinishSection />
     </div>
   );
 }

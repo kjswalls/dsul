@@ -313,12 +313,12 @@ const lime = () =>
 
 describe('sections, in order', () => {
   it.each([
-    ['F18, nothing connected', NOTHING_CONNECTED, ['explainer', 'use', 'connection', 'openclaw', 'connected-apps']],
-    ['F18 with chat Off here', { ...NOTHING_CONNECTED, choice: 'none' }, ['explainer', 'use', 'connection', 'openclaw', 'device', 'connected-apps']],
-    ['no model on this server', { ...NOTHING_CONNECTED, available: false }, ['explainer', 'use', 'connection', 'openclaw', 'connected-apps']],
-    ['F19, working', GEMINI_WORKING, ['explainer', 'use', 'connection', 'openclaw', 'device', 'connected-apps']],
-    ['F22, AI off with a model kept', AI_OFF_CONNECTED, ['use', 'ai-off', 'connected-apps']],
-    ['AI off on a server with no model', { ...AI_HIDDEN, available: false }, ['use', 'ai-off', 'connected-apps']],
+    ['F18, nothing connected', NOTHING_CONNECTED, ['explainer', 'use', 'connection', 'openclaw', 'connected-apps', 'agent-finish']],
+    ['F18 with chat Off here', { ...NOTHING_CONNECTED, choice: 'none' }, ['explainer', 'use', 'connection', 'openclaw', 'device', 'connected-apps', 'agent-finish']],
+    ['no model on this server', { ...NOTHING_CONNECTED, available: false }, ['explainer', 'use', 'connection', 'openclaw', 'connected-apps', 'agent-finish']],
+    ['F19, working', GEMINI_WORKING, ['explainer', 'use', 'connection', 'openclaw', 'device', 'connected-apps', 'agent-finish']],
+    ['F22, AI off with a model kept', AI_OFF_CONNECTED, ['use', 'ai-off', 'connected-apps', 'agent-finish']],
+    ['AI off on a server with no model', { ...AI_HIDDEN, available: false }, ['use', 'ai-off', 'connected-apps', 'agent-finish']],
   ] as const)('%s', async (_name, seed, order) => {
     await mount(seed as SeedAI);
     expect(sections()).toEqual(order);
@@ -331,19 +331,19 @@ describe('sections, in order', () => {
   // its Disconnect is there whether AI is on, off or still being checked.
   it('while the check is out: Use AI, Connection and Connected apps', async () => {
     await mount('unknown');
-    expect(sections()).toEqual(['use', 'connection', 'connected-apps']);
+    expect(sections()).toEqual(['use', 'connection', 'connected-apps', 'agent-finish']);
   });
 
   it('when the check failed: Use AI, Connection and Connected apps', async () => {
     await mount('error');
     expect(useAIConnectionStore.getState().phase).toBe('error');
-    expect(sections()).toEqual(['use', 'connection', 'connected-apps']);
+    expect(sections()).toEqual(['use', 'connection', 'connected-apps', 'agent-finish']);
   });
 
   it('is one pane root', async () => {
     await mount(NOTHING_CONNECTED);
     const pane = screen.getByTestId('ai-pane');
-    expect(pane.querySelectorAll('[data-ai-section]')).toHaveLength(5);
+    expect(pane.querySelectorAll('[data-ai-section]')).toHaveLength(6);
   });
 });
 
