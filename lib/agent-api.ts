@@ -33,6 +33,7 @@ import {
   validateParentItemId,
 } from './db'
 import { tagClientActor } from './event-actor'
+import { refuseAgentFinish, ticksOff } from './agent-finish'
 import { resolvePauseWrite, type Pausable } from './active'
 import { capabilityShape, isPausableRow, resolveItemPause } from './item-pause'
 import {
@@ -459,6 +460,13 @@ export function makeAgentItemHandlers(type: KnownItemType) {
 
     const body = await parseBody(req, api.updateSchema)
     if (body instanceof NextResponse) return body
+
+    // A tick on an item handed to an agent waits for the user (lib/agent-finish.ts).
+    const data = body.data as { status?: unknown; completedDates?: unknown }
+    if (data.status === 'completed' || Array.isArray(data.completedDates)) {
+      const refusal = await refuseAgentFinish(auth.serviceClient, auth.userId, id, (had) => ticksOff(data, had))
+      if (refusal) return NextResponse.json({ error: refusal, code: 'review_first' }, { status: 403 })
+    }
 
     // Same referential guard as create: without it, a hallucinated id can
     // self-parent (item vanishes from every view), point at another user's

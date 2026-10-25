@@ -387,6 +387,9 @@ export const MCP_TOOLS: McpTool[] = [
       'item that already carries an aiResult is one the user has answered or sent back: read ' +
       'dsul_item_activity first, carry on from their answer, and make your next report a reply ' +
       'to what they said. ' +
+      "Your 'done' report ends your part, not the item: never tick off an item handed to you " +
+      '(dsul_complete, or status completed). The user ticks it off once they have checked your ' +
+      'work, and dsul refuses that tick from you unless they have allowed it. ' +
       "An item at 'working' belongs to a run that is probably still going: LEAVE IT ALONE. " +
       'Its aiStatusAt is when that status was last written, not a heartbeat, so an ' +
       'old stamp on a long job is normal and proves nothing. ' +
@@ -689,7 +692,8 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       'Change an existing task. Send only the fields you are changing. To tick a task off, ' +
       'use dsul_complete: on a RECURRING task status would end the whole series rather than ' +
-      'today, and completedDates replaces every completed date at once.',
+      'today, and completedDates replaces every completed date at once. Ticking off an item ' +
+      'handed to you is refused unless the user allows it.',
     inputSchema: obj(
       {
         id: ID,
@@ -863,7 +867,9 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'dsul_complete',
     description:
-      'Tick an item off for ONE day, or untick it (done: false). The right verb for a task or a ' +
+      'Tick an item off for ONE day, or untick it (done: false). Refused on an item handed to you ' +
+      "unless the user allows it: report 'done' with dsul_report_progress instead, and they tick it. " +
+      'The right verb for a task or a ' +
       'habit, one-off or recurring: it touches only that date, moves a habit\'s streak and keeps ' +
       'the rest of the history. A day the user skipped is refused (skipped); unskip it with ' +
       'dsul_skip first. For a habit with a daily target, count is how many it reached that day.',

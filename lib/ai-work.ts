@@ -49,6 +49,17 @@ export function agentPrepReady(item: Pick<AiWorkItem, 'assignee' | 'aiStatus' | 
   return !!item.assignee && item.aiMode === 'prepare' && item.aiStatus === 'done';
 }
 
+/**
+ * Did an agent finish an open item it was handed, and is the item waiting for
+ * the user to check the work and tick it? An agent's 'done' is its report,
+ * never the item (lib/agent-finish.ts): the row says so until the item is
+ * ticked off. Prep is the exception, read by `agentPrepReady`.
+ */
+export function agentFinished(item: Pick<AiWorkItem, 'assignee' | 'aiStatus' | 'aiMode' | 'status'>): boolean {
+  if (item.status === 'completed' || item.status === 'cancelled') return false;
+  return !!item.assignee && item.aiStatus === 'done' && item.aiMode !== 'prepare';
+}
+
 /** Handed-off items with a live state at all: whether the key needs a clock. */
 export function hasLiveRun(items: readonly AiWorkItem[]): boolean {
   return items.some((i) => showsAgentChip(i) && (i.aiStatus === 'queued' || i.aiStatus === 'working'));
