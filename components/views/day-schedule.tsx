@@ -1059,7 +1059,7 @@ export function ScheduleBlock({
     <button
       onClick={(e) => {
         e.stopPropagation();
-        if (!done) animateItemCheck(e.currentTarget);
+        animateItemCheck(e.currentTarget, done);
         toggleTaskStatus(item.id, undefined, isRecurring(task!) ? rowDate : undefined);
       }}
       onPointerDown={(e) => e.stopPropagation()}
@@ -1068,7 +1068,7 @@ export function ScheduleBlock({
         // Transparent, not filled: the pane behind it is already tinted glass,
         // and a second fill inside it reads as a box within a box.
         'relative mt-px flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[5px] inset-ring bg-transparent transition-[background-color,box-shadow]',
-        done ? 'inset-ring-check-fill bg-check-fill' : 'inset-ring-muted-foreground/45 hover:inset-ring-muted-foreground'
+        done ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]' : 'inset-ring-muted-foreground/45 hover:inset-ring-muted-foreground'
       )}
     >
       {done && <ItemTick />}

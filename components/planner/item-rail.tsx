@@ -114,7 +114,7 @@ export function RailDoneCheck({
       aria-label={label}
       aria-pressed={done}
       onClick={(e) => {
-        if (!done) animateItemCheck(e.currentTarget);
+        animateItemCheck(e.currentTarget, done);
         onToggle();
       }}
       className={cn(
@@ -122,9 +122,9 @@ export function RailDoneCheck({
         "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200",
         done
-          ? "inset-ring-check-fill bg-check-fill"
+          ? "inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]"
           : filling
-            ? "inset-ring-check-fill bg-surface-3"
+            ? "inset-ring-check-part bg-surface-3"
             : "inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-muted-foreground",
         className,
       )}
@@ -132,7 +132,7 @@ export function RailDoneCheck({
       {filling && (
         <span
           aria-hidden
-          className="absolute inset-x-0 bottom-0 bg-check-fill transition-[height] duration-150"
+          className="absolute inset-x-0 bottom-0 bg-check-part transition-[height] duration-150"
           style={{ height: `${Math.round(partial * 100)}%` }}
         />
       )}

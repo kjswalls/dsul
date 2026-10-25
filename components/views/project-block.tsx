@@ -99,14 +99,14 @@ function BlockTask({ task, onClick, date }: { task: Task; onClick: () => void; d
           <button
             onClick={(e) => {
               e.stopPropagation();
-              if (!done) animateItemCheck(e.currentTarget);
+              animateItemCheck(e.currentTarget, done);
               toggleTaskStatus(task.id, undefined, recurring ? blockDate : undefined);
             }}
             aria-label={done ? 'Mark incomplete' : 'Mark complete'}
             className={cn(
               'relative flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow]',
               done
-                ? 'inset-ring-check-fill bg-check-fill'
+                ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]'
                 : 'inset-ring-muted-foreground/45 hover:inset-ring-muted-foreground'
             )}
           >

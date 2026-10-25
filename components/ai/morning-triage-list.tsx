@@ -645,8 +645,10 @@ function TriageRow({
         // because it was completed somewhere else has no action to reverse, and
         // the old `action!` assertion would have handed undefined to onUndo.
         onClick={(e) => {
-          if (action?.kind === 'done') onUndo(item, action);
-          else {
+          if (action?.kind === 'done') {
+            animateItemCheck(e.currentTarget, true);
+            onUndo(item, action);
+          } else {
             animateItemCheck(e.currentTarget);
             onDone(item);
           }
@@ -655,7 +657,7 @@ function TriageRow({
         className={cn(
           'relative flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] inset-ring transition-[background-color,box-shadow]',
           isDone
-            ? 'inset-ring-check-fill bg-check-fill'
+            ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]'
             : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-muted-foreground',
           checkboxInert && 'pointer-events-none opacity-40'
         )}

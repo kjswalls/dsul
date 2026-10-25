@@ -323,7 +323,7 @@ export function ZenSurface() {
                 <button
                   type="button"
                   onClick={(e) => {
-                    if (!heroDone) animateItemCheck(e.currentTarget);
+                    animateItemCheck(e.currentTarget, heroDone);
                     tick(hero.row);
                   }}
                   aria-pressed={heroDone}
@@ -331,7 +331,7 @@ export function ZenSurface() {
                   className={cn(
                     'relative mt-[clamp(6px,1.4vw,13px)] flex h-[22px] w-[22px] flex-none items-center justify-center rounded-[6px] inset-ring-[1.5px] transition-[background-color,box-shadow] duration-150',
                     heroDone
-                      ? 'inset-ring-check-fill bg-check-fill'
+                      ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]'
                       : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-muted-foreground'
                   )}
                 >
@@ -545,7 +545,7 @@ function ZenLedgerRow({
       <button
         type="button"
         onClick={(e) => {
-          if (!done) animateItemCheck(e.currentTarget);
+          animateItemCheck(e.currentTarget, done);
           onTick();
         }}
         aria-pressed={done}
@@ -553,9 +553,9 @@ function ZenLedgerRow({
         className={cn(
           'relative flex h-4 w-4 flex-none items-center justify-center overflow-hidden rounded-[5px] inset-ring transition-[background-color,box-shadow] duration-150',
           done
-            ? 'inset-ring-check-fill bg-check-fill'
+            ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]'
             : multi && multi.count > 0
-              ? 'inset-ring-check-fill bg-surface-3'
+              ? 'inset-ring-check-part bg-surface-3'
               : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-muted-foreground'
         )}
       >
@@ -564,7 +564,7 @@ function ZenLedgerRow({
             parent, so the lime never composites down to olive. */}
         {multi && !done && multi.count > 0 && (
           <span
-            className="absolute inset-x-0 bottom-0 bg-check-fill"
+            className="absolute inset-x-0 bottom-0 bg-check-part"
             style={{ height: `${multi.pct}%` }}
           />
         )}

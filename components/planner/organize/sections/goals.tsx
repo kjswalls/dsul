@@ -455,7 +455,7 @@ function GoalDetail({
         <button
           type="button"
           onClick={(e) => {
-            if (!done) animateItemCheck(e.currentTarget);
+            animateItemCheck(e.currentTarget, done);
             toggleTaskStatus(item.id);
           }}
           data-testid="goal-milestone-check"
@@ -467,7 +467,7 @@ function GoalDetail({
             'relative flex size-4 shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow]',
             'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
             done
-              ? 'inset-ring-check-fill bg-check-fill'
+              ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]'
               : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-muted-foreground'
           )}
         >

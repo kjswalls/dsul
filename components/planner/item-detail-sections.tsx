@@ -210,7 +210,7 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
           <button
             type="button"
             onClick={(e) => {
-              if (child.status !== 'completed') animateItemCheck(e.currentTarget);
+              animateItemCheck(e.currentTarget, child.status === 'completed');
               toggleTaskStatus(child.id);
             }}
             aria-label={child.status === 'completed' ? 'Mark not done' : 'Mark done'}
@@ -218,7 +218,7 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
               'relative flex size-4 shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow]',
               'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
               child.status === 'completed'
-                ? 'inset-ring-check-fill bg-check-fill'
+                ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]'
                 : 'inset-ring-muted-foreground/45 hover:inset-ring-muted-foreground'
             )}
           >
