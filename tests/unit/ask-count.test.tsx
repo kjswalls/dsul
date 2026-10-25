@@ -18,7 +18,7 @@ vi.mock('@/hooks/use-agent-question', () => ({
 }));
 vi.mock('@/lib/planner-ready', () => ({ usePlannerLoaded: () => true, isPlannerPreviewing: () => false }));
 
-import { AskOpener } from '@/components/ai/rail/ask-opener';
+import { AskOpener, PEEK_CLOSE_MS, PEEK_OPEN_MS } from '@/components/ai/rail/ask-opener';
 import { NeedsYouBadge } from '@/components/ai/needs-you/needs-you-badge';
 import { openNeedsYou } from '@/lib/needs-you-door';
 import { useNeedsYouStore } from '@/lib/needs-you-store';
@@ -26,6 +26,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { railModeNow, useRailStore } from '@/lib/rail-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useViewStore } from '@/lib/view-store';
+import { ASK_OPEN_DEFAULT, useSidebarStore } from '@/lib/sidebar-store';
 import type { Item } from '@/lib/planner-types';
 import { seedAI, CONNECTED_MODEL, AI_HIDDEN } from './helpers/ai-fixtures';
 
@@ -65,6 +66,7 @@ beforeEach(() => {
       removeListener: () => {},
       dispatchEvent: () => false,
     }) as unknown as MediaQueryList) as typeof window.matchMedia;
+  useSidebarStore.setState({ askOpen: ASK_OPEN_DEFAULT });
   useRailStore.getState().reset();
   useUIStore.setState({ activeDialog: null, displacedItemId: null });
   useViewStore.setState({ zenOpen: false });
@@ -137,5 +139,87 @@ describe('openNeedsYou', () => {
     act(() => openNeedsYou('a'));
     expect(useNeedsYouStore.getState().inbox.open).toBe(false);
     expect(railModeNow()).toBe('ask');
+  });
+});
+
+describe('resting on the key peeks the questions', () => {
+  const slot = () => document.querySelector<HTMLElement>('[data-ask-opener-slot]')!;
+  const over = (el: Element, pointerType = 'mouse') => fireEvent.pointerOver(el, { pointerType });
+  const out = (el: Element, pointerType = 'mouse') => fireEvent.pointerOut(el, { pointerType });
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('opens after the delay, never at once, and drops the key tooltip', () => {
+    renderRow();
+    expect(document.querySelector('[data-ask-opener]')).not.toHaveAttribute('title');
+    over(document.querySelector('[data-ask-opener]')!);
+    act(() => void vi.advanceTimersByTime(PEEK_OPEN_MS - 50));
+    expect(useNeedsYouStore.getState().inbox.open).toBe(false);
+    act(() => void vi.advanceTimersByTime(50));
+    expect(useNeedsYouStore.getState().inbox.open).toBe(true);
+    // A peek never takes the keyboard.
+    expect(screen.getByTestId('needs-you-inbox')).not.toContainElement(document.activeElement as HTMLElement);
+    expect(railModeNow()).toBe('hidden');
+  });
+
+  it('opens nothing for a pointer passing through', () => {
+    renderRow();
+    over(slot());
+    act(() => void vi.advanceTimersByTime(PEEK_OPEN_MS / 2));
+    out(slot());
+    act(() => void vi.advanceTimersByTime(PEEK_OPEN_MS * 2));
+    expect(useNeedsYouStore.getState().inbox.open).toBe(false);
+  });
+
+  it('waits for the pointer to cross into the card, and closes once it has gone', () => {
+    renderRow();
+    over(slot());
+    act(() => void vi.advanceTimersByTime(PEEK_OPEN_MS));
+    out(slot());
+    const card = screen.getByTestId('needs-you-inbox');
+    over(card);
+    act(() => void vi.advanceTimersByTime(PEEK_CLOSE_MS * 2));
+    expect(useNeedsYouStore.getState().inbox.open).toBe(true);
+    out(card);
+    act(() => void vi.advanceTimersByTime(PEEK_CLOSE_MS));
+    expect(useNeedsYouStore.getState().inbox.open).toBe(false);
+  });
+
+  it('stays once pressed in', () => {
+    renderRow();
+    over(slot());
+    act(() => void vi.advanceTimersByTime(PEEK_OPEN_MS));
+    const card = screen.getByTestId('needs-you-inbox');
+    fireEvent.pointerDown(card);
+    out(slot());
+    act(() => void vi.advanceTimersByTime(PEEK_CLOSE_MS * 2));
+    expect(useNeedsYouStore.getState().inbox.open).toBe(true);
+  });
+
+  it('a press on the count over a peek keeps it open', () => {
+    renderRow();
+    over(slot());
+    act(() => void vi.advanceTimersByTime(PEEK_OPEN_MS));
+    fireEvent.click(screen.getByTestId('ask-count'));
+    out(slot());
+    act(() => void vi.advanceTimersByTime(PEEK_CLOSE_MS * 2));
+    expect(useNeedsYouStore.getState().inbox.open).toBe(true);
+  });
+
+  it('gives way to Ask when the key is pressed', () => {
+    renderRow();
+    over(slot());
+    act(() => void vi.advanceTimersByTime(PEEK_OPEN_MS));
+    fireEvent.click(document.querySelector('[data-ask-opener]')!);
+    expect(useNeedsYouStore.getState().inbox.open).toBe(false);
+    expect(railModeNow()).toBe('ask');
+  });
+
+  it('never peeks for touch', () => {
+    renderRow();
+    over(slot(), 'touch');
+    act(() => void vi.advanceTimersByTime(PEEK_OPEN_MS * 2));
+    expect(useNeedsYouStore.getState().inbox.open).toBe(false);
   });
 });
