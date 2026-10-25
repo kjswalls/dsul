@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { AskMark, ASK_MARK_LIGHT } from '@/components/ai/ask-mark';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -370,6 +370,7 @@ export function AskOpener({ className }: { className?: string }) {
   const counted = canChat && waiting > 0 && !isMobile && !hidden && fit !== 'none';
   const hostInbox = useNeedsYouStore((s) => s.hostInbox);
   useEffect(() => (counted ? hostInbox() : undefined), [counted, hostInbox]);
+  const peek = useHoverPeek(counted);
 
   if (!offered || isMobile) return null;
   const full = fit === 'full';
@@ -399,6 +400,8 @@ export function AskOpener({ className }: { className?: string }) {
       data-fit={fit}
       hidden={hidden || fit === 'none'}
       className={cn('relative flex min-w-0 shrink-[1000]', offset, className)}
+      onPointerEnter={peek.enter}
+      onPointerLeave={peek.leave}
     >
       <button
         ref={ref}
@@ -410,11 +413,15 @@ export function AskOpener({ className }: { className?: string }) {
         onClick={(e) => {
           if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true });
           if (e.detail > 0) holdRailHeader(e.currentTarget);
+          // A peek the pointer rested into gives way to Ask, which lists the same questions.
+          peek.dismiss();
           toggleRail();
         }}
         // Lit, it opens Ask and says so; unlit, its name is its word.
         aria-label={canChat ? 'Open Ask' : word}
-        title={`${canChat ? 'Open Ask' : word} (${chord})`}
+        // Not while the count shows: resting on the key peeks the questions,
+        // and the browser's tooltip would stack on them.
+        title={counted ? undefined : `${canChat ? 'Open Ask' : word} (${chord})`}
         style={light}
         className={cn(
           'titlebar-hole group/ask-key relative isolate flex min-w-0 cursor-pointer items-center gap-2 text-[12px] leading-[17px] font-medium whitespace-nowrap text-[var(--ink-1)]',
@@ -452,7 +459,7 @@ export function AskOpener({ className }: { className?: string }) {
           )}
         </span>
       </button>
-      {counted && <AskCount count={waiting} plate={plate} raised={raised} />}
+      {counted && <AskCount count={waiting} plate={plate} raised={raised} peek={peek} />}
     </span>
   );
 }
@@ -460,12 +467,13 @@ export function AskOpener({ className }: { className?: string }) {
 /**
  * What is waiting on the user, on the Ask key's corner (Kirby's pick,
  * 2026-10-24): a small count in an aurora ring, the mark's top tile raised
- * beside it. Pressing the count peeks the inbox under the key without opening
- * Ask; pressing the key opens Ask, whose home lists every question. A sibling
+ * beside it. Pressing the count, or resting the mouse on the key or the count
+ * (useHoverPeek), peeks the inbox under the key without opening Ask; pressing
+ * the key opens Ask, whose home lists every question. A sibling
  * of the button, never inside it, so a press here never toggles the rail, and
  * absolutely placed, so the header's fit never counts it.
  */
-function AskCount({ count, plate, raised }: { count: number; plate: boolean; raised: boolean }) {
+function AskCount({ count, plate, raised, peek }: { count: number; plate: boolean; raised: boolean; peek: HoverPeek }) {
   const inbox = useNeedsYouStore((s) => s.inbox);
   const openInbox = useNeedsYouStore((s) => s.openInbox);
   const closeInbox = useNeedsYouStore((s) => s.closeInbox);
@@ -478,7 +486,10 @@ function AskCount({ count, plate, raised }: { count: number; plate: boolean; rai
           data-ask-count=""
           data-testid="ask-count"
           aria-label={label}
-          title={label}
+          onClick={(e) => {
+            // Over a peek, a press keeps it rather than toggling it shut.
+            if (peek.pin()) e.preventDefault();
+          }}
           className={cn(
             'titlebar-hole absolute z-10 grid size-6 cursor-pointer place-items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
             // On the key's top corner in each form; the drawn key's inset off
@@ -497,9 +508,90 @@ function AskCount({ count, plate, raised }: { count: number; plate: boolean; rai
         data-testid="needs-you-inbox"
         aria-label="Needs you"
         className={INBOX_SURFACE}
+        // A peek never takes the keyboard; a press on the count does.
+        onOpenAutoFocus={(e) => peek.peeking() && e.preventDefault()}
+        onPointerEnter={peek.enter}
+        onPointerLeave={peek.leave}
+        onPointerDown={() => peek.pin()}
+        onFocusCapture={() => peek.pin()}
       >
         <NeedsYouInbox />
       </PopoverContent>
     </Popover>
   );
+}
+
+/** How long the pointer rests on the key or its count before the questions peek. */
+export const PEEK_OPEN_MS = 450;
+/** How long a peek waits for the pointer to cross the gap into it. */
+export const PEEK_CLOSE_MS = 200;
+
+type HoverPeek = {
+  enter: (e: ReactPointerEvent) => void;
+  leave: (e: ReactPointerEvent) => void;
+  /** Keeps an open peek (a press or the keyboard in it); true if there was one to keep. */
+  pin: () => boolean;
+  /** Whether the open inbox is a peek nothing has kept yet. */
+  peeking: () => boolean;
+  /** Shuts a peek, kept or not, and drops a pending one. */
+  dismiss: () => void;
+};
+
+/**
+ * Resting a mouse on the Ask key or its count peeks the questions waiting
+ * (Kirby, 2026-10-25), after PEEK_OPEN_MS so a pointer passing on its way to
+ * the window's edge opens nothing. A peek closes PEEK_CLOSE_MS after the
+ * pointer leaves both the key and the card, unless it was kept: a press in
+ * it, focus in it, or a press on the count. Touch and pen never peek (a tap
+ * is a press), and only while the count shows.
+ */
+function useHoverPeek(active: boolean): HoverPeek {
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const peeked = useRef(false);
+  const clear = () => {
+    clearTimeout(timer.current);
+    timer.current = undefined;
+  };
+  useEffect(() => {
+    if (!active) {
+      clearTimeout(timer.current);
+      peeked.current = false;
+    }
+  }, [active]);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  return {
+    enter: (e) => {
+      if (!active || e.pointerType !== 'mouse') return;
+      clear();
+      if (useNeedsYouStore.getState().inbox.open) return;
+      timer.current = setTimeout(() => {
+        timer.current = undefined;
+        peeked.current = true;
+        useNeedsYouStore.getState().openInbox();
+      }, PEEK_OPEN_MS);
+    },
+    leave: (e) => {
+      if (e.pointerType !== 'mouse') return;
+      clear();
+      if (!peeked.current) return;
+      timer.current = setTimeout(() => {
+        timer.current = undefined;
+        if (!peeked.current) return;
+        peeked.current = false;
+        useNeedsYouStore.getState().closeInbox();
+      }, PEEK_CLOSE_MS);
+    },
+    pin: () => {
+      clear();
+      const was = peeked.current && useNeedsYouStore.getState().inbox.open;
+      peeked.current = false;
+      return was;
+    },
+    peeking: () => peeked.current,
+    dismiss: () => {
+      clear();
+      peeked.current = false;
+      if (useNeedsYouStore.getState().inbox.open) useNeedsYouStore.getState().closeInbox();
+    },
+  };
 }
