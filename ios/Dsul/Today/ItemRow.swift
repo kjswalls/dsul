@@ -133,13 +133,12 @@ struct ItemRow: View {
 }
 
 /// The item checkbox, drawn as the web's (components/primitives/item-check.tsx
-/// and the `--check-*` tokens in app/globals.css): a rounded square, filled
-/// grey with a fine lime tick when done. Light fills a mid pewter with the
-/// most saturated lime, since the brand lime is too close to pewter in
-/// lightness and reads washed out on it; dark fills a raised graphite with the
-/// accent. Open, it is a ring: dashed for a habit, solid for a task. The box is
-/// 90% of `diameter`, so it sits at the weight the old circle did; the caller
-/// gives it its hit area.
+/// and the `--check-*` tokens in app/globals.css): a rounded square that, when
+/// done, lifts off the page as a small card with a fine lime tick. Light is
+/// white paper over a soft shadow; dark is a lighter graphite tile, lit on its
+/// top edge, over a deep shadow. Open, it is a ring: dashed for a habit, solid
+/// for a task. The box is 90% of `diameter`, so it sits at the weight the old
+/// circle did; the caller gives it its hit area.
 struct TickBox: View {
     var done: Bool
     var habit: Bool
@@ -147,21 +146,33 @@ struct TickBox: View {
 
     @Environment(\.colorScheme) private var scheme
 
-    // oklch(0.5 0.016 272) and oklch(0.36 0.008 286): `--check-fill`.
-    private static let pewter = Color(red: 96 / 255, green: 99 / 255, blue: 109 / 255)
-    private static let graphite = Color(red: 61 / 255, green: 61 / 255, blue: 65 / 255)
-    // oklch(0.9 0.2 125), clipped to sRGB: light mode's `--check-tick`.
-    private static let vividLime = Color(red: 192 / 255, green: 244 / 255, blue: 71 / 255)
+    // oklch(0.42 0.008 286): dark mode's `--check-fill`.
+    private static let tile = Color(red: 76 / 255, green: 76 / 255, blue: 81 / 255)
 
     var body: some View {
         let side = diameter * 0.9
+        let unit = side / 16
+        let dark = scheme == .dark
         let shape = RoundedRectangle(cornerRadius: side * 5 / 16, style: .continuous)
         ZStack {
             if done {
-                shape.fill(scheme == .dark ? Self.graphite : Self.pewter)
+                shape
+                    .fill(dark ? Self.tile : Color.white)
+                    .shadow(color: .black.opacity(dark ? 0.6 : 0.14),
+                            radius: (dark ? 2 : 0.5) * unit, y: (dark ? 1.5 : 0.5) * unit)
+                    .shadow(color: .black.opacity(dark ? 0 : 0.2), radius: 1.5 * unit, y: unit)
+                    .overlay {
+                        if dark {
+                            // The lit top edge.
+                            shape.strokeBorder(
+                                LinearGradient(colors: [.white.opacity(0.12), .clear],
+                                               startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.15)),
+                                lineWidth: unit)
+                        }
+                    }
                 ItemTickShape()
-                    .stroke(scheme == .dark ? Color.accentColor : Self.vividLime,
-                            style: StrokeStyle(lineWidth: side * (scheme == .dark ? 1.3 : 1.5) / 16,
+                    .stroke(Color.accentColor,
+                            style: StrokeStyle(lineWidth: unit * (dark ? 1.3 : 1.6),
                                                lineCap: .round, lineJoin: .round))
             } else if habit {
                 shape.strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))

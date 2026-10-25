@@ -153,7 +153,7 @@ function TodayRowView({
         type="button"
         disabled={!v.tick}
         onClick={(e) => {
-          if (state !== 'done') animateItemCheck(e.currentTarget);
+          animateItemCheck(e.currentTarget, state === 'done');
           v.tick?.run();
         }}
         aria-label={v.tick?.label ?? item.title}
@@ -161,7 +161,7 @@ function TodayRowView({
         className={cn(
           'relative flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow] disabled:cursor-default',
           state === 'done'
-            ? 'inset-ring-check-fill bg-check-fill'
+            ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]'
             : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-muted-foreground'
         )}
       >

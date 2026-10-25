@@ -118,17 +118,19 @@
   --success: var(--lime-solid);
   --success-foreground: var(--lime-ink);
   --warning: var(--honey-solid);
-  /* A ticked item's box (components/primitives/item-check.tsx): a grey box with
-     the tick in the accent. In light a mid pewter, so a list of done rows sits
-     at the weight of its struck-through titles instead of reading as a column
-     of near-black squares; the tick is the most saturated lime at 1.5, since
-     the brand lime is too close to pewter in lightness and reads washed out on
-     it. In dark a raised graphite, since the ink there is near-white and a lime
-     tick on it would disappear. (Kirby picked pewter 2026-10-24; the ink fill,
-     var(--ink-0), with the brand lime at 1.3 is the fallback.) */
-  --check-fill: oklch(0.5 0.016 272);
-  --check-tick: oklch(0.9 0.2 125);
-  --check-tick-w: 1.5;
+  /* A ticked item's box (components/primitives/item-check.tsx): a raised card
+     with the tick in the accent. In light, white paper lifted by a soft shadow
+     with the brand lime at 1.6 (Kirby's P4b, 2026-10-25, after the ink box
+     read heavy and #601's pewter didn't land). Its ring is the fill colour, so
+     there is no outline. A multi-count habit's progress rises in --check-part,
+     a pale grey. --check-shadow keeps its outer layers first: Tailwind puts
+     the shadow last in its box-shadow list, and a layer that changes inset-ness
+     against the empty box's makes the whole transition snap. */
+  --check-fill: oklch(1 0 0);
+  --check-part: oklch(0.87 0.006 272);
+  --check-shadow: 0 1px 3px oklch(0.2 0.01 272 / 20%), 0 0.5px 1px oklch(0.2 0.01 272 / 14%);
+  --check-tick: var(--primary);
+  --check-tick-w: 1.6;
   --warning-foreground: var(--honey-ink);
   --ai: var(--honey-solid);            /* Beacon / coaching surfaces */
   --ai-foreground: var(--honey-ink);
@@ -342,7 +344,10 @@
   --success: var(--lime-solid);
   --success-foreground: var(--lime-ink);
   --warning: var(--honey-solid);
-  --check-fill: oklch(0.36 0.008 286);
+  /* Dark: a lighter graphite tile, lit on its top edge, over a deep shadow. */
+  --check-fill: oklch(0.42 0.008 286);
+  --check-part: oklch(0.34 0.008 286);
+  --check-shadow: 0 1.5px 4px oklch(0 0 0 / 60%), inset 0 1px 0 oklch(1 0 0 / 12%);
   --check-tick: var(--primary);
   --check-tick-w: 1.3;
   --warning-foreground: var(--honey-ink);
@@ -577,6 +582,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-check-fill: var(--check-fill);
+  --color-check-part: var(--check-part);
   --color-check-tick: var(--check-tick);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
@@ -4178,11 +4184,13 @@ button[data-ai-chip]:focus-visible {
 }
 
 /* The item tick (components/primitives/item-check.tsx). One drawing on every
-   surface that ticks an item: a fine stroke in the accent on a grey box.
-   The motion runs only while animateItemCheck() has marked the box
-   ([data-ticking]): the box settles in from 88% with no overshoot while the
-   tick draws, so a tick that arrives on load, from another device or on undo
-   just appears. Transform only: the box never moves its row. */
+   surface that ticks an item: a fine stroke in the accent on a raised box.
+   The motion runs only while animateItemCheck() has marked the box: ticking
+   ([data-ticking]), the box settles in from 88% with no overshoot while the
+   tick draws; un-ticking ([data-unticking]), a copy of the tick erases back
+   along its path while the box settles from 94% and its fill and shadow ease
+   out. A tick that arrives or leaves on load, from another device or on undo
+   just appears or goes. Transform only: the box never moves its row. */
 .item-tick {
   pointer-events: none;
   overflow: visible;
@@ -4202,6 +4210,28 @@ button[data-ai-chip]:focus-visible {
   [data-ticking] .item-tick path {
     animation: item-tick-draw 220ms 40ms cubic-bezier(0.25, 0.8, 0.25, 1) both;
   }
+  [data-unticking] {
+    animation: item-check-unsettle 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .item-tick-ghost path {
+    animation: item-tick-erase 200ms cubic-bezier(0.4, 0, 0.6, 1) both;
+  }
+}
+/* The erase's copy is only ever put there by animateItemCheck(); without motion
+   it has nothing to do. */
+@media (prefers-reduced-motion: reduce) {
+  .item-tick-ghost { display: none; }
+}
+@keyframes item-check-unsettle {
+  from { transform: scale(0.94); }
+  to { transform: scale(1); }
+}
+/* Offset 0 to -1 slides the dash off the path's start, so the tick un-draws
+   from its long arm back to where the pen first touched. */
+@keyframes item-tick-erase {
+  from { stroke-dashoffset: 0; opacity: 1; }
+  85% { opacity: 1; }
+  to { stroke-dashoffset: -1; opacity: 0; }
 }
 @keyframes item-check-settle {
   from { transform: scale(0.88); }

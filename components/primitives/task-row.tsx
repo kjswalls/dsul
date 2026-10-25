@@ -671,7 +671,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
           onClick={(e) => {
             e.stopPropagation();
             // Every press toward done animates; the press that clears it doesn't.
-            if (!completed) animateItemCheck(e.currentTarget);
+            animateItemCheck(e.currentTarget, completed);
             if (isTask) handleTaskToggle();
             else handleHabitToggle();
           }}
@@ -689,16 +689,16 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
             // (item-check.tsx).
             'relative z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] inset-ring transition-[background-color,box-shadow]',
             completed
-              ? 'inset-ring-check-fill bg-check-fill'
+              ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]'
               : multiPartial
-                ? 'inset-ring-check-fill bg-surface-3'
+                ? 'inset-ring-check-part bg-surface-3'
                 : 'inset-ring-muted-foreground/45 bg-surface-3 hover:inset-ring-muted-foreground'
           )}
         >
           {multiPartial && (
             <span
               aria-hidden="true"
-              className="absolute inset-x-0 bottom-0 bg-check-fill transition-[height] duration-150"
+              className="absolute inset-x-0 bottom-0 bg-check-part transition-[height] duration-150"
               style={{ height: `${multiPct}%` }}
             />
           )}

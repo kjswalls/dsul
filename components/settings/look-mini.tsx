@@ -192,7 +192,7 @@ function Row({ title, done = false, compact }: { title: string; done?: boolean; 
         data-checked={done ? 'true' : 'false'}
         className={cn(
           'relative z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] inset-ring',
-          done ? 'inset-ring-check-fill bg-check-fill' : 'inset-ring-muted-foreground/45 bg-surface-3'
+          done ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]' : 'inset-ring-muted-foreground/45 bg-surface-3'
         )}
       >
         {done && <ItemTick />}
