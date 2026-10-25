@@ -446,7 +446,7 @@ export function AskOpener({ className }: { className?: string }) {
             plate && !raised ? 'rounded-[7px]' : 'rounded-[8px]'
           )}
         >
-          <AskMark lit={canChat} raised={counted} />
+          <AskMark lit={canChat} />
           {plate && <span>{word}</span>}
           {full && (
             <kbd
@@ -466,8 +466,8 @@ export function AskOpener({ className }: { className?: string }) {
 
 /**
  * What is waiting on the user, on the Ask key's corner (Kirby's pick,
- * 2026-10-24): a small count in an aurora ring, the mark's top tile raised
- * beside it. Pressing the count, or resting the mouse on the key or the count
+ * 2026-10-24): a small count in an aurora ring. The mark itself never changes
+ * for it (Kirby, 2026-10-25): the count alone says something waits. Pressing the count, or resting the mouse on the key or the count
  * (useHoverPeek), peeks the inbox under the key without opening Ask; pressing
  * the key opens Ask, whose home lists every question. A sibling
  * of the button, never inside it, so a press here never toggles the rail, and

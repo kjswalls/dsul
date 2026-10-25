@@ -91,12 +91,13 @@ const renderRow = () =>
   );
 
 describe('the Ask key carries the count', () => {
-  it('draws the count and raises the mark, and the header pill stays away', () => {
+  it('draws the count and leaves the mark as it is, and the header pill stays away', () => {
     renderRow();
     const count = screen.getByTestId('ask-count');
     expect(count).toHaveTextContent('1');
     expect(count).toHaveAccessibleName('1 waiting on you');
-    expect(document.querySelector('[data-ask-opener] [data-raised]')).not.toBeNull();
+    // The count alone says something waits; the mark's head is its resting self.
+    expect(document.querySelector('[data-ask-opener] [data-ask-mark] rect:last-child')?.getAttribute('class')).not.toMatch(/drop-shadow|(^|\s)scale-125/);
     expect(screen.queryByTestId('needs-you-badge')).toBeNull();
     // The key is where the inbox opens now.
     expect(useNeedsYouStore.getState().hosts).toBe(1);
@@ -114,7 +115,6 @@ describe('the Ask key carries the count', () => {
     usePlannerStore.setState({ items: [] });
     renderRow();
     expect(screen.queryByTestId('ask-count')).toBeNull();
-    expect(document.querySelector('[data-ask-opener] [data-raised]')).toBeNull();
     expect(useNeedsYouStore.getState().hosts).toBe(0);
   });
 

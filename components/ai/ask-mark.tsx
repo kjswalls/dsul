@@ -45,13 +45,6 @@ const HEAD = cn(
   'group-focus-visible/ask-key:scale-125 group-focus-visible/ask-key:delay-[60ms]',
   'group-active/ask-key:scale-125 group-active/ask-key:delay-[60ms]'
 );
-/**
- * Raised: the head held one step up, the engaged key's own 125%, with a faint
- * glow in its own colour, while something waits on the user (the Ask key's
- * count, Kirby's pick "A + C", 2026-10-24). It is a state, not motion: it
- * sits still, and the key's hover has nothing further to grow.
- */
-const RAISED = 'scale-125 [filter:drop-shadow(0_0_1.5px_var(--ask-icon-pair-ink))]';
 /** The one-ink mark: every tile in the text colour round it, and still. */
 const INK = 'fill-current';
 /*
@@ -94,7 +87,6 @@ function Mark({
   data,
   ref,
   sized,
-  raised,
 }: {
   tone: AskMarkTone;
   /** False: nothing answers yet, and the aurora mark wears neutral ink (UNLIT_*). */
@@ -104,8 +96,6 @@ function Mark({
   ref?: Ref<SVGSVGElement>;
   /** Width and height attributes, Lucide's way, for a slot that sizes by class. */
   sized?: boolean;
-  /** The hand up: something is waiting on the user (AskMark's `raised`). */
-  raised?: boolean;
 }) {
   const [foot, mid, head] =
     tone === 'ink' ? [INK, INK, INK] : lit ? [FOOT, MID, HEAD] : [UNLIT_FOOT, UNLIT_MID, UNLIT_HEAD];
@@ -126,15 +116,7 @@ function Mark({
     >
       <rect x="0" y="8" width="8" height="8" rx="2" className={foot} />
       <rect x="7" y="3" width="6" height="6" rx="1.5" className={mid} />
-      <rect
-        x="12"
-        y="0"
-        width="4"
-        height="4"
-        rx="1"
-        data-raised={raised ? '' : undefined}
-        className={cn(head, raised && RAISED)}
-      />
+      <rect x="12" y="0" width="4" height="4" rx="1" className={head} />
     </svg>
   );
 }
@@ -178,10 +160,9 @@ export function AskMark({
   className,
   tone = 'aurora',
   lit = true,
-  raised = false,
   ...data
-}: { className?: string; tone?: AskMarkTone; lit?: boolean; raised?: boolean } & DataAttributes) {
-  return <Mark tone={tone} lit={lit} raised={raised} data={data} className={cn('size-4', className)} />;
+}: { className?: string; tone?: AskMarkTone; lit?: boolean } & DataAttributes) {
+  return <Mark tone={tone} lit={lit} data={data} className={cn('size-4', className)} />;
 }
 
 /**
