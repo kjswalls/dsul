@@ -8,10 +8,16 @@ import { cn } from '@/lib/utils';
  * questions (sidebar/prep-pack.tsx QuestionBody).
  */
 
-/** A choice: a wash on hover, the accent when picked. `live` false greys it out. */
+/**
+ * A choice: a wash on hover, the accent when picked. `live` false greys it out.
+ *
+ * No colour transition: the wash follows the pointer at once, as a menu's
+ * rows do. A 150ms fade left two rows half-lit while the pointer crossed
+ * them, which read as lag and flicker (Kirby, 2026-10-25).
+ */
 export function optionRowClass(on: boolean, live = true): string {
   return cn(
-    'flex w-full items-start gap-2 rounded-[8px] px-1.5 py-1.5 text-left text-sm transition-colors',
+    'flex w-full items-start gap-2 rounded-[8px] px-1.5 py-1.5 text-left text-sm',
     on ? 'bg-primary text-primary-foreground' : live ? 'text-foreground hover:bg-secondary' : 'text-muted-foreground'
   );
 }
