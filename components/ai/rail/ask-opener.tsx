@@ -321,9 +321,8 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
  * HOW IT LOOKS (the CSS is app/globals.css, "Ask's key"):
  *  - 'full': the plate holds the raised key (--surface-2, the omnibar's
  *    key-press shadow pair, a 3px skirt under it) with the chord printed on
- *    it as a small inset in --ink-1. Hover and press fade the header
- *    capsule's own well in under it, and press sinks the key 2px into its
- *    skirt. The mark is the light source: the key's rim glows
+ *    it as a small inset in --ink-1. Nothing paints under the key on hover
+ *    or press (Kirby, 2026-10-26); press sinks the key 2px into its skirt. The mark is the light source: the key's rim glows
  *    in the accent beside the mark's lit tile (ASK_MARK_LIGHT) and hands off
  *    through the look's aurora partner to the hairline; engaged, the light
  *    travels round the whole rim. The plain and masthead headers, which have
