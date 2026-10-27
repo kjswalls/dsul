@@ -1105,9 +1105,9 @@ describe("the item's pinned conversation", () => {
       expect(railRegion()).toHaveAttribute('data-open', 'true');
       const rail = within(dialog()).getByTestId('item-rail');
       expect(rail).toHaveTextContent('Health');
-      // The title is the header's crumb, never repeated on the facts line.
-      expect(rail).not.toHaveTextContent('Book the dentist');
-      expect(within(dialog()).getByTestId('item-rail-title')).toHaveTextContent('Book the dentist');
+      // The strip leads with the title; the header names only the view beneath.
+      expect(rail.querySelector('[data-rail-title]')).toHaveTextContent('Book the dentist');
+      expect(dialog().querySelector('[data-rail-header]')).not.toHaveTextContent('Book the dentist');
       expect(within(dialog()).getByTestId('rail-back')).toHaveTextContent(/^Ask$/);
       expect(rail.querySelector('[data-rail-chip="date"]')).toHaveTextContent('Wed, Oct 14');
       expect(rail.querySelector('[data-rail-chip="steps"]')).toHaveTextContent('1/2');
@@ -1130,16 +1130,11 @@ describe("the item's pinned conversation", () => {
       expect(details()).toHaveAttribute('data-open', 'true');
     });
 
-    it('folds and unfolds from the title in the header, and keeps ⋯ and Open as page there', () => {
+    it('keeps ⋯ and Open as page in the header, which names no item', () => {
       renderShell();
       openRow(DATED);
-      const title = () => within(dialog()).getByTestId('item-rail-title');
-      expect(title()).toHaveAttribute('aria-expanded', 'true');
-      fireEvent.click(title());
-      expect(details()).toHaveAttribute('data-open', 'false');
-      expect(title()).toHaveAttribute('aria-expanded', 'false');
-      fireEvent.click(title());
-      expect(details()).toHaveAttribute('data-open', 'true');
+      expect(within(dialog()).queryByTestId('item-rail-title')).toBeNull();
+      expect(dialog().querySelector('[data-rail-header]')).not.toHaveTextContent('Book the dentist');
       const header = dialog().querySelector('[data-rail-header]') as HTMLElement;
       expect(within(header).getByTestId('item-dialog-more')).toBeInTheDocument();
       expect(within(header).getByTestId('item-dialog-open-page')).toBeInTheDocument();
@@ -1155,16 +1150,22 @@ describe("the item's pinned conversation", () => {
       expect(details()).toHaveAttribute('data-open', 'false');
     });
 
-    it('ticks the item from the header, folded or not, outside the fold, and unticks it again', () => {
+    it('ticks the item beside its title, or beside the folded strip, and unticks it again', () => {
       renderShell();
       openRow(DATED);
-      expect(within(dialog()).getByTestId('item-rail-check').closest('[data-rail-header]')).not.toBeNull();
+      // Unfolded: one check, beside the title, in the details.
+      const beside = within(dialog()).getAllByTestId('item-rail-check');
+      expect(beside).toHaveLength(1);
+      expect(beside[0].closest('[data-testid="item-details"]')).not.toBeNull();
+      expect(beside[0].closest('[data-rail-header]')).toBeNull();
       act(() => itemBox().focus());
-      const check = within(dialog()).getByTestId('item-rail-check');
-      // In the header, never in the fold's clip: the lime keeps its own element.
-      expect(check.closest('[data-rail-header]')).not.toBeNull();
-      expect(check.closest('[data-testid="item-rail-region"]')).toBeNull();
+      const checks = within(dialog()).getAllByTestId('item-rail-check');
+      expect(checks).toHaveLength(1);
+      const check = checks[0];
+      // Folded: beside the strip, never inside its button (a button in a button).
+      expect(check.closest('[data-testid="item-rail-region"]')).not.toBeNull();
       expect(check.closest('[data-testid="item-rail"]')).toBeNull();
+      expect(check.closest('[data-testid="item-details"]')).toBeNull();
       expect(check).toHaveAttribute('data-checked', 'false');
       expect(check).toHaveAccessibleName('Mark done');
       fireEvent.click(check);

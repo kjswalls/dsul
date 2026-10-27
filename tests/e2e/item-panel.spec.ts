@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import {
   getAccessToken,
@@ -56,6 +56,13 @@ const clickEmptySpace = async (
   for (const m of opts.modifiers ?? []) await page.keyboard.up(m);
 };
 
+/** The panel hides an empty notes field; + → Notes brings it back with the caret in it. */
+const revealNotes = async (panel: Locator) => {
+  await panel.getByTestId('item-clearing-seed').click();
+  await panel.page().getByTestId('item-clearing-seed-notes').click();
+  await expect(panel.getByTestId('item-dialog-notes')).toBeFocused();
+};
+
 test.describe('Item panel', () => {
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
@@ -77,6 +84,8 @@ test.describe('Item panel', () => {
       await expect(itemCard(page, taskId)).toBeVisible({ timeout: 10_000 });
 
       const panel = await openPanelFor(page, taskId, taskTitle);
+      // Empty notes take no room in the panel: + → Notes brings the field.
+      await revealNotes(panel);
       await panel.getByTestId('item-dialog-notes').fill(noteText);
 
       // Assert the edit registered BEFORE relying on it: if the draft dropped
@@ -193,6 +202,7 @@ test.describe('Item panel', () => {
       await expect(itemCard(page, taskId)).toHaveAttribute('data-selected', 'true');
 
       // Clicks INSIDE the panel and on the row itself are not click-away.
+      await revealNotes(panel);
       await panel.getByTestId('item-dialog-notes').click();
       await itemCard(page, taskId).getByText(taskTitle, { exact: true }).click();
       await expect(panel).toBeVisible();

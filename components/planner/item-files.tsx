@@ -10,16 +10,16 @@ import { cn } from '@/lib/utils';
 
 /**
  * Files kept on an item (lib/item-files.ts, migration 073), in two pieces:
- * the paperclip in the panel's header, which picks files, and the Files
- * section, which lists them. The section draws nothing while an item has no
+ * the picker (the docked panel's ⋯ "Attach a file", a paperclip elsewhere),
+ * and the Files section, which lists them. The section draws nothing while an item has no
  * files and none are uploading, so a panel without files looks exactly as it
  * did before files existed.
  */
 
 const NO_FILES: ItemFile[] = [];
 
-/** The hidden picker both pieces open. */
-function usePicker(itemId: string) {
+/** The hidden picker both pieces open, and the panel's ⋯ "Attach a file". */
+export function usePicker(itemId: string) {
   const ref = useRef<HTMLInputElement>(null);
   const add = useItemFilesStore((s) => s.add);
   const input = (

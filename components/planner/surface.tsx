@@ -204,11 +204,12 @@ export const SERIF_TITLE_CLASS =
 
 /**
  * Notes' recipe: min-h-0 unpins the Textarea primitive's min-h-16; the rest is
- * the title's borderless recipe, dark:bg-transparent included. Paired with the
- * serif title as "what you wrote".
+ * the title's borderless recipe, dark:bg-transparent included. Plain sans a
+ * step softer than the title (the item panel tidy, round 3), so the title
+ * stays the one heading.
  */
 export const SERIF_NOTES_CLASS =
-  '-mx-1 min-h-0 w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 font-serif text-sm leading-relaxed shadow-none placeholder:italic focus-visible:ring-0 md:text-sm dark:bg-transparent';
+  '-mx-1 min-h-0 w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 font-sans text-sm leading-relaxed text-foreground/80 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent';
 
 // ── The type menu ────────────────────────────────────────────────────────────
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
-import { Pencil, Plus, Split, X } from 'lucide-react';
+import { ChevronRight, Pencil, Plus, Split, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { Input } from '@/components/ui/input';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -65,9 +65,22 @@ const SectionLabel = BandLabel;
 
 // ── Subtasks ─────────────────────────────────────────────────────────────────
 
-function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean }) {
+function SubtasksSection({
+  item,
+  offerSetup,
+  asksElsewhere,
+}: {
+  item: Item;
+  offerSetup: boolean;
+  /** "Break it down" is a chip above the item's box instead (ItemBoxAsks). */
+  asksElsewhere: boolean;
+}) {
   const { items, addTask, addTasksBulk, deleteTask, toggleTaskStatus } = usePlannerStore();
   const [title, setTitle] = useState('');
+  // The finished ones fold under "N done" (the panel tidy, round 3), held per
+  // item so the next item opens folded.
+  const [doneOpenFor, setDoneOpenFor] = useState<string | null>(null);
+  const doneOpen = doneOpenFor === item.id;
 
   const { canPropose, askInvite } = useAICapabilities();
   const offerNudge = useOneTimeNudge(NUDGE_BREAK_IT_DOWN_OFFER);
@@ -123,7 +136,9 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
     setTitle('');
   };
 
-  const done = children.filter((c) => c.status === 'completed').length;
+  const doneRows = children.filter((c) => c.status === 'completed');
+  const openRows = children.filter((c) => c.status !== 'completed');
+  const done = doneRows.length;
 
   /**
    * "This is too big" is the moment the assistant is most useful and the moment
@@ -152,13 +167,69 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
   const offered =
     offerSetup && !breakable && offerNudge.active && canOfferBreakDown(item, askInvite);
 
+  const renderRow = (child: TaskItem) => (
+    <div
+      key={child.id}
+      className="group flex items-center gap-2"
+      data-testid="subtask-row"
+      // F2 over a subtask renames it in place, as over a planner row
+      // (rename_hovered reads this ref; so do E and Backspace).
+      onMouseEnter={() => setHoveredItemRef(child.id, 'task')}
+      onMouseLeave={() => setHoveredItemRef(null, null)}
+    >
+      <button
+        type="button"
+        onClick={(e) => {
+          animateItemCheck(e.currentTarget, child.status === 'completed');
+          toggleTaskStatus(child.id);
+        }}
+        aria-label={child.status === 'completed' ? 'Mark not done' : 'Mark done'}
+        className={cn(
+          'relative flex size-4 shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow]',
+          'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+          child.status === 'completed'
+            ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]'
+            : 'inset-ring-muted-foreground/45 hover:inset-ring-muted-foreground'
+        )}
+      >
+        {child.status === 'completed' && <ItemTick />}
+      </button>
+      <SubtaskTitle child={child} />
+      <button
+        type="button"
+        onClick={() => deleteTask(child.id)}
+        aria-label={`Delete subtask ${child.title}`}
+        className="text-muted-foreground hover:text-destructive opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+      >
+        <X className="size-3.5" />
+      </button>
+    </div>
+  );
+
   return (
     <div ref={sectionRef} className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <SectionLabel>
-          Subtasks{children.length > 0 ? ` · ${done} of ${children.length}` : ''}
-        </SectionLabel>
-        {breakable && !drafts && (
+      <div className="flex items-center justify-between gap-2.5">
+        <SectionLabel>Subtasks</SectionLabel>
+        {children.length > 0 && (
+          <>
+            {/* How far along, as a hairline: graphite, never lime, and its own
+                element so nothing around it dims it. */}
+            <span
+              aria-hidden
+              className="bg-border/70 h-[3px] min-w-6 flex-1 overflow-hidden rounded-full"
+              data-testid="subtask-progress"
+            >
+              <span
+                className="bg-foreground block h-full rounded-full transition-[width] duration-200"
+                style={{ width: `${Math.round((done / children.length) * 100)}%` }}
+              />
+            </span>
+            <span className="text-muted-foreground font-mono text-[10px] tabular-nums" data-testid="subtask-count">
+              {done}/{children.length}
+            </span>
+          </>
+        )}
+        {breakable && !drafts && !asksElsewhere && (
           <button
             onClick={() => requestProposal('breakdown', undefined, item.id)}
             disabled={proposalBusy}
@@ -197,44 +268,7 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
         )}
       </div>
 
-      {children.map((child) => (
-        <div
-          key={child.id}
-          className="group flex items-center gap-2"
-          data-testid="subtask-row"
-          // F2 over a subtask renames it in place, as over a planner row
-          // (rename_hovered reads this ref; so do E and Backspace).
-          onMouseEnter={() => setHoveredItemRef(child.id, 'task')}
-          onMouseLeave={() => setHoveredItemRef(null, null)}
-        >
-          <button
-            type="button"
-            onClick={(e) => {
-              animateItemCheck(e.currentTarget, child.status === 'completed');
-              toggleTaskStatus(child.id);
-            }}
-            aria-label={child.status === 'completed' ? 'Mark not done' : 'Mark done'}
-            className={cn(
-              'relative flex size-4 shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow]',
-              'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-              child.status === 'completed'
-                ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]'
-                : 'inset-ring-muted-foreground/45 hover:inset-ring-muted-foreground'
-            )}
-          >
-            {child.status === 'completed' && <ItemTick />}
-          </button>
-          <SubtaskTitle child={child} />
-          <button
-            type="button"
-            onClick={() => deleteTask(child.id)}
-            aria-label={`Delete subtask ${child.title}`}
-            className="text-muted-foreground hover:text-destructive opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-          >
-            <X className="size-3.5" />
-          </button>
-        </div>
-      ))}
+      {openRows.map(renderRow)}
       {/* What the AI drafted: rows not kept yet, after the kept ones. */}
       <DraftedSteps item={item} />
       <div className="flex items-center gap-2">
@@ -273,6 +307,19 @@ function SubtasksSection({ item, offerSetup }: { item: Item; offerSetup: boolean
           }}
         />
       </div>
+      {done > 0 && (
+        <button
+          type="button"
+          onClick={() => setDoneOpenFor(doneOpen ? null : item.id)}
+          aria-expanded={doneOpen}
+          data-testid="subtask-done-fold"
+          className="text-muted-foreground hover:text-foreground -ml-0.5 flex w-fit items-center gap-1.5 rounded-sm py-0.5 text-xs transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
+        >
+          <ChevronRight className={cn('size-3.5 transition-transform', doneOpen && 'rotate-90')} aria-hidden />
+          {openRows.length === 0 ? `All ${done} done` : `${done} done`}
+        </button>
+      )}
+      {doneOpen && doneRows.map(renderRow)}
     </div>
   );
 }
@@ -332,9 +379,12 @@ function AgentSection({
   item,
   inConversation,
   statusElsewhere = false,
+  asksElsewhere = false,
 }: {
   item: Item;
   inConversation: boolean;
+  /** "Give to OpenClaw" is a chip above the item's box instead (ItemBoxAsks). */
+  asksElsewhere?: boolean;
   /** The agent's status is drawn under the item's title instead (ItemDialog's `AgentStatus`). */
   statusElsewhere?: boolean;
 }) {
@@ -355,7 +405,7 @@ function AgentSection({
     // button. So this asks one question: is an OpenClaw agent paired
     // (`canDelegate`, independent of who answers chat)? And it always writes
     // `openclaw`, the only assignee anything consumes.
-    if (!canDelegate) return null;
+    if (!canDelegate || asksElsewhere) return null;
 
     return (
       <button
@@ -573,25 +623,58 @@ function AgentReply({ item }: { item: TaskItem }) {
  */
 export { AgentReply as AgentReplyForTest };
 
-// ── Footer ───────────────────────────────────────────────────────────────────
+// ── Asks above the box ───────────────────────────────────────────────────────
 
 /**
- * The autosaving panel's footer: "Saves as you go", the only promise a surface
- * with no Save button makes. The edit history it used to fold up beside that
- * is the item's timeline now (components/planner/item-timeline.tsx).
+ * The item's two standing asks as chips over its pinned box, where the docked
+ * panel's chat starts (the panel tidy, round 3): "Break it down" (the same gate
+ * and request as the Subtasks section's button, which steps aside) and "Give
+ * to OpenClaw" (the Agent section's Assign, likewise). Nothing when neither
+ * applies, so a finished or delegated item shows no row.
  */
-export function ClearingFooter({ saving }: { saving: boolean }) {
+export function ItemBoxAsks({ item }: { item: Item }) {
+  const live = usePlannerStore((s) => s.items.find((i) => i.id === item.id)) ?? item;
+  const updateTask = usePlannerStore((s) => s.updateTask);
+  const { canPropose, canDelegate } = useAICapabilities();
+  const requestProposal = useProposalStore((s) => s.request);
+  const proposalBusy = useProposalStore(
+    (s) => s.status === 'loading' && s.lastRequest?.surface === `item:${item.id}`
+  );
+  const drafts = useStepDraftsShowing(item.id, item.title);
+  const config = getItemTypeConfig(itemTypeName(live));
+  const breakable = config.subtasks && canBreakDown(live, canPropose) && !drafts;
+  const givable = config.agentAssignable && canDelegate && !(live as TaskItem).assignee;
+  if (!breakable && !givable) return null;
+  const chip = cn(
+    'inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs text-foreground/85',
+    'hover-wash transition-colors disabled:opacity-50',
+    'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
+  );
   return (
-    <div className="flex items-center justify-between gap-3 border-t pt-3">
-      <span
-        role="status"
-        aria-live="polite"
-        className="text-muted-foreground inline-flex items-center gap-1.5 text-xs"
-      >
-        {/* The lime tick is its own element so no parent opacity ever dims it. */}
-        <span className="bg-primary size-1.5 shrink-0 rounded-full" aria-hidden />
-        {saving ? 'Saving…' : 'Saves as you go'}
-      </span>
+    <div className="flex flex-wrap gap-1.5" data-sub-input data-testid="item-box-asks">
+      {breakable && (
+        <button
+          type="button"
+          onClick={() => requestProposal('breakdown', undefined, item.id)}
+          disabled={proposalBusy}
+          data-testid="break-it-down"
+          className={chip}
+        >
+          <Split className="text-ai size-3.5" />
+          Break it down
+        </button>
+      )}
+      {givable && (
+        <button
+          type="button"
+          onClick={() => updateTask(item.id, { assignee: 'openclaw', aiStatus: 'queued' })}
+          data-testid="assign-agent"
+          className={chip}
+        >
+          <AskMark tone="ink" className="size-3.5" />
+          Give to OpenClaw
+        </button>
+      )}
     </div>
   );
 }
@@ -681,8 +764,11 @@ export function ItemDetailSections({
   offerSetup = false,
   conversationElsewhere = false,
   agentStatusElsewhere = false,
+  asksElsewhere = false,
 }: {
   item: Item;
+  /** The host draws Break it down and Give to OpenClaw as chips above its box (`ItemBoxAsks`). */
+  asksElsewhere?: boolean;
   /** The host draws the agent's status under the item's title (`AgentStatus`). */
   agentStatusElsewhere?: boolean;
   /** The item's conversation is drawn by the host, outside these sections (the rail's pinned one). */
@@ -707,7 +793,7 @@ export function ItemDetailSections({
     // (subtask toggles, assign/unassign, send) — handles its own Enter. Without
     // this, Enter on a focused subtask checkbox saves-and-closes the panel.
     <div className="flex flex-col gap-4" data-sub-input>
-      {config.subtasks && <SubtasksSection item={item} offerSetup={offerSetup} />}
+      {config.subtasks && <SubtasksSection item={item} offerSetup={offerSetup} asksElsewhere={asksElsewhere} />}
       {/* What the AI got ready for it (a prep pack): where a row's ready chip leads. */}
       {item.type === 'task' && <PackInPanel itemId={item.id} title={item.title} />}
       {config.agentAssignable && (
@@ -715,6 +801,7 @@ export function ItemDetailSections({
           item={item}
           inConversation={canChat && (conversation !== 'none' || conversationElsewhere)}
           statusElsewhere={agentStatusElsewhere}
+          asksElsewhere={asksElsewhere}
         />
       )}
       <ItemFilesSection itemId={item.id} />
