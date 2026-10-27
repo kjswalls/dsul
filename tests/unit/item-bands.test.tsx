@@ -888,11 +888,11 @@ describe('the edit pane: type switch and row controls', () => {
     return Array.from(document.querySelectorAll('[role="menuitem"][data-testid]')).map((b) => b.getAttribute('data-testid'));
   };
 
-  it('gives a habit the bar: Skip today, Pause and Pause until, with Delete under ⋯', () => {
+  it('gives a habit the bar: Skip today, Pause and Pause until, with Copy ▸ and Delete under ⋯', () => {
     seed({ items: [habitItem({ project: 'Onboarding' })] });
     panel(habitItem({ project: 'Onboarding' }));
     expect(controls()).toEqual(['item-dialog-skip', 'item-dialog-pause', 'item-dialog-pause-until']);
-    expect(more()).toEqual(['item-dialog-delete']);
+    expect(more()).toEqual(['item-menu-copy', 'item-dialog-delete']);
   });
 
   it('gives a one-off task on the grid the put-it-off pair instead of Skip', () => {
@@ -901,7 +901,14 @@ describe('the edit pane: type switch and row controls', () => {
     panel(t);
     // Three in the bar; the rest under ⋯, Delete last.
     expect(controls()).toEqual(['item-dialog-tomorrow', 'item-dialog-unschedule', 'item-dialog-pause']);
-    expect(more()).toEqual(['item-dialog-pause-until', 'item-dialog-delete']);
+    expect(more()).toEqual(['item-dialog-pause-until', 'item-menu-copy', 'item-dialog-delete']);
+  });
+
+  it('offers Unskip under ⋯ for a habit skipped today, from the right-click menu’s verb', () => {
+    const h = habitItem({ project: 'Onboarding', skippedDates: [today] });
+    seed({ items: [h] });
+    panel(h);
+    expect(more()).toContain('item-dialog-unskip');
   });
 
   it('shows who has the item once, under its title', () => {

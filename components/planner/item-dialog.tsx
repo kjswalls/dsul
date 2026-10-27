@@ -35,9 +35,12 @@ import {
   Repeat2,
   SkipForward,
   Trash2,
+  Undo2,
+  Unlink,
   X,
   type LucideIcon,
 } from 'lucide-react';
+import { AskSection, CopyRows, DropdownRows } from '@/components/planner/item-context-menu';
 import { Button, ButtonKey } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -3033,6 +3036,23 @@ function ItemDialogInner({
     </Button>
   );
 
+  // The rail's Done check: the row checkbox's verb (lib/item-verbs.ts `tick`),
+  // asked of a context the panel builds itself. The panel is drawn for no day,
+  // so like its header controls it answers for TODAY, and it asks whether the
+  // item falls on today at all, so a weekday habit opened on a Saturday shows
+  // no check rather than writing an off-schedule tick.
+  const railVerbContext = (item: Item): VerbContext => {
+    const now = new Date();
+    const todayStr = toDateStr(now, activationTz);
+    return {
+      dateStr: todayStr,
+      date: now,
+      todayStr,
+      tz: activationTz,
+      milestoneIds: typeSwitchMilestones,
+      occurrence: occurrenceOn(item, todayStr, todayStr, activationTz),
+    };
+  };
   // ── The row's controls, in the header ────────────────────────────────────
   // The same capsule, icons, order and gates as a row's hover cluster
   // (task-row.tsx), so the pane and the row never disagree about what can be
@@ -3200,6 +3220,26 @@ function ItemDialogInner({
   const attachInMenu = withDetailSections && isPanel && mode === 'edit' && !!editItem;
   const filesAvailable = useItemFilesStore((s) => s.available);
   const attachPicker = usePicker(editItem?.id ?? '');
+  // The right-click menu's verbs the bar does not carry, asked of the same
+  // declarations (lib/item-verbs.ts) for today, as the tick is.
+  const menuCtx = mode === 'edit' && editItem ? railVerbContext(editItem) : null;
+  const menuVerbs: { id: string; icon: LucideIcon; label: string; run: () => void }[] = [];
+  if (menuCtx && editItem) {
+    if (ITEM_VERBS.unskip.eligible(editItem, menuCtx))
+      menuVerbs.push({
+        id: 'unskip',
+        icon: Undo2,
+        label: ITEM_VERBS.unskip.label(editItem, menuCtx),
+        run: () => ITEM_VERBS.unskip.run(editItem, menuCtx),
+      });
+    if (ITEM_VERBS.leaveProjectBlock.eligible(editItem, menuCtx))
+      menuVerbs.push({
+        id: 'leave-block',
+        icon: Unlink,
+        label: ITEM_VERBS.leaveProjectBlock.label(editItem, menuCtx),
+        run: () => ITEM_VERBS.leaveProjectBlock.run(editItem, menuCtx),
+      });
+  }
   // Everything the bar has no room for, then Delete, last and in red. Reset
   // streak is not here: it lives with the streak (StreakChip).
   const moreMenu = mode === 'edit' && editItem && (
@@ -3222,13 +3262,24 @@ function ItemDialogInner({
                 {a.label}
               </DropdownMenuItem>
             ))}
+            {menuVerbs.map((v) => (
+              <DropdownMenuItem key={v.id} data-testid={`item-dialog-${v.id}`} onSelect={v.run}>
+                <v.icon className="size-3.5" />
+                {v.label}
+              </DropdownMenuItem>
+            ))}
             {attachInMenu && filesAvailable !== false && (
               <DropdownMenuItem data-testid="item-dialog-attach" onSelect={attachPicker.open}>
                 <Paperclip className="size-3.5" />
                 Attach a file
               </DropdownMenuItem>
             )}
-            {(moreActions.length > 0 || (attachInMenu && filesAvailable !== false)) && <DropdownMenuSeparator />}
+            {/* The right-click menu's own AI ▸ and Copy ▸, drawn as dropdown rows. */}
+            <DropdownRows>
+              <AskSection item={editItem} todayStr={paneToday} tz={activationTz} page={false} />
+              <CopyRows item={editItem} />
+            </DropdownRows>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               data-testid="item-dialog-delete"
               variant="destructive"
@@ -3534,23 +3585,6 @@ function ItemDialogInner({
     }
   }
 
-  // The rail's Done check: the row checkbox's verb (lib/item-verbs.ts `tick`),
-  // asked of a context the panel builds itself. The panel is drawn for no day,
-  // so like its header controls it answers for TODAY, and it asks whether the
-  // item falls on today at all, so a weekday habit opened on a Saturday shows
-  // no check rather than writing an off-schedule tick.
-  const railVerbContext = (item: Item): VerbContext => {
-    const now = new Date();
-    const todayStr = toDateStr(now, activationTz);
-    return {
-      dateStr: todayStr,
-      date: now,
-      todayStr,
-      tz: activationTz,
-      milestoneIds: typeSwitchMilestones,
-      occurrence: occurrenceOn(item, todayStr, todayStr, activationTz),
-    };
-  };
   // The tick sits beside the title on the docked panel, AI or not (the panel
   // tidy, round 3); it used to ride the rail header's icons.
   const railCtx = presentation === 'panel' && mode === 'edit' && editItem ? railVerbContext(editItem) : null;

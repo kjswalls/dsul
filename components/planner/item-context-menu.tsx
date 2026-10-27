@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useState, type ReactElement, type ReactNode } from 'react';
+import { Fragment, createContext, useContext, useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -41,6 +41,13 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
+import {
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Calendar } from '@/components/ui/calendar';
 import {
   EligibleCount,
@@ -238,6 +245,44 @@ function MenuBody({ item, date, occurrence, extra, openHref, renameInPlace }: Om
   return <SingleBody item={live} date={date} occurrence={occurrence} extra={extra} openHref={openHref} renameInPlace={renameInPlace} />;
 }
 
+/**
+ * The menu pieces the shared rows draw with. The right-click menu's by
+ * default; the item panel's ⋯ (a dropdown) draws the same AI ▸ and Copy ▸
+ * rows inside `DropdownRows`, so the two menus never word a verb twice. Only
+ * the right-click menu hands focus back to the row it opened on: a dropdown
+ * returns it to its own trigger.
+ */
+interface MenuKit {
+  Item: typeof ContextMenuItem;
+  Sub: typeof ContextMenuSub;
+  SubTrigger: typeof ContextMenuSubTrigger;
+  SubContent: typeof ContextMenuSubContent;
+  Separator: typeof ContextMenuSeparator;
+  returnFocus: () => void;
+}
+const CONTEXT_KIT: MenuKit = {
+  Item: ContextMenuItem,
+  Sub: ContextMenuSub,
+  SubTrigger: ContextMenuSubTrigger,
+  SubContent: ContextMenuSubContent,
+  Separator: ContextMenuSeparator,
+  returnFocus: () => returnFocusToOpener(),
+};
+const DROPDOWN_KIT = {
+  Item: DropdownMenuItem,
+  Sub: DropdownMenuSub,
+  SubTrigger: DropdownMenuSubTrigger,
+  SubContent: DropdownMenuSubContent,
+  Separator: DropdownMenuSeparator,
+  returnFocus: () => {},
+} as unknown as MenuKit;
+const MenuKitContext = createContext<MenuKit>(CONTEXT_KIT);
+
+/** Draws the shared rows below with a dropdown's pieces (the item panel's ⋯). */
+export function DropdownRows({ children }: { children: ReactNode }) {
+  return <MenuKitContext.Provider value={DROPDOWN_KIT}>{children}</MenuKitContext.Provider>;
+}
+
 /** Row class for the menu's own rows — the Edit menu's, so the two read as one. */
 const ROW = cn(MENU_ROW, "[&_svg:not([class*='text-'])]:text-muted-foreground");
 
@@ -261,8 +306,9 @@ function Row({
   destructive?: boolean;
   onSelect: () => void;
 }) {
+  const { Item } = useContext(MenuKitContext);
   return (
-    <ContextMenuItem
+    <Item
       className={ROW}
       variant={destructive ? 'destructive' : 'default'}
       data-testid={testId}
@@ -271,7 +317,7 @@ function Row({
       <span className="flex size-3.5 shrink-0 items-center justify-center">{icon}</span>
       <span className="flex-1 truncate">{label}</span>
       {detail && <span className="text-muted-foreground shrink-0">{detail}</span>}
-    </ContextMenuItem>
+    </Item>
   );
 }
 
@@ -404,13 +450,6 @@ function SingleBody({
     when.push(<Row key="block" icon={<Unlink className="size-3.5" />} label={label('leaveProjectBlock')} testId="item-menu-leave-block" onSelect={run('leaveProjectBlock')} />);
   }
 
-  const copy = (text: string, what: string) => () => {
-    void navigator.clipboard?.writeText(text).then(
-      () => toast(`${what} copied`),
-      () => toast.error(`Couldn’t copy the ${what.toLowerCase()}`)
-    );
-  };
-
   return (
     <>
       <ContextMenuLabel className="text-muted-foreground max-w-60 truncate px-2 py-1 text-2xs font-normal">
@@ -440,18 +479,7 @@ function SingleBody({
       {when}
       <EditSection edit={edit} />
       <ContextMenuSeparator />
-      <ContextMenuSub>
-        <ContextMenuSubTrigger className={ROW} data-testid="item-menu-copy">
-          <span className="flex size-3.5 shrink-0 items-center justify-center">
-            <Copy className="size-3.5" />
-          </span>
-          <span className="flex-1">Copy</span>
-        </ContextMenuSubTrigger>
-        <ContextMenuSubContent className={PANEL} data-testid="item-menu-copy-content">
-          <Row icon={<Link2 className="size-3.5" />} label="Link" testId="item-menu-copy-link" onSelect={copy(`${window.location.origin}/item/${item.id}`, 'Link')} />
-          <Row icon={<Copy className="size-3.5" />} label="Title" testId="item-menu-copy-title" onSelect={copy(item.title, 'Title')} />
-        </ContextMenuSubContent>
-      </ContextMenuSub>
+      <CopyRows item={item} />
       {extra}
       <ContextMenuSeparator />
       {/* Destructive and rare, so it waits down here with Delete. */}
@@ -460,6 +488,31 @@ function SingleBody({
       )}
       <Row icon={<Trash2 className="size-3.5" />} label="Delete…" destructive testId="item-menu-delete" onSelect={run('delete')} />
     </>
+  );
+}
+
+/** "Copy ▸": the item's link and its title. */
+export function CopyRows({ item }: { item: Item }) {
+  const { Sub, SubTrigger, SubContent } = useContext(MenuKitContext);
+  const copy = (text: string, what: string) => () => {
+    void navigator.clipboard?.writeText(text).then(
+      () => toast(`${what} copied`),
+      () => toast.error(`Couldn’t copy the ${what.toLowerCase()}`)
+    );
+  };
+  return (
+    <Sub>
+      <SubTrigger className={cn(ROW, '[&>svg:last-child]:size-3.5')} data-testid="item-menu-copy">
+        <span className="flex size-3.5 shrink-0 items-center justify-center">
+          <Copy className="size-3.5" />
+        </span>
+        <span className="flex-1">Copy</span>
+      </SubTrigger>
+      <SubContent className={PANEL} data-testid="item-menu-copy-content">
+        <Row icon={<Link2 className="size-3.5" />} label="Link" testId="item-menu-copy-link" onSelect={copy(`${window.location.origin}/item/${item.id}`, 'Link')} />
+        <Row icon={<Copy className="size-3.5" />} label="Title" testId="item-menu-copy-title" onSelect={copy(item.title, 'Title')} />
+      </SubContent>
+    </Sub>
   );
 }
 
@@ -495,7 +548,8 @@ const ASK_ICON: Record<ItemAskId, ReactNode> = {
  * conversation" can be told apart from "Ask about this…" in a session that has
  * not opened Ask yet.
  */
-function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string; tz: string; page: boolean }) {
+export function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string; tz: string; page: boolean }) {
+  const { Separator, returnFocus } = useContext(MenuKitContext);
   const router = useRouter();
   const isMobile = useIsMobile();
   const { canChat, canPropose } = useAICapabilities();
@@ -546,7 +600,7 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
   if (asks.length === 0 && !firstSteps && !handOff && !takeBack) return null;
 
   const run = (ask: ItemAsk) => () => {
-    returnFocusToOpener();
+    returnFocus();
     if (page) router.push(`/item/${item.id}`);
     switch (ask.kind) {
       case 'compose':
@@ -582,12 +636,12 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
           label="First steps"
           testId="item-menu-first-steps"
           onSelect={() => {
-            returnFocusToOpener();
+            returnFocus();
             openFirstSteps(item.id);
           }}
         />
       )}
-      {(asks.length > 0 || firstSteps) && (handOff || takeBack) && <ContextMenuSeparator />}
+      {(asks.length > 0 || firstSteps) && (handOff || takeBack) && <Separator />}
       {handOff &&
         targets.map((t) => (
           <Row
@@ -596,7 +650,7 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
             label={`Hand off to ${t.name}`}
             testId={targets.length === 1 ? 'item-menu-handoff' : `item-menu-handoff-${t.assignee}`}
             onSelect={() => {
-              returnFocusToOpener();
+              returnFocus();
               handOffItem(item, t.assignee);
             }}
           />
@@ -608,7 +662,7 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
           detail={agentStatusView(heldState(item), now)?.label}
           testId="item-menu-takeback"
           onSelect={() => {
-            returnFocusToOpener();
+            returnFocus();
             takeBackItem(item);
           }}
         />
@@ -622,20 +676,21 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
  * (container-context-menu.tsx), so all three read as one row.
  */
 export function AiSubmenu({ testId, children }: { testId: string; children: ReactNode }) {
+  const { Sub, SubTrigger, SubContent } = useContext(MenuKitContext);
   return (
-    <ContextMenuSub>
-      <ContextMenuSubTrigger className={cn(ROW, '[&>svg:last-child]:size-3.5')} data-testid={testId}>
+    <Sub>
+      <SubTrigger className={cn(ROW, '[&>svg:last-child]:size-3.5')} data-testid={testId}>
         <span className="flex size-3.5 shrink-0 items-center justify-center">
           <AskMark className="size-3.5" />
         </span>
         <span className="flex-1 truncate">AI</span>
-      </ContextMenuSubTrigger>
+      </SubTrigger>
       {/* Sized to its rows, from the panel's width up: "Take back from OpenClaw"
           beside a status ("Couldn't finish") does not fit in 240px. */}
-      <ContextMenuSubContent className={cn(PANEL, 'w-auto max-w-80 min-w-60')} data-testid={`${testId}-content`}>
+      <SubContent className={cn(PANEL, 'w-auto max-w-80 min-w-60')} data-testid={`${testId}-content`}>
         {children}
-      </ContextMenuSubContent>
-    </ContextMenuSub>
+      </SubContent>
+    </Sub>
   );
 }
 
