@@ -2169,7 +2169,7 @@ body {
    gradient, a state or a layout selector.
 
      [data-ask-opener]          the plate the key stands on
-     [data-ask-opener]::before  the focus line inside the keyboard's ring
+     [data-ask-opener]::before  the well that fades in under it
      [data-ask-key]             the raised key, a keycap with a 3px skirt: the
                                 mark, "Ask" and the chord printed on it
      [data-form='key']          the same plate and key without the chord, when
@@ -2192,12 +2192,15 @@ body {
    three quarters of the run, front-loaded so the tail trails off past "Ask"
    instead of ending in a dash over the "A"). On hover, keyboard focus and
    press the light travels round the whole rim: three registered lengths ease
-   to 30/52/84px. Under the pointer the light runs round the rim over 240ms
-   on --ease-fade and goes back over 160ms. Nothing paints a card under the
-   key on hover or press (Kirby, 2026-10-26): the light is the whole hover.
-   Keyboard focus brings its focus line with the ring, in 60ms. The mark keeps
-   its own hand-off (ask-mark.tsx, 160ms on the settle curve): the source
-   lights a beat ahead and the light spreads from it, round the rim.
+   to 30/52/84px. Under the pointer the light and the well are one gesture on
+   one curve (--ease-fade): the well fades up and opens over 240ms while the
+   light runs round the rim with it, and both go back over 160ms, on a
+   keyboard-focused key too. Keyboard focus brings its focus line with the
+   ring, in 60ms; a press with no hover first (a tap, Space) brings the well
+   in 60ms with the key's 1px sink, and a press during the fade leaves the
+   fade to finish. The mark keeps its own hand-off (ask-mark.tsx, 160ms on
+   the settle curve): the source lights a beat ahead and the light spreads
+   from it, round the rim and into the well.
 
    THE ACCENT NEVER DIMS (CLAUDE.md). It is the raw token at full strength,
    mixed with nothing but the partner its gradient hands off to; only the
@@ -2317,6 +2320,7 @@ body {
   --ask-focus-line: var(--success-text);
   --ask-focus-rim: var(--success-text);
   --ask-focus-rim-offset: 0px;
+  --ask-wash: color-mix(in oklab, var(--foreground) 4%, transparent);
 }
 /* The keycaps' bevel (Ask's key and the do stuff key): the face is a little
    brighter at the top than at the skirt, as a lit key is. In light the top is
@@ -2335,6 +2339,7 @@ body {
   --ask-focus-line: transparent;
   --ask-focus-rim: var(--ring);
   --ask-focus-rim-offset: -1px;
+  --ask-wash: color-mix(in oklab, var(--foreground) 6%, transparent);
 }
 
 /* Unlit ("Set up AI", "Fix AI": nothing answers yet): no light at all. The
@@ -2348,21 +2353,25 @@ body {
   --ask-key-pair: var(--ask-key-rim);
 }
 
-/* The focus line's layer: nothing at rest, under the pointer or pressed; a
-   1px line inside the ring under keyboard focus, opening a hair as it comes.
-   It comes with the ring, which does not ease, so it takes the key's 60ms
-   sink and its curve. */
+/* The well: nothing at rest; the header capsule's own material on hover and
+   press, opening a hair as it comes. Its timing is per direction, so each
+   state carries the timing of the change INTO it: this rule's 160ms is the
+   way back, the hover's 240ms the way in (below). On the settle curve it
+   was 150ms each way and three quarters there by its second frame, which
+   read as a pop. */
 [data-ask-opener]::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: -1;
   border-radius: inherit;
+  background-color: transparent;
   box-shadow: none;
   transform: scale(0.96);
   transition:
-    box-shadow 60ms var(--ease-out-soft),
-    transform 60ms var(--ease-out-soft);
+    background-color 160ms var(--ease-fade),
+    box-shadow 160ms var(--ease-fade),
+    transform 160ms var(--ease-fade);
 }
 
 /* The key: the omnibar's raised key, with the light in its rim. Its fill
@@ -2426,9 +2435,15 @@ body {
 
 /* Engaged. Hover is pointer-only, as Tailwind's hover is (the mark's own
    engaged state is a group-hover), so a tap never leaves it lit. The way in
-   is half as long again as the way back: you see the light travel, and it is
+   is half as long again as the way back: you see the well arrive, and it is
    out of the way sooner once you have moved on. */
 @media (hover: hover) {
+  [data-ask-opener]:hover::before {
+    background-color: var(--surface-3);
+    box-shadow: var(--shadow-elev-bar);
+    transform: none;
+    transition-duration: 240ms;
+  }
   [data-ask-opener]:hover [data-ask-key] {
     --ask-key-hold: 30px;
     --ask-key-tail: 52px;
@@ -2439,6 +2454,11 @@ body {
     color: var(--foreground);
     transition-duration: 240ms;
   }
+}
+[data-ask-opener]:active::before {
+  background-color: var(--surface-3);
+  box-shadow: var(--shadow-elev-bar);
+  transform: none;
 }
 [data-ask-opener]:is(:focus-visible, :active) [data-ask-key] {
   --ask-key-hold: 30px;
@@ -2451,7 +2471,7 @@ body {
   transition-timing-function: var(--ease-out-soft);
 }
 /* Pressed: the omnibar's key-press pair, the key sinking 2px into its skirt,
-   the fill settling a step deeper. The light keeps its own 160ms. */
+   the fill settling toward the well. The light keeps its own 160ms. */
 [data-ask-opener]:active [data-ask-key] {
   translate: 0 2px;
   border-bottom-width: 1px;
@@ -2470,11 +2490,37 @@ body {
   box-shadow: inset 0 0 0 1px var(--ask-focus-line);
 }
 
-/* The key alone. No plate: the light catches the key's left arc (centred
-   2px in, plus the mark's offset) and runs round it when engaged. Its hover
-   fill, a hair deeper, takes the light's timing (and the colour that keeps
-   pace with it) both ways: in over 240ms and back over 160ms, on the light's
-   curve (on the key's 150ms settle it left two frames ahead of the light).
+/* The well's timing for focus and press. Keyboard focus never paints the
+   card, only the focus line and the well's opening, and those come with the
+   ring, which does not ease at all: they take the key's 60ms sink and its
+   curve, while the colour keeps the fade, so a pointer arriving on a focused
+   key, or leaving it, fades the card as it does anywhere. A press takes all
+   three on the sink's timing, so with no hover first (a tap, Space) the card
+   comes in with the 1px sink; a press during the hover's fade leaves it
+   running, already headed where the press would take it. The press's timing
+   is after focus's and as specific, and the focused hover's stands aside
+   while pressed, so a press wins in every state; its paint is above, before
+   focus's, so that the focus line wins there. */
+[data-ask-opener]:focus-visible::before {
+  transition-duration: 160ms, 60ms, 60ms;
+  transition-timing-function: var(--ease-fade), var(--ease-out-soft), var(--ease-out-soft);
+}
+@media (hover: hover) {
+  [data-ask-opener]:focus-visible:hover:not(:active)::before {
+    transition-duration: 240ms, 60ms, 60ms;
+  }
+}
+[data-ask-opener]:active::before {
+  transition-duration: 60ms;
+  transition-timing-function: var(--ease-out-soft);
+}
+
+/* The key alone. No plate and no well: the light catches the key's left arc
+   (centred 2px in, plus the mark's offset) and runs round it when engaged.
+   Its hover fill is its well, so the fill (and the colour that keeps pace
+   with it) takes the well's timing both ways: in over 240ms and back over
+   160ms, on the well's curve, in step with the light (on the key's 150ms
+   settle it popped as the well did, and left two frames ahead of the light).
    A press keeps the key's own 60ms; the lift and the shadow keep the key's
    settle. */
 [data-ask-opener][data-form='icon']::before {
@@ -2526,7 +2572,9 @@ body {
 
 /* The plain and masthead headers (Notebook, Notepad, Writer) take the
    capsule's material away, so the whole key is drawn on the page: the page's
-   own colour, the light over an --input hairline and a 1px lip under it.
+   own colour, the light over an --input hairline, a 1px lip under it, and a
+   flat wash under key and chord on hover. The wash is the well repainted, so
+   it fades on the well's timing: these rules leave its transitions alone.
    The key alone keeps the raised key's fill but takes the page's hairline
    too, as the design's docked key did. In light only: in dark --input is
    translucent, and a partner step mixed with it would be, so the hairline is
@@ -2547,6 +2595,22 @@ body {
 }
 [data-layout-header='masthead'] [data-ask-opener]:not([data-form='icon']) [data-ask-key] {
   --ask-key-fill: var(--nb-page, var(--canvas));
+}
+@media (hover: hover) {
+  :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:hover::before {
+    background-color: var(--ask-wash);
+    box-shadow: none;
+  }
+}
+:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:active::before {
+  background-color: var(--ask-wash);
+  box-shadow: none;
+}
+/* As specific as the wash's and after it, so a keyboard-focused key keeps
+   the light-theme focus line inside its ring while it is hovered or pressed
+   (the lime ring alone is 1.4:1 on paper). */
+:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:focus-visible::before {
+  box-shadow: inset 0 0 0 1px var(--ask-focus-line);
 }
 :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:not([data-form='icon']):active [data-ask-key] {
   --ask-key-fill: var(--canvas);

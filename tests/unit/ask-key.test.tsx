@@ -668,12 +668,14 @@ describe("the key's paint (app/globals.css)", () => {
     }
   });
 
-  // On the settle curve (--ease-out-soft) the light was three quarters round
-  // by its second frame, at any duration, and read as a pop. It runs round on
-  // a curve that spreads its travel now, and goes back a little quicker. No
-  // card fades in under the key (Kirby, 2026-10-26): the light is the hover.
-  // Keyboard focus brings only its focus line, with the ring.
-  it('runs the light round the rim under the pointer where you can see it, and back a little quicker, with no card under the key', () => {
+  // The well popped: on the settle curve (--ease-out-soft) it was three
+  // quarters there by its second frame, at any duration. It fades up now, on a
+  // curve that spreads its travel, and goes back a little quicker; the light
+  // runs round the rim on the same timing, so the two read as one gesture.
+  // Keyboard focus brings only its focus line promptly, so a pointer on a
+  // focused key still sees the card fade, and a press with no hover first
+  // brings the card with the key's sink.
+  it('fades the well up under the pointer where you can see it, and back a little quicker, with the light in step', () => {
     const css = stripComments(read('app/globals.css'));
     const all = rules(stripComments(askBlock()));
     const find = (sel: string) => {
@@ -719,27 +721,20 @@ describe("the key's paint (app/globals.css)", () => {
       return { f, startSpeed: x1 > 0 ? y1 / x1 : Infinity };
     };
 
-    // Nothing under a hovered or pressed key paints: no rule reaches the
-    // layer under it in those states, in any header.
-    for (const r of all) {
-      for (const sel of r.selectors) expect(sel, sel).not.toMatch(/:(hover|active)\b.*::before$/);
-    }
-
-    const key = find('[data-ask-key]');
-    const keyList = items(values(key.body, 'transition')[0]);
-    const rim = ['--ask-key-hold', '--ask-key-tail', '--ask-key-reach'];
-    const keyTimings = timings(key);
-    const [out, curve] = keyTimings['--ask-key-hold'];
-    for (const p of rim) expect(keyTimings[p], p).toEqual([out, curve]);
+    const well = timings(find('[data-ask-opener]::before'));
+    const props = ['background-color', 'box-shadow', 'transform'];
+    expect(Object.keys(well).sort()).toEqual([...props].sort());
+    const [out, curve] = well['background-color'];
+    for (const p of props) expect(well[p], p).toEqual([out, curve]);
 
     // In: long enough to watch, inside the block's 300ms, and longer than out.
-    const keyHover = durations(find('[data-ask-opener]:hover [data-ask-key]'));
-    expect(keyHover).toHaveLength(keyList.length);
-    const enter = keyHover[keyList.findIndex((i) => i.startsWith('--ask-key-hold '))];
-    rim.forEach((p) => expect(keyHover[keyList.findIndex((i) => i.startsWith(`${p} `))], p).toBe(enter));
+    const hover = find('[data-ask-opener]:hover::before');
+    const [enter] = durations(hover);
+    expect(new Set(durations(hover))).toEqual(new Set([enter]));
     expect(enter).toBeGreaterThanOrEqual(200);
     expect(enter).toBeLessThanOrEqual(300);
     expect(out).toBeLessThan(enter);
+    expect(values(hover.body, 'transition-timing-function'), 'the way in keeps the curve').toHaveLength(0);
 
     // The curve spreads its travel and still moves on the first frame: never
     // the settle curve, no ease-in, under 60% by a quarter of the run (the
@@ -753,12 +748,21 @@ describe("the key's paint (app/globals.css)", () => {
     // And nothing holds it back.
     expect(stripComments(askBlock())).not.toMatch(/transition-delay\s*:/);
 
-    // The chord brightens with the light, both ways.
+    // The light travels with the well, both ways; the chord brightens with it.
+    const key = find('[data-ask-key]');
+    const keyList = items(values(key.body, 'transition')[0]);
+    const rim = ['--ask-key-hold', '--ask-key-tail', '--ask-key-reach'];
+    const keyTimings = timings(key);
+    for (const p of rim) expect(keyTimings[p], p).toEqual([out, curve]);
+    const keyHover = durations(find('[data-ask-opener]:hover [data-ask-key]'));
+    expect(keyHover).toHaveLength(keyList.length);
+    rim.forEach((p) => expect(keyHover[keyList.findIndex((i) => i.startsWith(`${p} `))], p).toBe(enter));
     expect(timings(find('[data-ask-opener-chord]')).color).toEqual([out, curve]);
     expect(durations(find('[data-ask-opener]:hover [data-ask-opener-chord]'))).toEqual([enter]);
 
-    // The key alone's hover fill, and the colour that keeps pace with it,
-    // take the light's timing both ways. Both rules stand aside while pressed, so a press keeps the
+    // The key alone has no well: its hover fill is one, so the fill and the
+    // colour that keeps pace with it take the well's timing both ways, with
+    // the light. Both rules stand aside while pressed, so a press keeps the
     // key's own lists; the lift and the shadow keep the key's settle.
     const at = (p: string) => keyList.findIndex((i) => i.startsWith(`${p} `));
     const curves = (r: Rule) => items(values(r.body, 'transition-timing-function').at(-1)!);
@@ -779,18 +783,41 @@ describe("the key's paint (app/globals.css)", () => {
     expect(values(iconHover.body, 'transition-timing-function'), 'the way in keeps the curve').toHaveLength(0);
     expect(beats(iconHover, iconHoverSel, iconRest, iconRestSel)).toBe(true);
 
-    // Keyboard focus brings its focus line, and the layer's opening, with
-    // the ring, on the key's 1px sink's duration and curve; nothing re-times it.
+    // Keyboard focus never paints the card, only the focus line and the
+    // well's opening, which come with the ring on the key's 1px sink's
+    // duration and curve; the card's colour keeps the fade, so a pointer on a
+    // focused key sees it fade in and out as anywhere. A press brings all
+    // three on the sink's timing (a tap or Space: the card with the sink),
+    // and wins over every other timing of the well while it holds.
     const press = find('[data-ask-opener]:active [data-ask-key]');
     const sink = durations(press)[at('translate')];
     const sinkCurve = keyTimings.translate[1];
-    const layer = timings(find('[data-ask-opener]::before'));
-    expect(Object.keys(layer).sort()).toEqual(['box-shadow', 'transform']);
-    for (const p of Object.keys(layer)) expect(layer[p], p).toEqual([sink, sinkCurve]);
+    const wellProps = items(values(find('[data-ask-opener]::before').body, 'transition')[0]).map((i) => i.split(/\s+/)[0]);
+    const byProp = <T,>(bg: T, rest: T) => wellProps.map((p) => (p === 'background-color' ? bg : rest));
+    const timed = (sel: string) => {
+      const r = all.find((x) => x.selectors.length === 1 && x.selectors[0] === sel && values(x.body, 'transition-duration').length);
+      expect(r, `${sel}, timed`).toBeDefined();
+      return r!;
+    };
+    const focusSel = '[data-ask-opener]:focus-visible::before';
+    const focusHoverSel = '[data-ask-opener]:focus-visible:hover:not(:active)::before';
+    const pressSel = '[data-ask-opener]:active::before';
+    const focus = timed(focusSel);
+    const focusHover = timed(focusHoverSel);
+    const pressWell = timed(pressSel);
+    expect(durations(focus)).toEqual(byProp(out, sink));
+    expect(curves(focus)).toEqual(byProp(curve, sinkCurve));
+    expect(durations(focusHover)).toEqual(byProp(enter, sink));
+    expect(values(focusHover.body, 'transition-timing-function'), "the focused hover keeps focus's curves").toHaveLength(0);
+    expect(beats(focusHover, focusHoverSel, focus, focusSel)).toBe(true);
+    expect(beats(focusHover, focusHoverSel, hover, '[data-ask-opener]:hover::before')).toBe(true);
+    expect(new Set(durations(pressWell))).toEqual(new Set([sink]));
+    expect(curves(pressWell)).toEqual([sinkCurve]);
     for (const r of all) {
-      if (/!important/.test(r.body) || r.selectors.includes('[data-ask-opener]::before')) continue;
-      for (const sel of r.selectors) {
-        if (sel.endsWith('::before')) expect(r.body, sel).not.toMatch(/(?:^|[\s;{])transition/);
+      if (r === pressWell || /!important/.test(r.body) || !/(?:^|[\s;{])transition(?:-duration|-timing-function)?\s*:/.test(r.body)) continue;
+      for (const s of r.selectors) {
+        if (!s.endsWith('::before') || s.includes(':not(:active)')) continue;
+        expect(beats(pressWell, pressSel, r, s), `${s} outranks the press's timing`).toBe(true);
       }
     }
     // The chord brightens with the focus line, or with the press, on the sink's timing.
@@ -799,6 +826,11 @@ describe("the key's paint (app/globals.css)", () => {
     expect(durations(chord)).toEqual([sink]);
     expect(curves(chord)).toEqual([sinkCurve]);
     expect(beats(chord, chordSel, find('[data-ask-opener]:hover [data-ask-opener-chord]'), '[data-ask-opener]:hover [data-ask-opener-chord]')).toBe(true);
+    // The plain and masthead headers repaint the well as a wash, on its timing.
+    for (const r of all) {
+      if (!r.selectors.some((s) => /data-layout-header/.test(s) && s.endsWith('::before'))) continue;
+      expect(r.body, r.selectors.join(', ')).not.toMatch(/transition/);
+    }
   });
 
   it('lights up on hover for a pointer only, so a tap never leaves it lit', () => {
@@ -974,25 +1006,40 @@ describe("the key's paint (app/globals.css)", () => {
 
   // In light the ring carries a 1px --success-text line inside it, so the pair
   // reads at 3:1 on paper (the lime ring alone is 1.4:1). The plain and
-  // masthead headers' wash once took it away from a focused key under the
-  // pointer or pressed; with no card under the key, nothing is left to.
-  it('keeps the focus line inside the ring while a focused key is hovered or pressed, in every header', () => {
-    expect(specificity('[data-ask-opener]:focus-visible::before')).toEqual([0, 2, 1]);
+  // masthead headers' wash took it away from a focused key under the pointer
+  // or pressed: their ::before rules outranked the focus line's.
+  it("keeps the focus line inside the ring while a focused key is hovered or pressed, in every header", () => {
+    // The specificity reader, against the selectors it judges.
+    expect(specificity("[data-ask-opener]:focus-visible::before")).toEqual([0, 2, 1]);
+    expect(specificity(":is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:hover::before")).toEqual([0, 3, 1]);
     expect(specificity(":root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key])")).toEqual([0, 4, 0]);
     expect(specificity(':where(.a) b')).toEqual([0, 0, 1]);
 
     const all = rules(stripComments(askBlock()));
     const line = /^inset 0 0 0 1px var\(--ask-focus-line\)$/;
-    const focus = all.filter((r) => r.selectors.includes('[data-ask-opener]:focus-visible::before'));
-    expect(focus.some((r) => values(r.body, 'box-shadow').some((v) => line.test(v)))).toBe(true);
-    // Every other rule on the layer is its resting one, which focus outranks.
+    const focusLines = all.filter((r) => values(r.body, 'box-shadow').some((v) => line.test(v)));
+    expect(focusLines.length).toBeGreaterThan(0);
+    const scope = (s: string) => s.slice(0, s.indexOf('[data-ask-opener]'));
+    let judged = 0;
     for (const r of all) {
-      for (const sel of r.selectors) {
-        if (!sel.endsWith('::before') || sel === '[data-ask-opener]:focus-visible::before') continue;
-        if (!values(r.body, 'box-shadow').length) continue;
-        expect(sel, `${sel} could hide the focus line`).toBe('[data-ask-opener]::before');
+      if (!values(r.body, 'box-shadow').length) continue;
+      for (const s of r.selectors) {
+        // A well under a hovered or pressed key, which a focused key can also be.
+        if (!/::before$/.test(s) || !/:(hover|active)\b/.test(s) || /:focus-visible/.test(s)) continue;
+        judged++;
+        const kept = focusLines.some((f) =>
+          f.selectors.some(
+            (fs) =>
+              /:focus-visible::before$/.test(fs) &&
+              // Unscoped, or scoped to the same headers as the well.
+              (scope(fs) === '' || scope(fs) === scope(s)) &&
+              beats(f, fs, r, s)
+          )
+        );
+        expect(kept, `the focus line loses to ${s}`).toBe(true);
       }
     }
+    expect(judged).toBeGreaterThanOrEqual(4);
   });
 
   // The design's docked key took the page's --input edge in these headers, as
