@@ -812,6 +812,24 @@ describe('a property summoned from the seed opens its own picker', () => {
     });
   }
 
+  it('keeps empty notes out of the panel until + → Notes, which brings the field and its caret', async () => {
+    panel();
+    expect(screen.queryByTestId('item-dialog-notes')).toBeNull();
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    fireEvent.click(screen.getByTestId('item-clearing-seed-notes'));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    const notes = screen.getByTestId('item-dialog-notes');
+    expect(document.activeElement).toBe(notes);
+    expect(screen.queryByTestId('item-clearing-seed-notes')).toBeNull();
+  });
+
+  it('keeps the notes field on the capture modal, empty or not', () => {
+    capture();
+    expect(screen.getByTestId('item-dialog-notes')).toBeInTheDocument();
+  });
+
   it('still hands focus back to the seed when it closes without a pick', async () => {
     panel();
     const seedTrigger = screen.getByTestId('item-clearing-seed');

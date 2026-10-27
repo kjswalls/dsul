@@ -16,18 +16,18 @@ import {
   CalendarClock,
   CalendarIcon,
   Check,
-  ChevronDown,
-  ChevronUp,
   Clock,
   Flag,
   Moon,
   Bell,
   Pause as PauseIcon,
   Play as PlayIcon,
+  AlignLeft,
   ArrowLeftToLine,
   Maximize2,
   Minus,
   MoreHorizontal,
+  Paperclip,
   Pencil,
   Plus,
   Redo2,
@@ -76,14 +76,15 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
-import { AgentStatus, ClearingFooter, ItemDetailSections } from '@/components/planner/item-detail-sections';
+import { AgentStatus, ItemBoxAsks, ItemDetailSections } from '@/components/planner/item-detail-sections';
 import { StreakChip } from '@/components/planner/streak-chip';
 import { RailHeader } from '@/components/ai/rail/rail-header';
 import { BoundComposer } from '@/components/ai/bound-composer';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { ItemRail, RailDoneCheck, type RailChip } from '@/components/planner/item-rail';
 import { ITEM_VERBS, isDoneOn, occurrenceOn, type VerbContext } from '@/lib/item-verbs';
-import { AttachFileButton } from '@/components/planner/item-files';
+import { AttachFileButton, usePicker } from '@/components/planner/item-files';
+import { useItemFilesStore } from '@/lib/item-files-store';
 import { useConversationsStore } from '@/lib/conversations-store';
 import {
   ChipOption,
@@ -1418,7 +1419,9 @@ function ItemDialogInner({
    *    line. A band of its own would have said "Priority" twice; the field says
    *    it once, and only when it applies.
    */
-  const renderChips = (type: string, d: ItemDraft, lead?: ReactNode) => {
+  /** A seed-menu row that is not a chip: what it opens is the caller's, and takes focus. */
+  type SeedExtra = { key: string; label: string; icon: LucideIcon; onSelect: () => void };
+  const renderChips = (type: string, d: ItemDraft, lead?: ReactNode, extraSeed: readonly SeedExtra[] = []) => {
     const config = getItemTypeConfig(type);
     const patch = (updates: Partial<ItemDraft>) => patchDraft(type, updates);
     /**
@@ -2677,7 +2680,7 @@ function ItemDialogInner({
         {containerVisible.map((p) => (
           <Fragment key={p.key}>{p.node}</Fragment>
         ))}
-        {seedItems.length > 0 && (
+        {seedItems.length + extraSeed.length > 0 && (
           <PropertyChip
             icon={Plus}
             // The noun-carrying "Add property" when the field is empty; a bare
@@ -2693,13 +2696,30 @@ function ItemDialogInner({
             // the return is skipped whenever focus already sits inside another
             // open popover. Escape still hands focus back to the seed.
             onCloseAutoFocus={(e) => {
-              if (document.activeElement?.closest('[data-radix-popper-content-wrapper]')) {
+              if (seedHandsOff.current || document.activeElement?.closest('[data-radix-popper-content-wrapper]')) {
                 e.preventDefault();
               }
+              seedHandsOff.current = false;
             }}
           >
             {(close) => (
               <div className="max-h-72 overflow-y-auto" data-chip-scroll>
+                {extraSeed.map((x) => (
+                  <ChipOption
+                    key={x.key}
+                    testId={`item-clearing-seed-${x.key}`}
+                    value={x.key}
+                    onSelect={() => {
+                      // What it opens takes focus itself, outside any popover.
+                      seedHandsOff.current = true;
+                      close();
+                      x.onSelect();
+                    }}
+                  >
+                    <x.icon className="size-3.5 shrink-0" />
+                    {x.label}
+                  </ChipOption>
+                ))}
                 {seedItems.map((p) => (
                   <ChipOption
                     key={p.key}
@@ -2952,10 +2972,32 @@ function ItemDialogInner({
   const activeDraft = mode === 'add' ? draftFor(activeTypeName) : editDraft;
   const titleId = mode === 'add' ? `${activeTypeName}-title` : `edit-${activeTypeName}-title`;
 
+  // On the docked panel's edit, empty notes take no room (the panel tidy, round
+  // 3): the field shows once the item has notes, once + → Notes asks for it, or
+  // while it holds focus, held per item id so clearing it mid-edit never pulls
+  // the field out from under the caret. Every other surface keeps it.
+  const [notesOpenFor, setNotesOpenFor] = useState<string | null>(null);
+  const [notesSummonedFor, setNotesSummonedFor] = useState<string | null>(null);
+  const hideEmptyNotes = presentation === 'panel' && mode === 'edit' && !!editItem;
+  const showNotes =
+    !!activeDraft &&
+    activeConfig.fields.includes('notes') &&
+    (!hideEmptyNotes ||
+      !!activeDraft.notes ||
+      !!editItem?.notes ||
+      notesOpenFor === editItem?.id ||
+      notesSummonedFor === editItem?.id);
+  // + → Notes: the field mounts, then takes the caret. The seed's close
+  // leaves focus alone for it (`seedHandsOff`).
+  const seedHandsOff = useRef(false);
+
   // Notes starts one line tall and grows with what you type. `field-sizing-content`
   // alone would do it in Chrome; measuring keeps Safari from trapping a long note
   // inside a single scrolling row. 'auto' first so it also SHRINKS on delete.
   const notesRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (notesSummonedFor && notesSummonedFor === editItem?.id) notesRef.current?.focus({ preventScroll: true });
+  }, [notesSummonedFor, editItem?.id]);
   useEffect(() => {
     const ta = notesRef.current;
     if (!ta) return;
@@ -3151,6 +3193,13 @@ function ItemDialogInner({
           <span className="sr-only">Open as page</span>
         </Button>
   );
+  // The docked panel's picker rides ⋯ ("Attach a file") instead of a paperclip
+  // in the type row (the item panel tidy, round 3). Mounted out here, never in
+  // the menu, which unmounts its rows as it closes and would take the input
+  // and its change event with it.
+  const attachInMenu = withDetailSections && isPanel && mode === 'edit' && !!editItem;
+  const filesAvailable = useItemFilesStore((s) => s.available);
+  const attachPicker = usePicker(editItem?.id ?? '');
   // Everything the bar has no room for, then Delete, last and in red. Reset
   // streak is not here: it lives with the streak (StreakChip).
   const moreMenu = mode === 'edit' && editItem && (
@@ -3173,7 +3222,13 @@ function ItemDialogInner({
                 {a.label}
               </DropdownMenuItem>
             ))}
-            {moreActions.length > 0 && <DropdownMenuSeparator />}
+            {attachInMenu && filesAvailable !== false && (
+              <DropdownMenuItem data-testid="item-dialog-attach" onSelect={attachPicker.open}>
+                <Paperclip className="size-3.5" />
+                Attach a file
+              </DropdownMenuItem>
+            )}
+            {(moreActions.length > 0 || (attachInMenu && filesAvailable !== false)) && <DropdownMenuSeparator />}
             <DropdownMenuItem
               data-testid="item-dialog-delete"
               variant="destructive"
@@ -3189,7 +3244,8 @@ function ItemDialogInner({
   const headerActions = (
     <div className="ml-auto flex items-center gap-0.5">
       {rowControls}
-      {withDetailSections && mode === 'edit' && editItem && <AttachFileButton itemId={editItem.id} />}
+      {withDetailSections && mode === 'edit' && editItem && !attachInMenu && <AttachFileButton itemId={editItem.id} />}
+      {attachInMenu && attachPicker.input}
       {!actionsInRail && openPageButton}
       {!actionsInRail && moreMenu}
 
@@ -3495,11 +3551,33 @@ function ItemDialogInner({
       occurrence: occurrenceOn(item, todayStr, todayStr, activationTz),
     };
   };
-  const railCtx = actionsInRail && editItem ? railVerbContext(editItem) : null;
+  // The tick sits beside the title on the docked panel, AI or not (the panel
+  // tidy, round 3); it used to ride the rail header's icons.
+  const railCtx = presentation === 'panel' && mode === 'edit' && editItem ? railVerbContext(editItem) : null;
   const railTick = railCtx && editItem && ITEM_VERBS.tick.eligible(editItem, railCtx) ? railCtx : null;
   const railTarget = editItem?.type === 'habit' ? (editItem.timesPerDay ?? 1) : 1;
   const railCount =
     railTick && editItem?.type === 'habit' ? ((editItem.dailyCounts ?? {})[railTick.dateStr] ?? 0) : 0;
+  // The tick: beside the title, or on the folded strip while the chat has the
+  // panel (one at a time, so there is only ever one). Its own element, never
+  // inside anything dimmed: the lime is never faded.
+  const tickBox =
+    railTick && editItem ? (
+      <RailDoneCheck
+        className="size-[18px]"
+        done={isDoneOn(editItem, railTick.dateStr)}
+        partial={railTarget > 1 ? Math.min(railCount, railTarget) / railTarget : 0}
+        label={ITEM_VERBS.tick.label(editItem, railTick)}
+        onToggle={() => {
+          // Re-read and re-gate at click time (the verb's contract):
+          // the render may be a frame behind the store, or behind midnight.
+          const live = usePlannerStore.getState().items.find((i) => i.id === editItem.id);
+          if (!live) return;
+          const ctx = railVerbContext(live);
+          if (ITEM_VERBS.tick.eligible(live, ctx)) ITEM_VERBS.tick.run(live, ctx);
+        }}
+      />
+    ) : null;
 
   return (
     <EscapeLadder value={registerEscape}>
@@ -3584,62 +3662,12 @@ function ItemDialogInner({
                   railChrome.onBack?.();
                 },
               }}
-              title={activeDraft ? activeDraft.title || 'Untitled' : undefined}
-              heading={
-                // The item's name is the crumb, and where the chat has the
-                // panel it folds and unfolds the details, as the facts line
-                // under it unfolds them.
-                foldable && activeDraft ? (
-                  <button
-                    type="button"
-                    data-testid="item-rail-title"
-                    aria-expanded={!folded}
-                    onClick={(e) => {
-                      if (!folded) {
-                        flushNow();
-                        fold();
-                        return;
-                      }
-                      setFoldedFor(null);
-                      const body = e.currentTarget
-                        .closest('[data-testid="item-dialog"]')
-                        ?.querySelector<HTMLElement>('[data-rail-body]');
-                      requestAnimationFrame(() => {
-                        if (body) body.scrollTop = 0;
-                      });
-                    }}
-                    className="-mx-1 flex min-w-0 items-center gap-1 rounded-md px-1 py-1 text-left transition-colors hover:bg-accent"
-                  >
-                    <span className="truncate">{activeDraft.title || 'Untitled'}</span>
-                    {folded ? (
-                      <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                    ) : (
-                      <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                    )}
-                  </button>
-                ) : undefined
-              }
+              // No crumb title: the item's name is the heading right under
+              // this row, and folded, the strip names it (the panel tidy,
+              // round 3). So the back control reads "‹ Ask" on its own.
               actions={
                 actionsInRail && editItem ? (
                   <>
-                    {/* Its own element, never inside the fold: the lime is never dimmed or clipped. */}
-                    {railTick && (
-                      <span className="flex size-7 items-center justify-center">
-                        <RailDoneCheck
-                          done={isDoneOn(editItem, railTick.dateStr)}
-                          partial={railTarget > 1 ? Math.min(railCount, railTarget) / railTarget : 0}
-                          label={ITEM_VERBS.tick.label(editItem, railTick)}
-                          onToggle={() => {
-                            // Re-read and re-gate at click time (the verb's contract):
-                            // the render may be a frame behind the store, or behind midnight.
-                            const live = usePlannerStore.getState().items.find((i) => i.id === editItem.id);
-                            if (!live) return;
-                            const ctx = railVerbContext(live);
-                            if (ITEM_VERBS.tick.eligible(live, ctx)) ITEM_VERBS.tick.run(live, ctx);
-                          }}
-                        />
-                      </span>
-                    )}
                     {moreMenu}
                     {openPageButton}
                   </>
@@ -3658,8 +3686,10 @@ function ItemDialogInner({
               the chat scrolls. */}
           {foldable && editItem && activeDraft && (
             <FoldRegion open={folded} testId="item-rail-region">
-              <div className="border-b border-border px-5 pb-2">
+              <div className="flex items-center gap-2.5 border-b border-border px-5 pb-2">
+                {folded && tickBox}
                 <ItemRail
+                  className="mx-0 w-auto flex-1"
                   title={activeDraft.title}
                   container={activeDraft.container === 'none' ? undefined : activeDraft.container}
                   chips={railChips}
@@ -3735,11 +3765,48 @@ function ItemDialogInner({
                     property, and the mode label is gone (the type control, the
                     placeholder and the button all already say which mode this
                     is). */}
-                {titleInput}
+                {railTick && !folded ? (
+                  <div className="flex items-start gap-2.5">
+                    <span className="flex h-7 shrink-0 items-center">{tickBox}</span>
+                    <div className="min-w-0 flex-1">{titleInput}</div>
+                  </div>
+                ) : (
+                  titleInput
+                )}
                 {/* One status, one place: who has the item and how it is going,
                     under its title (ItemDetailSections is told, and skips it). */}
                 {mode === 'edit' && editItem && editConfig?.agentAssignable && <AgentStatus item={editItem} />}
               </div>
+
+              {/* Notes, under the title: what is true about the item, the one
+                  place to write it (the panel tidy, round 3). It reads as part
+                  of the item rather than a labelled control, one line until you
+                  use it, and on the docked panel it takes no room while empty
+                  (`showNotes`: + → Notes brings it). data-sub-input so Enter
+                  makes a newline; ⌘/Ctrl+Enter still saves. */}
+              {showNotes && (
+                <Textarea
+                  ref={notesRef}
+                  rows={1}
+                  data-sub-input
+                  data-testid="item-dialog-notes"
+                  placeholder="Notes"
+                  value={activeDraft.notes}
+                  onChange={(e) => patchDraft(activeTypeName, { notes: e.target.value })}
+                  onFocus={() => editItem && setNotesOpenFor(editItem.id)}
+                  onBlur={autosaves ? flushNow : undefined}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      handleSubmit();
+                    }
+                  }}
+                  // min-h-0 unpins the primitive's min-h-16; the rest is the
+                  // title Input's borderless recipe, dark:bg-transparent
+                  // included (dark:bg-input/30 survives tailwind-merge).
+                  className={SERIF_NOTES_CLASS}
+                />
+              )}
 
               {/* Why an item you can see isn't anywhere else. Without this, a
                   paused item found through search opens, edits and schedules
@@ -3772,38 +3839,11 @@ function ItemDialogInner({
                 // The streak is one more property (StreakChip), with its week and Reset.
                 streaksOn && editConfig?.counters.streak && editItem?.type === 'habit' ? (
                   <StreakChip habit={editItem} today={paneToday} onReset={() => setShowResetConfirm(true)} />
-                ) : undefined
-              )}
-
-              {/* Notes — the field that existed in the schema, the API and the
-                  Beacon context from the start and had never had a surface. It
-                  reads as part of the item rather than a labelled control: same
-                  borderless treatment as the title, one line until you use it.
-                  data-sub-input so Enter makes a newline; ⌘/Ctrl+Enter still
-                  saves, since the footer promises Enter does. */}
-              {activeConfig.fields.includes('notes') && (
-                <Textarea
-                  ref={notesRef}
-                  rows={1}
-                  data-sub-input
-                  data-testid="item-dialog-notes"
-                  placeholder="Notes"
-                  value={activeDraft.notes}
-                  onChange={(e) => patchDraft(activeTypeName, { notes: e.target.value })}
-                  onBlur={autosaves ? flushNow : undefined}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
-                      handleSubmit();
-                    }
-                  }}
-                  // min-h-0 unpins the primitive's min-h-16; the rest is the
-                  // title Input's borderless recipe, dark:bg-transparent
-                  // included (dark:bg-input/30 survives tailwind-merge).
-                  // Paired with the serif title as "what you wrote", set
-                  // against the sans + mono metadata around it.
-                  className={SERIF_NOTES_CLASS}
-                />
+                ) : undefined,
+                // Notes leads the seed while the docked panel hides the empty field.
+                hideEmptyNotes && !showNotes && editItem && activeConfig.fields.includes('notes')
+                  ? [{ key: 'notes', label: 'Notes', icon: AlignLeft, onSelect: () => setNotesSummonedFor(editItem.id) }]
+                  : []
               )}
 
               {/* The sections the modal never had room for — Phase 1 of the
@@ -3817,20 +3857,17 @@ function ItemDialogInner({
                   conversation={foldable ? 'none' : conversation}
                   conversationElsewhere={foldable}
                   agentStatusElsewhere
+                  asksElsewhere={foldable}
                   offerSetup
                 />
               )}
 
-              {/* An autosaving surface has no moment of commitment, so its
-                  footer is a status line, "Saves as you go" (the edit history
-                  is the timeline above), with Done lifted to the top rail. Everything that still commits on
-                  submit — the capture modal, the mobile drawer — keeps the
-                  Enter hint and the button. */}
-              {autosaves ? (
-                editItem && (
-                  <ClearingFooter key={editItem.id} saving={saving} />
-                )
-              ) : (
+              {/* An autosaving surface has no moment of commitment and says
+                  nothing about saving (the panel tidy, round 3 dropped "Saves as
+                  you go"). Everything that still commits on submit, the capture
+                  modal and the mobile drawer, keeps the Enter hint and the
+                  button. */}
+              {!autosaves && (
                 // Reached only when `autosaves` is false, so there is no
                 // saving-indicator arm here: this surface commits on submit and
                 // the button is the whole promise.
@@ -3857,7 +3894,8 @@ function ItemDialogInner({
           </PanelBody>
           {/* The item's conversation box, pinned under the scrolling body. */}
           {railChrome && presentation === 'panel' && conversation === 'pinned' && itemBinding && (
-            <div className="shrink-0 px-3 pt-2 pb-3" onFocusCapture={foldable ? fold : undefined}>
+            <div className="flex shrink-0 flex-col gap-2 px-3 pt-2 pb-3" onFocusCapture={foldable ? fold : undefined}>
+              {foldable && editItem && <ItemBoxAsks item={editItem} />}
               <BoundComposer binding={itemBinding} />
             </div>
           )}

@@ -15,10 +15,10 @@ import { ItemTick, animateItemCheck } from "@/components/primitives/item-check";
  * panel (components/planner/item-dialog.tsx, AI on, docked): where the item
  * lives, then its day and time, steps and repeat, as text with small icons,
  * never pills or a card (the rail reads as one surface, like Claude Code's
- * thread rail; Kirby's pick on 2026-10-24). The title is not here: it is the
- * rail header's crumb, which also folds and unfolds. A tap anywhere on the
- * line opens the details again. It edits nothing itself; the tick is the
- * header's (RailDoneCheck below).
+ * thread rail; Kirby's pick on 2026-10-24), led by the item's title, since the
+ * header names only the view beneath (the panel tidy, round 3). A tap anywhere
+ * on the line opens the details again. It edits nothing itself; the tick
+ * beside it is the dialog's (RailDoneCheck below).
  */
 export type RailChipKind = "date" | "time" | "steps" | "repeat";
 
@@ -41,7 +41,7 @@ export function ItemRail({
   onExpand,
   className,
 }: {
-  /** Names the line for a screen reader ("Show details for …"); not drawn. */
+  /** The item's name, first on the line; also names it for a screen reader. */
   title: string;
   /** The project (or other container) the item sits in, when it has one. */
   container?: string;
@@ -61,6 +61,9 @@ export function ItemRail({
         className,
       )}
     >
+      <span data-rail-title="" className="min-w-0 max-w-full truncate text-sm font-medium text-foreground">
+        {title || "Untitled"}
+      </span>
       {container && (
         <span data-rail-chip="container" className="max-w-[40%] truncate">
           {container}
@@ -76,16 +79,15 @@ export function ItemRail({
           {c.label}
         </span>
       ))}
-      {!container && chips.length === 0 && <span>Show details</span>}
+
     </button>
   );
 }
 
 /**
- * The item's tick, in the rail header's icons (item-dialog.tsx places it),
- * where Claude Code's thread rail keeps "resolve". Never inside the fold: the
- * fold clips, and the lime mark keeps its own element (CLAUDE.md), so nothing
- * it lives in can dim or cut it. The same box a row draws
+ * The item's tick (item-dialog.tsx places it): beside the title, or beside the
+ * folded strip. The lime mark keeps its own element (CLAUDE.md), so nothing
+ * it lives in can dim it. The same box a row draws
  * (task-row.tsx): graphite with a lime tick when done, a graphite fill rising
  * for a counted habit's partial day. What a press means is the caller's
  * (lib/item-verbs.ts `tick`).
