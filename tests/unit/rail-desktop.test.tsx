@@ -1141,6 +1141,21 @@ describe("the item's pinned conversation", () => {
       expect(within(dialog()).getAllByTestId('item-dialog-more')).toHaveLength(1);
     });
 
+    it('draws the right-click menu’s AI ▸ and Copy ▸ in ⋯, above Delete', () => {
+      renderShell();
+      openRow(DATED);
+      fireEvent.pointerDown(within(dialog()).getByTestId('item-dialog-more'), {
+        button: 0,
+        ctrlKey: false,
+        pointerType: 'mouse',
+      });
+      const ask = screen.getByTestId('item-menu-ask');
+      const copy = screen.getByTestId('item-menu-copy');
+      const del = screen.getByTestId('item-dialog-delete');
+      expect(ask.compareDocumentPosition(copy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(copy.compareDocumentPosition(del) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
     it('folds for a send about this item from anywhere, and not for another item’s', () => {
       renderShell();
       openRow(DATED);
