@@ -24,11 +24,10 @@
  * Files are never folded, never merged with changes and never counted as
  * hidden, and every filter shows them.
  *
- * NOTES. A note the user wrote on the item (lib/item-notes.ts, migration 082)
- * is a line too, drawn from its `item_notes` row, never from an event. The
- * pinned one is drawn on top of the timeline, not in the stream (`noteEntries`
- * leaves it out). Notes are never folded and every filter shows them, as
- * files. Like a file, a note breaks a change burst in `buildTimeline` (whose
+ * NOTES. A note written on the item's timeline (lib/item-notes.ts, migration
+ * 082; no new ones since the panel tidy, round 3 made the description the one
+ * place to write) is a line too, drawn from its `item_notes` row, never from
+ * an event. Notes are never folded and every filter shows them, as files. Like a file, a note breaks a change burst in `buildTimeline` (whose
  * compaction runs over every entry) and not in `buildStream` (whose runs per
  * slot over changes only).
  */
@@ -179,10 +178,6 @@ export function changeTopic(e: Pick<ItemEvent, 'action' | 'payload'>): string | 
 /** Same person, same kind of change, no further apart than this: one line, the last. */
 export const BURST_MS = 15 * 60 * 1000;
 
-/** A run of more changes in a row than this folds, */
-export const FOLD_OVER = 4;
-/** showing only the newest this many under a "Show N earlier changes" line. */
-export const FOLD_KEEP = 3;
 
 /** The words of a change that says nothing ("You changed it"), never shown. */
 const SAYS_NOTHING = 'changed it';
@@ -303,21 +298,9 @@ export function noteIsLong(body: string): boolean {
   return noteLength(body) > NOTE_CLAMP_CHARS || body.split('\n').length > NOTE_CLAMP_LINES;
 }
 
-/** The one pinned note, or null (the newest pinnedAt wins if a stale store ever held two). */
-export function pinnedNote(notes: readonly ItemNote[]): ItemNote | null {
-  let best: ItemNote | null = null;
-  for (const n of notes) {
-    if (!n.pinnedAt) continue;
-    if (!best || Date.parse(n.pinnedAt) > Date.parse(best.pinnedAt!)) best = n;
-  }
-  return best;
-}
-
-/** The item's notes as timeline lines, oldest first. The pinned note is not among them: it is drawn on top. */
+/** The item's notes as timeline lines, oldest first, a pinned one among them (pins are no longer drawn). */
 export function noteEntries(notes: readonly ItemNote[], placedAt?: Readonly<Record<string, number>>): NoteEntry[] {
-  const pinned = pinnedNote(notes);
   return notes
-    .filter((n) => n !== pinned)
     .map(
       (n): NoteEntry => ({
         kind: 'note',
@@ -467,34 +450,54 @@ export function talkLine(t: TalkEntry): string {
 }
 
 /**
- * The newest `keep` lines of a timeline, and how many older ones that leaves
- * out, once it has more than FOLD_OVER; the whole of it, and 0, otherwise.
- * File and note lines are never folded and never counted: they stay where they are.
+ * Changes on one day, in a row, read like a tool call you can open: two or
+ * more fold to the newest one's line and "· N more" (`RunRow`), the way Claude
+ * Code folds its tool calls (the item panel tidy, round 3). Only a plain
+ * change folds: a file, a note, a talk line, a day line or anything an agent
+ * did (its question, its status) ends the run and is never folded, so what
+ * the agent is up to always shows. A run whose key is in `unfolded` shows in
+ * full. Its key is its OLDEST line's, which a newer change never moves.
  */
-export function foldTimeline(days: readonly TimelineDay[], keep = FOLD_KEEP): { days: TimelineDay[]; hidden: number } {
-  const folds = (e: TimelineEntry) => e.kind !== 'file' && e.kind !== 'note';
-  const total = days.reduce((n, d) => n + d.entries.filter(folds).length, 0);
-  if (total <= FOLD_OVER) return { days: [...days], hidden: 0 };
-  let skip = total - keep;
-  const out: TimelineDay[] = [];
-  for (const day of days) {
-    const entries = day.entries.filter((e) => {
-      if (!folds(e) || skip === 0) return true;
-      skip--;
-      return false;
-    });
-    if (entries.length) out.push({ ...day, entries });
-  }
-  return { days: out, hidden: total - keep };
+export interface RunRow {
+  kind: 'run';
+  key: string;
+  at: number;
+  /** The run's newest change, whose words the folded line reads with. */
+  newest: ChangeEntry;
+  /** How many older changes it holds behind "· N more". */
+  hidden: number;
 }
 
-/** A line of the stream drawn between messages: a day, a change, a file, a note, or a fold over older changes. */
-export type StreamRow =
-  | { kind: 'day'; key: string; label: string }
-  | ChangeEntry
-  | FileEntry
-  | NoteEntry
-  | { kind: 'fold'; key: string; slot: number; hidden: number };
+const folds = (r: { kind: string }): r is ChangeEntry => r.kind === 'change' && (r as ChangeEntry).by !== 'agent';
+
+export function foldRuns<T extends { kind: string; key: string }>(
+  rows: readonly T[],
+  unfolded?: ReadonlySet<string>
+): (T | RunRow)[] {
+  const out: (T | RunRow)[] = [];
+  let run: ChangeEntry[] = [];
+  const flush = () => {
+    const key = run[0] ? `run-${run[0].key}` : '';
+    if (run.length >= 2 && !unfolded?.has(key)) {
+      const newest = run[run.length - 1];
+      out.push({ kind: 'run', key, at: newest.at, newest, hidden: run.length - 1 });
+    } else out.push(...(run as unknown as T[]));
+    run = [];
+  };
+  for (const r of rows) {
+    if (folds(r)) {
+      run.push(r);
+      continue;
+    }
+    flush();
+    out.push(r);
+  }
+  flush();
+  return out;
+}
+
+/** A line of the stream drawn between messages: a day, a change, a file, a note, or a folded run of changes. */
+export type StreamRow = { kind: 'day'; key: string; label: string } | ChangeEntry | FileEntry | NoteEntry | RunRow;
 
 /**
  * The item's timeline and its conversation as ONE stream (the item
@@ -502,9 +505,9 @@ export type StreamRow =
  * between the messages by time. Returns one slot per gap, `messages.length + 1`
  * of them: slot i is drawn just before message i, the last after every message.
  *
- * A slot holding more than FOLD_OVER changes shows its newest FOLD_KEEP under a
- * fold line, unless its index is in `unfolded`. Messages never fold. A day line
- * opens each new day, whether a change or a message starts it.
+ * A day's changes in a row fold to one line (`foldRuns`), unless the run's key
+ * is in `unfolded`. Messages never fold. A day line opens each new day,
+ * whether a change or a message starts it.
  *
  * Talk shows the messages alone (the slots hold only days and files); Changes
  * the changes alone, as one slot (the caller draws no messages).
@@ -515,7 +518,7 @@ export type StreamRow =
  * sits BEFORE a message stamped the same instant (strict `<`): a file sent
  * with a message is placed at a time taken just before the message's own.
  *
- * Notes (`opts.notes`, the pinned one already left out) are placed into the
+ * Notes (`opts.notes`) are placed into the
  * same per-slot list by the same strict `<`, never fold, and do not break a
  * change burst (compaction runs over the slot's changes before they merge).
  */
@@ -525,7 +528,7 @@ export function buildStream(
   opts: {
     filter: TimelineFilter;
     now: Date;
-    unfolded?: ReadonlySet<number>;
+    unfolded?: ReadonlySet<string>;
     files?: readonly FileEntry[];
     notes?: readonly NoteEntry[];
   }
@@ -561,26 +564,18 @@ export function buildStream(
   };
   for (let i = 0; i < bySlot.length; i++) {
     const rows: StreamRow[] = [];
-    let list = compactChanges(bySlot[i]);
-    if (list.length > FOLD_OVER && !opts.unfolded?.has(i)) {
-      rows.push({
-        kind: 'fold',
-        key: `fold-${i}`,
-        slot: i,
-        hidden: list.length - FOLD_KEEP,
-      });
-      list = list.slice(-FOLD_KEEP);
-    }
-    const merged: (ChangeEntry | FileEntry | NoteEntry)[] = [...list, ...filesBySlot[i]].sort(byTime);
+    const merged: (ChangeEntry | FileEntry | NoteEntry)[] = [...compactChanges(bySlot[i]), ...filesBySlot[i]].sort(
+      byTime
+    );
     for (const c of merged) rows.push(...dayRow(c.at, c.key), c);
     const next = msgs[i];
     if (next?.createdAt) rows.push(...dayRow(next.createdAt, `m${i}`));
-    slots.push(rows);
+    slots.push(foldRuns(rows, opts.unfolded));
   }
   return slots;
 }
 
-/** "Show 9 earlier changes". */
-export function foldLine(hidden: number): string {
-  return `Show ${hidden} earlier ${hidden === 1 ? 'change' : 'changes'}`;
+/** "moved it to today · 2 more": a folded run's line, after who did it. */
+export function runLine(r: RunRow): string {
+  return `${r.newest.text} · ${r.hidden} more`;
 }

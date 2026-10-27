@@ -8,8 +8,6 @@ import {
   listItemNotes,
   noteLength,
   noteRefusal,
-  pinItemNote,
-  unpinItemNote,
   updateItemNoteBody,
 } from '@/lib/item-notes';
 
@@ -136,28 +134,6 @@ describe('before any call', () => {
 
   it('trims the ends and keeps inner newlines', () => {
     expect(cleanNoteBody('  \nfirst\n\nsecond  \n')).toBe('first\n\nsecond');
-  });
-});
-
-describe('pin and unpin', () => {
-  it('pins through the RPC', async () => {
-    const { db, rpc } = fakeDb([{ data: '2026-10-23T10:00:00Z' }]);
-    expect(await pinItemNote('n1', db)).toEqual({ ok: true, pinnedAt: '2026-10-23T10:00:00Z' });
-    expect(rpc).toHaveBeenCalledWith('item_note_pin', { p_note: 'n1' });
-  });
-
-  it('is gone on a null answer, and failed on a 23505 with no retry', async () => {
-    expect(await pinItemNote('n1', fakeDb([{ data: null }]).db)).toEqual({ ok: false, refusal: 'gone' });
-    const dup = fakeDb([{ error: { code: '23505' } }]);
-    expect(await pinItemNote('n1', dup.db)).toEqual({ ok: false, refusal: 'failed' });
-    expect(dup.rpc).toHaveBeenCalledTimes(1);
-  });
-
-  it('unpins with a plain update, gone when no row answers', async () => {
-    const ok = fakeDb([{ data: { id: 'n1' } }]);
-    expect(await unpinItemNote('n1', ok.db)).toEqual({ ok: true });
-    expect(ok.calls[0].ops.find((o) => o[0] === 'update')?.[1]).toEqual({ pinned_at: null });
-    expect(await unpinItemNote('n1', fakeDb([{ data: null }]).db)).toEqual({ ok: false, refusal: 'gone' });
   });
 });
 

@@ -476,7 +476,7 @@ describe('the desk', () => {
 });
 
 describe('notes on the desk', () => {
-  it('with AI, shows the item’s note rows and pinned card, draws no Ask / Note switch, and Jot still writes the description', async () => {
+  it('with AI, shows the item’s note rows, a once-pinned one among them, draws no Ask / Note switch, and Jot still writes the description', async () => {
     const unseed = seedAI(CONNECTED_MODEL);
     try {
       const at = new Date().toISOString();
@@ -488,8 +488,10 @@ describe('notes on the desk', () => {
       start();
       open();
       await act(async () => {});
-      expect(screen.getByTestId('item-timeline-note')).toHaveTextContent('call before noon');
-      expect(screen.getByTestId('item-note-pinned')).toHaveTextContent('the pinned one');
+      const notes = screen.getAllByTestId('item-timeline-note').map((n) => n.textContent);
+      expect(notes.join(' ')).toContain('call before noon');
+      expect(notes.join(' ')).toContain('the pinned one');
+      expect(screen.queryByTestId('item-note-pinned')).toBeNull();
       expect(screen.queryByTestId('box-mode-ask')).toBeNull();
       expect(screen.queryByTestId('box-mode-note')).toBeNull();
       const jot = screen.getByTestId('do-stuff-desk-jot');

@@ -3,8 +3,7 @@ import type { ItemNote } from '@/lib/item-notes';
 
 /**
  * lib/item-notes-store.ts: optimistic writes with rollback, pending rows,
- * the lost-answer read back and the retry id, the put-back into the NOTE
- * draft, merged loads, the epoch, and the preview backstop.
+ * the lost-answer read back and the retry id, merged loads, the epoch, and the preview backstop.
  */
 
 const api = vi.hoisted(() => ({
@@ -12,8 +11,6 @@ const api = vi.hoisted(() => ({
   getItemNote: vi.fn(),
   insertItemNote: vi.fn(),
   updateItemNoteBody: vi.fn(),
-  pinItemNote: vi.fn(),
-  unpinItemNote: vi.fn(),
   deleteItemNote: vi.fn(),
 }));
 vi.mock('@/lib/item-notes', async (importOriginal) => ({
@@ -28,8 +25,8 @@ vi.mock('@/lib/planner-ready', async (importOriginal) => ({
   isPlannerPreviewing: () => preview.on,
 }));
 
-import { clearItemNotesState, getItemNotesEpoch, saveNoteFrom, useItemNotesStore } from '@/lib/item-notes-store';
-import { bindingKey, noteDraftKey, useRailStore } from '@/lib/rail-store';
+import { clearItemNotesState, getItemNotesEpoch, useItemNotesStore } from '@/lib/item-notes-store';
+import { useRailStore } from '@/lib/rail-store';
 
 const note = (id: string, over: Partial<ItemNote> = {}): ItemNote => ({
   id,
@@ -49,8 +46,6 @@ const deferred = <T>() => {
   return { promise, resolve };
 };
 const store = () => useItemNotesStore.getState();
-const ASK_KEY = bindingKey({ kind: 'item', itemId: 'i1' });
-const NOTE_KEY = noteDraftKey('i1');
 
 beforeEach(() => {
   clearItemNotesState();
@@ -136,85 +131,21 @@ describe('a pending note', () => {
     return { id, answer, done };
   };
 
-  it.each(['pin', 'edit', 'remove'] as const)('refuses %s and sends nothing until the insert answers', async (verb) => {
+  it.each(['edit', 'remove'] as const)('refuses %s and sends nothing until the insert answers', async (verb) => {
     const { id, answer, done } = await pendingNote();
-    const run = () =>
-      verb === 'pin'
-        ? store().pin('i1', id)
-        : verb === 'edit'
-          ? store().edit('i1', id, 'new')
-          : store().remove('i1', id);
+    const run = () => (verb === 'edit' ? store().edit('i1', id, 'new') : store().remove('i1', id));
     expect(await run()).toBe(false);
-    expect(api.pinItemNote).not.toHaveBeenCalled();
     expect(api.updateItemNoteBody).not.toHaveBeenCalled();
     expect(api.deleteItemNote).not.toHaveBeenCalled();
     answer.resolve({ ok: true, note: note(id, { body: 'hello' }) });
     await done;
-    api.pinItemNote.mockResolvedValue({ ok: true, pinnedAt: '2026-10-23T10:00:00.000Z' });
     api.updateItemNoteBody.mockResolvedValue({ ok: true, editedAt: '2026-10-23T10:00:00.000Z' });
     api.deleteItemNote.mockResolvedValue(true);
     expect(await run()).toBe(true);
   });
 });
 
-describe('saveNoteFrom', () => {
-  beforeEach(() => {
-    seed([]);
-    api.insertItemNote.mockResolvedValue({ ok: false, refusal: 'failed' });
-    api.getItemNote.mockResolvedValue(null);
-  });
-
-  it('puts a failed save back into an empty NOTE draft, in Note mode, never the Ask draft', async () => {
-    useRailStore.getState().setDraft(ASK_KEY, 'a question');
-    expect(await saveNoteFrom('i1', 'my note')).toBe(false);
-    const rail = useRailStore.getState();
-    expect(rail.drafts[NOTE_KEY]).toBe('my note');
-    expect(rail.drafts[ASK_KEY]).toBe('a question');
-    expect(rail.boxModes[ASK_KEY]).toBe('note');
-    expect(toast.error).toHaveBeenCalledWith('Couldn’t save your note. It’s back in the box.');
-  });
-
-  it('appends after a newline to a note draft that has text', async () => {
-    useRailStore.getState().setDraft(NOTE_KEY, 'typed since');
-    await saveNoteFrom('i1', 'my note');
-    expect(useRailStore.getState().drafts[NOTE_KEY]).toBe('typed since\nmy note');
-  });
-
-  it('a save that finds 082 missing offers Copy note and puts nothing in a draft no box shows', async () => {
-    api.insertItemNote.mockResolvedValue({ ok: false, refusal: 'unavailable' });
-    expect(await saveNoteFrom('i1', 'my note')).toBe(false);
-    expect(store().available).toBe(false);
-    const rail = useRailStore.getState();
-    expect(rail.drafts[NOTE_KEY]).toBeUndefined();
-    expect(rail.boxModes[ASK_KEY]).toBeUndefined();
-    expect(toast.error).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ action: expect.objectContaining({ label: 'Copy note' }) })
-    );
-  });
-
-  it('during the preview puts the text back with no toast and no call', async () => {
-    preview.on = true;
-    expect(await saveNoteFrom('i1', 'my note')).toBe(false);
-    expect(useRailStore.getState().drafts[NOTE_KEY]).toBe('my note');
-    expect(api.insertItemNote).not.toHaveBeenCalled();
-    expect(toast.error).not.toHaveBeenCalled();
-  });
-});
-
-describe('pin, edit and remove', () => {
-  it('pin moves the pin at once, and restores both on failure', async () => {
-    seed([note('a', { pinnedAt: '2026-10-22T10:00:00.000Z' }), note('b')]);
-    const answer = deferred<unknown>();
-    api.pinItemNote.mockReturnValue(answer.promise);
-    const done = store().pin('i1', 'b');
-    expect(notes().map((n) => !!n.pinnedAt)).toEqual([false, true]);
-    answer.resolve({ ok: false, refusal: 'failed' });
-    expect(await done).toBe(false);
-    expect(notes().map((n) => n.pinnedAt)).toEqual(['2026-10-22T10:00:00.000Z', null]);
-    expect(toast.error).toHaveBeenCalledWith('Couldn’t pin that note. Try again.');
-  });
-
+describe('edit and remove', () => {
   it('edit rolls back on failure and returns the refusal', async () => {
     seed([note('a')]);
     api.updateItemNoteBody.mockResolvedValue({ ok: false, refusal: 'failed' });
@@ -296,8 +227,6 @@ describe('the preview backstop', () => {
     preview.on = true;
     expect(await store().add('i1', 'x')).toBe(false);
     expect(await store().edit('i1', 'a', 'x')).toBe(false);
-    expect(await store().pin('i1', 'a')).toBe(false);
-    expect(await store().unpin('i1', 'a')).toBe(false);
     expect(await store().remove('i1', 'a')).toBe(false);
     for (const f of Object.values(api)) expect(f).not.toHaveBeenCalled();
     expect(toast.error).not.toHaveBeenCalled();

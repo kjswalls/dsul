@@ -12,7 +12,7 @@ import {
   type ConversationsState,
 } from '@/lib/conversations-store';
 import { sendFrom } from '@/lib/open-chat';
-import { bindingKey, noteDraftKey, useRailStore, type ComposerBinding } from '@/lib/rail-store';
+import { bindingKey, useRailStore, type ComposerBinding } from '@/lib/rail-store';
 import { itemChatPlaceholder } from '@/lib/chat-utils';
 import { useConversationReceipts } from '@/lib/chat-receipts';
 import { useAICapabilities } from '@/lib/ai-connection-store';
@@ -21,29 +21,18 @@ import { cn } from '@/lib/utils';
 import { AgentExchangeView, AgentRouteLine } from '@/components/ai/agent-exchange';
 import { useBoxAnswersAgent } from '@/lib/agent-question';
 import { useAgentExchange } from '@/hooks/use-agent-exchange';
-import { DELEGATE_ASSIGNEE } from '@/lib/agent-handoff';
 import { usePlannerStore } from '@/lib/planner-store';
 import { getItemEventsAvailable } from '@/lib/db';
-import {
-  buildStream,
-  fileEntries,
-  noteEntries,
-  pinnedNote,
-  type StreamRow,
-  type TimelineFilter,
-} from '@/lib/item-timeline';
+import { buildStream, fileEntries, noteEntries, type StreamRow } from '@/lib/item-timeline';
 import { useItemFiles, useItemFilesStore } from '@/lib/item-files-store';
-import { saveNoteFrom, useItemNotes, useItemNotesStore } from '@/lib/item-notes-store';
-import { NOTE_COPY, cleanNoteBody, noteLength, noteRefusal } from '@/lib/item-notes';
-import { toast } from 'sonner';
+import { useItemNotes, useItemNotesStore } from '@/lib/item-notes-store';
 import { TimelineFileRow } from '@/components/planner/item-file-card';
-import { PinnedNote, TimelineNoteRow } from '@/components/planner/item-notes';
-import { BoxModeSwitch, noteModeLine, switchBoxMode, useItemBoxMode } from '@/components/ai/box-mode-switch';
+import { TimelineNoteRow } from '@/components/planner/item-notes';
+import { BandLabel } from '@/components/planner/item-bands';
 import {
   TimelineChangeLine,
   TimelineDayLine,
-  TimelineFilterMenu,
-  TimelineFoldLine,
+  TimelineRunLine,
   useItemEvents,
 } from '@/components/planner/item-timeline';
 
@@ -95,19 +84,15 @@ function railBodyOf(el: HTMLElement | null): HTMLElement | null {
  * answer in is a field that sends nowhere.
  *
  * ONE STREAM. Every shape draws the item's timeline in it: its changes
- * (`item_events`), compacted and folded, set between the messages by time
- * (lib/item-timeline.ts `buildStream`), under one "Timeline" heading with
- * All · Talk · Changes. Where this is on screen ItemDetailSections mounts no
- * timeline of its own, so a change is never listed twice. Files kept on the
- * item are in the stream too (`fileEntries`, drawn from item_files rows),
- * under every filter, never folded; a file sent with a message sits just
- * before it. Notes written on the item (lib/item-notes.ts) are in it too, under
- * every filter, never folded; the pinned one is a card under the heading.
- *
- * NOTE MODE. The inline box has an Ask / Note switch (`noteSwitch`, off only
- * on the Do stuff desk, whose Jot already writes the description): in Note
- * mode it reads and writes the item's note draft, and Save keeps the text on
- * the item (`saveNoteFrom`), never `sendFrom`.
+ * (`item_events`), compacted, set between the messages by time, a day's
+ * changes in a row folded to one line like a tool call you can open
+ * (lib/item-timeline.ts `buildStream`, `foldRuns`), under one "Timeline"
+ * heading. Where this is on screen ItemDetailSections mounts no timeline of
+ * its own, so a change is never listed twice. Files kept on the item are in
+ * the stream too (`fileEntries`, drawn from item_files rows), never folded; a
+ * file sent with a message sits just before it. Notes written on the timeline
+ * before round 3 of the panel tidy (lib/item-notes.ts) are in it too, never
+ * folded. The box only asks: what is true about the item is its Notes field.
  *
  * Every shape shows Ask's own messages (components/ai/chat-transcript.tsx:
  * your bubble, plain replies, Copy, the status lines; one transcript everywhere),
@@ -127,15 +112,12 @@ export function ItemConversation({
   mode,
   className,
   tall = false,
-  noteSwitch = true,
 }: {
   item: Item;
   mode: 'pinned' | 'transcript' | 'inline';
   className?: string;
   /** Inline only: the stream may run most of the window's height (/item/[id]'s own column). */
   tall?: boolean;
-  /** Inline only: the box draws the Ask / Note switch. The Do stuff desk says false. */
-  noteSwitch?: boolean;
 }) {
   const threadId = useConversationsStore((s) => itemThreadId(s, item.id));
   // The agent's side of the item (components/ai/agent-exchange.tsx), read
@@ -163,10 +145,7 @@ export function ItemConversation({
   // surface shows it, so a half-typed message survives the view, and an ask
   // parked while the item was still answering (lib/open-chat.ts askAboutItem)
   // shows here as it does in the rail's box.
-  const notesAvailable = useItemNotesStore((s) => s.available);
-  const canNote = mode === 'inline' && noteSwitch && notesAvailable === true;
-  const noting = useItemBoxMode(item.id, canNote) === 'note';
-  const draftKey = noting ? noteDraftKey(item.id) : bindingKey({ kind: 'item', itemId: item.id });
+  const draftKey = bindingKey({ kind: 'item', itemId: item.id });
   const draft = useRailStore((s) => s.drafts[draftKey] ?? '');
   const setDraft = (next: string) => useRailStore.getState().setDraft(draftKey, next);
   const listRef = useRef<HTMLDivElement>(null);
@@ -175,10 +154,9 @@ export function ItemConversation({
   const prevCount = useRef(0);
   const inline = mode === 'inline';
   const events = useItemEvents(item, canChat);
-  const [filter, setFilter] = useState<TimelineFilter>('all');
-  // Slots whose older changes were opened. Keyed by slot index, which a new
-  // message never moves (it only appends a slot at the end).
-  const [unfolded, setUnfolded] = useState<ReadonlySet<number>>(() => new Set());
+  // Runs of changes opened, by the run's key (its oldest line's, which a new
+  // change never moves).
+  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
   const itemFiles = useItemFiles(canChat ? item.id : null);
   const placedAt = useItemFilesStore((s) => s.placedAt);
   const loadThumbs = useItemFilesStore((s) => s.loadThumbs);
@@ -196,22 +174,19 @@ export function ItemConversation({
   }, [canChat, itemFiles, item.id, loadThumbs]);
   const notes = useItemNotes(canChat ? item.id : null);
   const notePlacedAt = useItemNotesStore((s) => s.placedAt);
-  const pinned = useMemo(() => pinnedNote(notes ?? []), [notes]);
   const noteRows = useMemo(() => noteEntries(notes ?? [], notePlacedAt), [notes, notePlacedAt]);
   const slots = useMemo(
     () =>
       buildStream(getItemEventsAvailable() ? (events ?? []) : [], messages, {
-        filter,
+        filter: 'all',
         now: new Date(),
         unfolded,
         files,
         notes: noteRows,
       }),
-    [events, messages, filter, unfolded, files, noteRows]
+    [events, messages, unfolded, files, noteRows]
   );
   const anyChange = slots.some((rows) => rows.some((r) => r.kind !== 'day'));
-  const anyFile = files.length > 0;
-  const anyNote = noteRows.length > 0;
 
   // Find the item's conversation and fetch its transcript, only while
   // something can answer (the conversation is not shown otherwise).
@@ -259,18 +234,6 @@ export function ItemConversation({
 
   const handleSend = () => {
     const text = draft.trim();
-    // A note is saved even while a reply is arriving, and never sent.
-    if (noting) {
-      const body = cleanNoteBody(draft);
-      const why = noteRefusal(body);
-      if (why) {
-        if (why === 'too_long') toast.error(NOTE_COPY.refusal.too_long(noteLength(body)));
-        return;
-      }
-      setDraft('');
-      void saveNoteFrom(item.id, body);
-      return;
-    }
     if (!text || isLoading) return;
     setDraft('');
     void sendFrom({ kind: 'item', itemId: item.id }, text);
@@ -281,31 +244,16 @@ export function ItemConversation({
   if (!canChat) return null;
 
   const agentSide = exchange && <AgentExchangeView item={live} exchange={exchange} />;
-  const open = (slot: number) => setUnfolded((prev) => new Set(prev).add(slot));
+  const open = (key: string) => setUnfolded((prev) => new Set(prev).add(key));
   const rowsAt = (i: number) => <StreamRows itemId={item.id} rows={slots[i] ?? []} onOpen={open} />;
-  const pinnedCard = pinned && <PinnedNote key={pinned.id} itemId={item.id} note={pinned} />;
   const heading = (menu: ReactNode) => (
     <div className="flex min-h-6 items-center justify-between gap-2">
-      {(anyChange || messages.length > 0) && <TimelineFilterMenu value={filter} onChange={setFilter} />}
+      {(anyChange || messages.length > 0) && <BandLabel>Timeline</BandLabel>}
       <div className="ml-auto flex items-center gap-1">{menu}</div>
     </div>
   );
-  // Changes alone: one slot and no transcript. Otherwise the transcript, with
-  // the changes drawn between its messages.
-  // Talk with no messages still draws its file rows.
-  const empty =
-    filter === 'talk' && messages.length === 0 && !anyFile && !anyNote
-      ? 'No conversation about this yet.'
-      : filter === 'changes' && !anyChange
-        ? 'No changes yet.'
-        : null;
-  const stream = empty ? (
-    <p className="text-muted-foreground text-xs" data-testid="item-timeline-empty">
-      {empty}
-    </p>
-  ) : filter === 'changes' ? (
-    rowsAt(0)
-  ) : (
+  // The transcript, with the changes drawn between its messages.
+  const stream = (
     <TranscriptMessages
       messages={messages}
       busy={isLoading}
@@ -317,11 +265,10 @@ export function ItemConversation({
   );
 
   if (!inline) {
-    if (messages.length === 0 && !exchange && !anyChange && !pinned) return null;
+    if (messages.length === 0 && !exchange && !anyChange) return null;
     return (
       <div ref={listRef} data-testid="item-conversation" className={cn('flex flex-col gap-3', className)}>
         {heading(saved && threadId && <ItemConversationMenu id={threadId} />)}
-        {pinnedCard}
         {gone && <GoneNotice />}
         {agentSide}
         {stream}
@@ -330,11 +277,7 @@ export function ItemConversation({
     );
   }
 
-  const placeholder = noting
-    ? 'Add a note…'
-    : answeringAgent
-      ? `Answer ${answeringAgent}…`
-      : itemChatPlaceholder(target);
+  const placeholder = answeringAgent ? `Answer ${answeringAgent}…` : itemChatPlaceholder(target);
 
   return (
     <div className={cn('flex min-h-0 flex-col gap-1.5', className)} data-testid="item-thread">
@@ -342,9 +285,8 @@ export function ItemConversation({
       {heading(
         saved && threadId && <ItemConversationMenu id={threadId} fallbackFocus={() => inputRef.current?.focus()} />
       )}
-      {pinnedCard}
       {gone && <GoneNotice />}
-      {(messages.length > 0 || exchange || anyChange || pinned) && (
+      {(messages.length > 0 || exchange || anyChange) && (
         <div
           ref={listRef}
           className={cn(
@@ -358,22 +300,11 @@ export function ItemConversation({
       )}
       <ReplyStatus messages={messages} />
       <div className="field flex items-center gap-1.5 border px-2 py-1">
-        {canNote && (
-          <BoxModeSwitch
-            size="sm"
-            value={noting ? 'note' : 'ask'}
-            onChange={(m) => {
-              switchBoxMode(item.id, m);
-              inputRef.current?.focus();
-            }}
-          />
-        )}
         <input
           ref={inputRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={placeholder}
-          aria-label={noting ? 'Note on this item' : undefined}
           data-sub-input
           data-testid="item-thread-input"
           className="placeholder:text-muted-foreground -mx-1 min-w-0 flex-1 bg-transparent px-1 text-xs outline-none"
@@ -387,25 +318,19 @@ export function ItemConversation({
           size="icon"
           variant="ghost"
           className="size-6"
-          disabled={!draft.trim() || (!noting && isLoading)}
+          disabled={!draft.trim() || isLoading}
           onClick={handleSend}
-          aria-label={noting ? 'Save note' : 'Send'}
+          aria-label="Send"
         >
           <ArrowUp className="size-3.5" />
         </Button>
       </div>
-      {noting ? (
-        <p className="text-muted-foreground text-2xs" data-testid="note-mode-line">
-          {noteModeLine(target === 'openclaw' || (live as { assignee?: string }).assignee === DELEGATE_ASSIGNEE)}
-        </p>
-      ) : (
-        <AgentRouteLine itemId={item.id} />
-      )}
+      <AgentRouteLine itemId={item.id} />
     </div>
   );
 }
 
-/** A slot of the stream: day lines, changes, files, notes and a fold, drawn between two messages. */
+/** A slot of the stream: day lines, changes, files, notes and folded runs, drawn between two messages. */
 function StreamRows({
   itemId,
   rows,
@@ -413,7 +338,7 @@ function StreamRows({
 }: {
   itemId: string;
   rows: readonly StreamRow[];
-  onOpen: (slot: number) => void;
+  onOpen: (runKey: string) => void;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -421,8 +346,8 @@ function StreamRows({
       {rows.map((r) =>
         r.kind === 'day' ? (
           <TimelineDayLine key={r.key} label={r.label} />
-        ) : r.kind === 'fold' ? (
-          <TimelineFoldLine key={r.key} hidden={r.hidden} onOpen={() => onOpen(r.slot)} />
+        ) : r.kind === 'run' ? (
+          <TimelineRunLine key={r.key} run={r} onOpen={() => onOpen(r.key)} />
         ) : r.kind === 'file' ? (
           <TimelineFileRow key={r.key} entry={r} />
         ) : r.kind === 'note' ? (

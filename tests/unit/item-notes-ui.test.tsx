@@ -5,8 +5,8 @@ import type { ItemNote } from '@/lib/item-notes';
 
 /**
  * Notes on the timeline with no AI (components/planner/item-notes.tsx inside
- * ItemTimeline): the Note box, a saved note's row, pinning, editing, the
- * delete confirm, a pending note's menu, the "Show all" fold, and Escape
+ * ItemTimeline): a saved note's row, Move to Notes, editing, the delete
+ * confirm, a pending note's menu, the "Show all" fold, and Escape
  * through the item's Escape ladder in the modal, the drawer and the panel.
  */
 
@@ -15,8 +15,6 @@ const api = vi.hoisted(() => ({
   getItemNote: vi.fn(),
   insertItemNote: vi.fn(),
   updateItemNoteBody: vi.fn(),
-  pinItemNote: vi.fn(),
-  unpinItemNote: vi.fn(),
   deleteItemNote: vi.fn(),
 }));
 vi.mock('@/lib/item-notes', async (importOriginal) => ({
@@ -86,12 +84,6 @@ beforeEach(() => {
     ok: true,
     note: note(id, { body, createdAt: new Date().toISOString() }),
   }));
-  let pins = 0;
-  api.pinItemNote.mockImplementation(async () => ({
-    ok: true,
-    pinnedAt: new Date(Date.now() + ++pins * 1000).toISOString(),
-  }));
-  api.unpinItemNote.mockResolvedValue({ ok: true });
   api.deleteItemNote.mockResolvedValue(true);
   api.updateItemNoteBody.mockResolvedValue({ ok: true, editedAt: new Date().toISOString() });
   mobile.current = false;
@@ -123,77 +115,53 @@ const rows = () => screen.queryAllByTestId('item-timeline-note');
 const rowOf = (id: string) =>
   document.querySelector<HTMLElement>(`[data-testid="item-timeline-note"][data-note-id="${id}"]`)!;
 
-describe('the Note box with no AI', () => {
-  it('is drawn alone on an item with no history: no heading and no switch', async () => {
-    await timeline();
-    expect(screen.getByTestId('item-note-box')).toBeInTheDocument();
-    expect(screen.queryByText('Timeline')).toBeNull();
-    expect(screen.queryByTestId('box-mode-ask')).toBeNull();
-    expect(screen.queryByTestId('box-mode-note')).toBeNull();
+describe('an old note', () => {
+  it('draws no box to write one: the item’s Notes field is where notes go now', async () => {
+    await timeline([note('a')]);
+    expect(rows()).toHaveLength(1);
+    expect(screen.queryByTestId('item-note-box')).toBeNull();
+    expect(screen.queryByTestId('item-note-input')).toBeNull();
+    expect(screen.queryByTestId('item-note-pinned')).toBeNull();
   });
 
-  it('is not drawn before the first read answers, nor without 082, and the section is null', async () => {
+  it('draws nothing before the first read answers, nor without 082', async () => {
     const read = deferred<unknown>();
     api.listItemNotes.mockReturnValue(read.promise);
     const first = render(<ItemTimeline item={ITEM} />);
     await act(async () => {});
-    expect(screen.queryByTestId('item-note-box')).toBeNull();
+    expect(rows()).toHaveLength(0);
     first.unmount();
     clearItemNotesState();
     api.listItemNotes.mockResolvedValue('unavailable');
     const { container } = render(<ItemTimeline item={ITEM} />);
     await act(async () => {});
-    expect(screen.queryByTestId('item-note-box')).toBeNull();
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('saves on Enter, and the note shows as a row, its body in serif', async () => {
-    await timeline();
-    const field = screen.getByTestId('item-note-input');
-    fireEvent.change(field, { target: { value: 'Bring the insurance card' } });
-    await act(async () => {
-      fireEvent.keyDown(field, { key: 'Enter' });
-    });
-    expect(api.insertItemNote).toHaveBeenCalledWith(
-      expect.objectContaining({ itemId: 'i1', body: 'Bring the insurance card' })
-    );
-    const row = screen.getByTestId('item-timeline-note');
+  it('shows as a row with you as its author, its body in sans', async () => {
+    await timeline([note('a', { body: 'Bring the insurance card' })]);
+    const row = rowOf('a');
     expect(row).toHaveTextContent('You · note');
-    const body = within(row).getByText('Bring the insurance card');
-    expect(body.className).toContain('font-serif');
-    expect(useRailStore.getState().drafts['note:i1']).toBeUndefined();
-  });
-});
-
-describe('pinning', () => {
-  it('Pin to top moves a note onto the card and out of the stream', async () => {
-    await timeline([note('a')]);
-    openMenu(rowOf('a'));
-    await act(async () => pick('item-note-pin'));
-    expect(rows()).toHaveLength(0);
-    const card = screen.getByTestId('item-note-pinned');
-    expect(card).toHaveTextContent('Note · pinned');
-    expect(card).toHaveTextContent('Note a');
+    expect(within(row).getByText('Bring the insurance card').className).toContain('font-sans');
   });
 
-  it('an item whose only history is a pinned note draws the card and its menu, and no empty line; Unpin brings the row back', async () => {
+  it('keeps a once-pinned note in the stream, with no pin in its menu', async () => {
     await timeline([note('a', { pinnedAt: new Date().toISOString() })]);
-    const card = screen.getByTestId('item-note-pinned');
-    expect(within(card).getByTestId('item-note-menu')).toBeInTheDocument();
-    expect(screen.queryByTestId('item-timeline-empty')).toBeNull();
-    expect(screen.queryByText('No changes yet.')).toBeNull();
-    openMenu(card);
-    await act(async () => pick('item-note-unpin'));
-    expect(screen.queryByTestId('item-note-pinned')).toBeNull();
     expect(rows()).toHaveLength(1);
+    openMenu(rowOf('a'));
+    expect(screen.queryByTestId('item-note-pin')).toBeNull();
+    expect(screen.queryByTestId('item-note-unpin')).toBeNull();
   });
 
-  it('pinning a second note replaces the first, which goes back to the stream', async () => {
-    await timeline([note('a', { pinnedAt: new Date().toISOString() }), note('b')]);
-    openMenu(rowOf('b'));
-    await act(async () => pick('item-note-pin'));
-    expect(screen.getByTestId('item-note-pinned')).toHaveTextContent('Note b');
-    expect(rows().map((r) => r.getAttribute('data-note-id'))).toEqual(['a']);
+  it('Move to Notes puts its words after the description and takes it off the timeline', async () => {
+    const updateTask = vi.fn();
+    usePlannerStore.setState({ items: [{ ...ITEM, notes: 'Ask about the crown' }], updateTask } as never);
+    await timeline([note('a', { body: 'Bring the insurance card' })]);
+    openMenu(rowOf('a'));
+    await act(async () => pick('item-note-move'));
+    expect(updateTask).toHaveBeenCalledWith('i1', { notes: 'Ask about the crown\n\nBring the insurance card' });
+    expect(api.deleteItemNote).toHaveBeenCalledWith('a');
+    expect(rows()).toHaveLength(0);
   });
 });
 
@@ -244,37 +212,14 @@ describe('editing', () => {
   });
 });
 
-describe('editing while the pin moves', () => {
+describe('editing and its menu', () => {
   const startEdit = async (scope: HTMLElement) => {
     openMenu(scope);
     await act(async () => pick('item-note-edit'));
     return screen.getByTestId('item-note-editor').querySelector('textarea')!;
   };
 
-  it('a different note pinned elsewhere never takes over the pinned card’s open editor', async () => {
-    const at = new Date().toISOString();
-    await timeline([note('a', { pinnedAt: at }), note('b')]);
-    const field = await startEdit(screen.getByTestId('item-note-pinned'));
-    fireEvent.change(field, { target: { value: 'half of a' } });
-    // Another device pins b: the next read says so.
-    act(() =>
-      useItemNotesStore.setState((s) => ({
-        byItem: {
-          i1: {
-            status: 'ready',
-            notes: s.byItem.i1!.notes.map((n) => ({ ...n, pinnedAt: n.id === 'b' ? at : null })),
-          },
-        },
-      }))
-    );
-    const card = screen.getByTestId('item-note-pinned');
-    expect(card).toHaveAttribute('data-note-id', 'b');
-    expect(within(card).queryByTestId('item-note-editor')).toBeNull();
-    expect(card).toHaveTextContent('Note b');
-    expect(api.updateItemNoteBody).not.toHaveBeenCalled();
-  });
-
-  it('hides the note’s menu while it is being edited or confirmed, so it cannot be pinned out from under the editor', async () => {
+  it('hides the note’s menu while it is being edited or confirmed, so it cannot be moved out from under the editor', async () => {
     await timeline([note('a')]);
     await startEdit(rowOf('a'));
     expect(within(rowOf('a')).queryByTestId('item-note-menu')).toBeNull();
@@ -319,18 +264,13 @@ describe('deleting', () => {
 
 describe('a pending note and a long one', () => {
   it('disables the menu of a note whose insert has not answered', async () => {
-    await timeline();
-    const answer = deferred<unknown>();
-    api.insertItemNote.mockReturnValue(answer.promise);
-    const field = screen.getByTestId('item-note-input');
-    fireEvent.change(field, { target: { value: 'on its way' } });
-    await act(async () => fireEvent.keyDown(field, { key: 'Enter' }));
-    const menu = within(screen.getByTestId('item-timeline-note')).getByTestId('item-note-menu');
+    await timeline([note('a')]);
+    act(() => useItemNotesStore.setState({ pending: { a: true } }));
+    const menu = within(rowOf('a')).getByTestId('item-note-menu');
     expect(menu).toBeDisabled();
     expect(menu).toHaveAttribute('aria-disabled', 'true');
-    const id = Object.keys(useItemNotesStore.getState().pending)[0];
-    await act(async () => answer.resolve({ ok: true, note: note(id, { body: 'on its way' }) }));
-    expect(within(screen.getByTestId('item-timeline-note')).getByTestId('item-note-menu')).toBeEnabled();
+    act(() => useItemNotesStore.setState({ pending: {} }));
+    expect(within(rowOf('a')).getByTestId('item-note-menu')).toBeEnabled();
   });
 
   it('clamps a 600-character note under Show all', async () => {

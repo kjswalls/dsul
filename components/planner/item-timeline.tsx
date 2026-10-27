@@ -1,15 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ListFilter, User, Workflow } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { AskMark } from '@/components/ai/ask-mark';
+import { ChevronRight } from 'lucide-react';
 import { BandLabel } from '@/components/planner/item-bands';
 import { itemThreadId } from '@/components/ai/item-conversation';
 import { fetchItemEvents, getItemEventsAvailable, type ItemEvent } from '@/lib/db';
@@ -18,17 +10,17 @@ import { useConversationsStore, type ChatMessage } from '@/lib/conversations-sto
 import { TimelineFileRow } from '@/components/planner/item-file-card';
 import { useItemFiles, useItemFilesStore } from '@/lib/item-files-store';
 import { useItemNotes, useItemNotesStore } from '@/lib/item-notes-store';
-import { ItemNoteBox, PinnedNote, TimelineNoteRow } from '@/components/planner/item-notes';
+import { TimelineNoteRow } from '@/components/planner/item-notes';
 import {
   ACTOR_LABEL,
   buildTimeline,
   fileEntries,
-  foldLine,
-  foldTimeline,
+  foldRuns,
   noteEntries,
-  pinnedNote,
+  runLine,
   talkLine,
   type ChangeEntry,
+  type RunRow,
   type TimelineActor,
   type TimelineFilter,
 } from '@/lib/item-timeline';
@@ -44,14 +36,12 @@ import { cn } from '@/lib/utils';
  * as one stream (components/ai/item-conversation.tsx, `buildStream`), and this
  * section is not mounted. This is the timeline everywhere else: with no AI, the
  * changes alone; with AI and no conversation here, a day's talk as one line.
- * Either way, a long history shows its newest lines under "Show N earlier".
- * Files kept on the item are lines too (`fileEntries`), under every filter,
- * never folded and never counted, and shown even where item_events is not.
- * Notes (lib/item-notes.ts) are too, and the pinned one is a card under the
- * heading; with no AI this is where a note is written (`ItemNoteBox`).
+ * Either way, a day's changes in a row fold to the newest one's line and
+ * "· N more" (`foldRuns`), opened in place. Files kept on the item are lines
+ * too (`fileEntries`), never folded, and shown even where item_events is not.
+ * Notes written on the timeline before round 3 (lib/item-notes.ts) are too.
  *
- * Quiet when there is nothing: no heading over an empty list. With notes
- * available, an item with nothing to list shows the Note box alone.
+ * Quiet when there is nothing: no heading over an empty list.
  */
 
 const NO_MESSAGES: ChatMessage[] = [];
@@ -59,43 +49,18 @@ const NO_MESSAGES: ChatMessage[] = [];
 /** Fetched again this long after the item last changed, so a save shows up without a reload. */
 const REFETCH_MS = 800;
 
-/** "OC" for OpenClaw, the first letter for any other agent ("C" for Claude). */
-function agentInitials(name: string): string {
-  return name === 'OpenClaw' ? 'OC' : (name.trim()[0] ?? '?').toUpperCase();
-}
-
-export function TimelineAvatar({ who, agent = 'OpenClaw' }: { who: TimelineActor; agent?: string }) {
-  const base = 'grid size-5 shrink-0 place-items-center rounded-full text-[9px] font-semibold';
-  if (who === 'ai')
-    return (
-      <span className={cn(base, 'bg-secondary')} aria-hidden>
-        <AskMark className="size-3" />
-      </span>
-    );
-  if (who === 'agent')
-    return (
-      <span className={cn(base, 'bg-foreground text-background')} aria-hidden>
-        {agentInitials(agent)}
-      </span>
-    );
-  if (who === 'recipe')
-    return (
-      <span className={cn(base, 'bg-secondary text-muted-foreground')} aria-hidden>
-        <Workflow className="size-3" />
-      </span>
-    );
+/**
+ * Who did a line, as its mark: a small dot where the avatars were (the item
+ * panel tidy, round 3), since the line itself names who in words. An agent's
+ * dot is ink, so what it did stands out; everyone else's is the hairline grey.
+ */
+export function TimelineAvatar({ who }: { who: TimelineActor; agent?: string }) {
   return (
-    <span className={cn(base, 'bg-secondary text-muted-foreground')} aria-hidden>
-      <User className="size-3" />
+    <span className="grid size-5 shrink-0 place-items-center" aria-hidden data-who={who}>
+      <span className={cn('size-1.5 rounded-full', who === 'agent' ? 'bg-foreground/70' : 'bg-border')} />
     </span>
   );
 }
-
-export const TIMELINE_FILTERS: { id: TimelineFilter; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'talk', label: 'Talk' },
-  { id: 'changes', label: 'Changes' },
-];
 
 /**
  * The item's `item_events`, read at once and again a moment after the item
@@ -132,82 +97,6 @@ export function useItemEvents(item: Item, enabled = true): ItemEvent[] | null {
   return events;
 }
 
-/** All · Talk · Changes. */
-export function TimelineFilterTabs({
-  value,
-  onChange,
-}: {
-  value: TimelineFilter;
-  onChange: (f: TimelineFilter) => void;
-}) {
-  return (
-    <div role="radiogroup" aria-label="Show" className="flex items-center gap-0.5">
-      {TIMELINE_FILTERS.map((f) => (
-        <button
-          key={f.id}
-          type="button"
-          role="radio"
-          aria-checked={value === f.id}
-          data-testid={`item-timeline-filter-${f.id}`}
-          onClick={() => onChange(f.id)}
-          className={cn(
-            'rounded-full px-2 py-0.5 text-[11px] transition-colors',
-            value === f.id ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          {f.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** What the menu's trigger says for each filter: the stream's own heading. */
-const FILTER_MENU_LABEL: Record<TimelineFilter, string> = {
-  all: 'All activity',
-  talk: 'Talk only',
-  changes: 'Changes only',
-};
-
-/**
- * All · Talk · Changes as a quiet menu at the top of the item's conversation,
- * where the "Timeline" heading and its pills were (the rail's breadcrumb
- * design, Kirby's pick on 2026-10-24). Its trigger names what is showing.
- */
-export function TimelineFilterMenu({
-  value,
-  onChange,
-}: {
-  value: TimelineFilter;
-  onChange: (f: TimelineFilter) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          data-testid="item-timeline-filter"
-          data-filter={value}
-          className="-ml-1.5 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <ListFilter className="size-3" aria-hidden />
-          {FILTER_MENU_LABEL[value]}
-          <ChevronDown className="size-3" aria-hidden />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-40">
-        <DropdownMenuRadioGroup value={value} onValueChange={(v) => onChange(v as TimelineFilter)}>
-          {TIMELINE_FILTERS.map((f) => (
-            <DropdownMenuRadioItem key={f.id} value={f.id} data-testid={`item-timeline-filter-${f.id}`}>
-              {FILTER_MENU_LABEL[f.id]}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 /** A day's heading in the stream. */
 export function TimelineDayLine({ label }: { label: string }) {
   return (
@@ -242,27 +131,38 @@ export function TimelineChangeLine({ entry, as: Tag = 'li' }: { entry: ChangeEnt
   );
 }
 
-/** "Show 9 earlier changes": opens the older lines of this run where they are. */
-export function TimelineFoldLine({ hidden, onOpen }: { hidden: number; onOpen: () => void }) {
+/** A folded run, "You moved it to today · 2 more ›": opens the run where it is. */
+export function TimelineRunLine({ run, onOpen }: { run: RunRow; onOpen: () => void }) {
+  const who = run.newest.by === 'agent' && run.newest.agent ? run.newest.agent : ACTOR_LABEL[run.newest.by];
   return (
     <button
       type="button"
       onClick={onOpen}
-      data-testid="item-timeline-fold"
-      className="text-muted-foreground hover:text-foreground flex items-center gap-2 self-start text-xs transition-colors"
+      data-testid="item-timeline-run"
+      data-hidden={run.hidden}
+      aria-label={`${who} ${runLine(run)}. Show all`}
+      className="hover:text-foreground group/run flex w-full min-w-0 items-center gap-2 rounded-sm text-left transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
     >
-      <span className="grid size-5 shrink-0 place-items-center" aria-hidden>
-        <span className="bg-border size-1.5 rounded-full" />
+      <TimelineAvatar who={run.newest.by} />
+      <span className="min-w-0 flex-1 truncate text-xs">
+        <span className="text-foreground font-medium">{who}</span>{' '}
+        <span className="text-muted-foreground group-hover/run:text-foreground">{runLine(run)}</span>
+        <ChevronRight className="text-muted-foreground ml-0.5 inline size-3 align-[-2px]" aria-hidden />
       </span>
-      {foldLine(hidden)}
+      <time className="text-muted-foreground/70 shrink-0 font-mono text-[10px]">
+        {new Date(run.at).toLocaleTimeString(undefined, {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        })}
+      </time>
     </button>
   );
 }
 
 export function ItemTimeline({ item }: { item: Item }) {
   const events = useItemEvents(item);
-  const [filter, setFilter] = useState<TimelineFilter>('all');
-  const [unfolded, setUnfolded] = useState(false);
+  const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
   const { canChat } = useAICapabilities();
   const threadId = useConversationsStore((s) => itemThreadId(s, item.id));
   const messages = useConversationsStore((s) => (threadId ? s.threads[threadId]?.messages : undefined) ?? NO_MESSAGES);
@@ -285,11 +185,9 @@ export function ItemTimeline({ item }: { item: Item }) {
   }, [itemFiles, item.id, loadThumbs]);
   const notes = useItemNotes(item.id);
   const notePlacedAt = useItemNotesStore((s) => s.placedAt);
-  const notesAvailable = useItemNotesStore((s) => s.available);
-  const pinned = useMemo(() => pinnedNote(notes ?? []), [notes]);
   const noteRows = useMemo(() => noteEntries(notes ?? [], notePlacedAt), [notes, notePlacedAt]);
 
-  const effective: TimelineFilter = canChat ? filter : 'changes';
+  const effective: TimelineFilter = canChat ? 'all' : 'changes';
   const built = useMemo(
     () =>
       buildTimeline(
@@ -303,8 +201,8 @@ export function ItemTimeline({ item }: { item: Item }) {
       ),
     [events, talk, effective, files, noteRows]
   );
-  const { days, hidden } = useMemo(
-    () => (unfolded ? { days: built, hidden: 0 } : foldTimeline(built)),
+  const days = useMemo(
+    () => built.map((day) => ({ ...day, entries: foldRuns(day.entries, unfolded) })),
     [built, unfolded]
   );
   const anything = useMemo(
@@ -317,22 +215,13 @@ export function ItemTimeline({ item }: { item: Item }) {
           answerer: m.answerer,
         })),
         { filter: 'all', now: new Date(), files, notes: noteRows }
-      ).length > 0 || !!pinned,
-    [events, talk, files, noteRows, pinned]
+      ).length > 0,
+    [events, talk, files, noteRows]
   );
 
   const nothing =
-    !anything ||
-    (!getItemEventsAvailable() && talk.length === 0 && files.length === 0 && noteRows.length === 0 && !pinned);
-  if (nothing) {
-    // Nothing to list: the Note box alone where notes can be written, else nothing at all.
-    if (notesAvailable !== true) return null;
-    return (
-      <section data-testid="item-timeline" aria-label="Timeline" className="flex flex-col gap-2">
-        <ItemNoteBox itemId={item.id} />
-      </section>
-    );
-  }
+    !anything || (!getItemEventsAvailable() && talk.length === 0 && files.length === 0 && noteRows.length === 0);
+  if (nothing) return null;
 
   return (
     <section data-testid="item-timeline" aria-labelledby={`item-timeline-${item.id}`} className="flex flex-col gap-2">
@@ -340,22 +229,13 @@ export function ItemTimeline({ item }: { item: Item }) {
         <BandLabel>
           <span id={`item-timeline-${item.id}`}>Timeline</span>
         </BandLabel>
-        {canChat && <TimelineFilterTabs value={filter} onChange={setFilter} />}
       </div>
-      {pinned && <PinnedNote key={pinned.id} itemId={item.id} note={pinned} />}
       {days.length === 0 ? (
-        !pinned && (
-          <p className="text-muted-foreground text-xs" data-testid="item-timeline-empty">
-            {effective === 'talk' ? 'No conversation about this yet.' : 'No changes yet.'}
-          </p>
-        )
+        <p className="text-muted-foreground text-xs" data-testid="item-timeline-empty">
+          No changes yet.
+        </p>
       ) : (
         <ol className="flex flex-col gap-2">
-          {hidden > 0 && (
-            <li>
-              <TimelineFoldLine hidden={hidden} onOpen={() => setUnfolded(true)} />
-            </li>
-          )}
           {days.map((day) => (
             <li key={day.key} className="flex flex-col gap-1.5" data-testid="item-timeline-day">
               <TimelineDayLine label={day.label} />
@@ -374,6 +254,10 @@ export function ItemTimeline({ item }: { item: Item }) {
                     <li key={entry.key}>
                       <TimelineNoteRow itemId={item.id} entry={entry} />
                     </li>
+                  ) : entry.kind === 'run' ? (
+                    <li key={entry.key}>
+                      <TimelineRunLine run={entry} onOpen={() => setUnfolded((prev) => new Set(prev).add(entry.key))} />
+                    </li>
                   ) : (
                     <TimelineChangeLine key={entry.key} entry={entry} />
                   )
@@ -383,7 +267,6 @@ export function ItemTimeline({ item }: { item: Item }) {
           ))}
         </ol>
       )}
-      <ItemNoteBox itemId={item.id} />
     </section>
   );
 }

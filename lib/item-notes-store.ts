@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 import { create } from 'zustand';
 import { toast } from 'sonner';
 import {
@@ -10,35 +10,32 @@ import {
   listItemNotes,
   noteLength,
   noteRefusal,
-  pinItemNote,
-  unpinItemNote,
   updateItemNoteBody,
   type ItemNote,
   type NoteRefusal,
 } from '@/lib/item-notes';
-import { pinnedNote } from '@/lib/item-timeline';
 import { isPlannerPreviewing } from '@/lib/planner-ready';
-import { bindingKey, noteDraftKey, useRailStore } from '@/lib/rail-store';
 import { noteKey, syncSheen } from '@/lib/sync-sheen';
 
 /**
  * Notes on an item, as its timeline shows them (lib/item-notes.ts, migration
  * 082). Memory only, never persisted: the list is the database's, fetched when
  * a view of the item mounts. `available` is null until the first read answers
- * and false once a read says 082 is not applied, which keeps the Ask / Note
- * switch and the Note box off for the session: both are drawn only while it
- * is true.
+ * and false once a read says 082 is not applied. No surface writes a new
+ * note since the panel tidy, round 3 (the item's description is the one place
+ * to write); what was written stays, to read, edit, delete or move into the
+ * description.
  *
  * OPTIMISTIC, WITH ROLLBACK. Every write changes the store first and undoes
  * exactly its own change on failure, with a toast from NOTE_COPY. An add shows
  * at once and is `pending` until its insert answers; while it is, its menu and
- * editor are disabled and pin, edit and remove are refused here too, so no
+ * editor are disabled and edit and remove are refused here too, so no
  * write can reach the server before the row exists there. An add that failed
  * with `failed` is read back once by id (its answer may have been lost); one
  * that is truly not there is remembered (`retry`), so a re-save of the same
  * body reuses its id and can never make a second copy.
  *
- * A load MERGES: a note added, edited, pinned or removed while a read was on
+ * A load MERGES: a note added, edited or removed while a read was on
  * its way (or still in flight when it began) keeps its local state, so a
  * reload never undoes a write that raced it.
  *
@@ -76,8 +73,6 @@ interface ItemNotesState {
   load(itemId: string): Promise<void>;
   add(itemId: string, body: string, opts?: { placedAt?: number }): Promise<NoteRefusal | boolean>;
   edit(itemId: string, noteId: string, body: string): Promise<NoteRefusal | boolean>;
-  pin(itemId: string, noteId: string): Promise<boolean>;
-  unpin(itemId: string, noteId: string): Promise<boolean>;
   remove(itemId: string, noteId: string): Promise<boolean>;
   /** Drop a `lost` note from the screen (its editor's Cancel). */
   forget(itemId: string, noteId: string): void;
@@ -311,63 +306,6 @@ export const useItemNotesStore = create<ItemNotesState>((set, get) => {
       return refusal;
     },
 
-    async pin(itemId, noteId) {
-      if (refused(noteId)) return false;
-      const notes = notesOf(itemId);
-      const target = notes.find((n) => n.id === noteId);
-      if (!target) return false;
-      const others = notes.filter((n) => n.id !== noteId && n.pinnedAt !== null);
-      const started = epoch;
-      const end = begin(itemId, noteId, ...others.map((n) => n.id));
-      write(itemId, (list) =>
-        list.map((n) =>
-          n.id === noteId
-            ? { ...n, pinnedAt: new Date().toISOString() }
-            : n.pinnedAt !== null
-              ? { ...n, pinnedAt: null }
-              : n
-        )
-      );
-      const res = await pinItemNote(noteId);
-      end();
-      if (started !== epoch) return false;
-      if (res.ok) {
-        patch(itemId, noteId, { pinnedAt: res.pinnedAt });
-        return true;
-      }
-      const was = new Map(others.map((n) => [n.id, n.pinnedAt]));
-      write(itemId, (list) =>
-        list
-          .filter((n) => !(res.refusal === 'gone' && n.id === noteId))
-          .map((n) =>
-            n.id === noteId
-              ? { ...n, pinnedAt: target.pinnedAt }
-              : was.has(n.id)
-                ? { ...n, pinnedAt: was.get(n.id)! }
-                : n
-          )
-      );
-      toast.error(res.refusal === 'gone' ? NOTE_COPY.noteGone : NOTE_COPY.pinFailed);
-      return false;
-    },
-
-    async unpin(itemId, noteId) {
-      if (refused(noteId)) return false;
-      const target = notesOf(itemId).find((n) => n.id === noteId);
-      if (!target) return false;
-      const started = epoch;
-      const end = begin(itemId, noteId);
-      patch(itemId, noteId, { pinnedAt: null });
-      const res = await unpinItemNote(noteId);
-      end();
-      if (started !== epoch) return false;
-      if (res.ok) return true;
-      if (res.refusal === 'gone') drop(itemId, noteId);
-      else patch(itemId, noteId, { pinnedAt: target.pinnedAt });
-      toast.error(res.refusal === 'gone' ? NOTE_COPY.noteGone : NOTE_COPY.unpinFailed);
-      return false;
-    },
-
     async remove(itemId, noteId) {
       if (refused(noteId)) return false;
       const notes = notesOf(itemId);
@@ -449,48 +387,6 @@ export function useItemNotes(itemId: string | null): ItemNote[] | null {
   }, [itemId]);
   if (available === false) return null;
   return notes ?? NO_NOTES;
-}
-
-/** The item's pinned note, or null. */
-export function usePinnedNote(itemId: string | null): ItemNote | null {
-  const notes = useItemNotesStore((s) => (itemId ? s.byItem[itemId]?.notes : undefined));
-  return useMemo(() => pinnedNote(notes ?? NO_NOTES), [notes]);
-}
-
-/** A failed save's text goes back into the item's NOTE draft, in Note mode, never into an Ask draft. */
-function putBack(itemId: string, text: string) {
-  const rail = useRailStore.getState();
-  const key = noteDraftKey(itemId);
-  const typed = rail.drafts[key] ?? '';
-  rail.setDraft(key, typed ? `${typed}\n${text}` : text);
-  rail.setBoxMode(bindingKey({ kind: 'item', itemId }), 'note');
-}
-
-/**
- * The one path every box saves a note through. A refusal before any call
- * (empty, too long) toasts and returns false, and the caller keeps its text.
- * During the preview the text goes back silently. Otherwise the caller has
- * already cleared its box, and a failed add puts the text back in the item's
- * note draft, in Note mode, so a failure never loses what was written and
- * never turns a note into a question.
- */
-export async function saveNoteFrom(itemId: string, text: string, opts?: { placedAt?: number }): Promise<boolean> {
-  const body = cleanNoteBody(text);
-  const why = noteRefusal(body);
-  if (why) {
-    if (why === 'too_long') toast.error(NOTE_COPY.refusal.too_long(noteLength(body)));
-    return false;
-  }
-  if (isPlannerPreviewing()) {
-    putBack(itemId, body);
-    return false;
-  }
-  const started = epoch;
-  const res = await useItemNotesStore.getState().add(itemId, body, opts);
-  if (res === true) return true;
-  // Unavailable: no box would ever show the draft again, so add's toast offers Copy note instead.
-  if (started === epoch && res !== 'unavailable') putBack(itemId, body);
-  return false;
 }
 
 /** Sign-out and account switch: empty the store and bump the epoch. In local-state's RAW_CLEARERS. */

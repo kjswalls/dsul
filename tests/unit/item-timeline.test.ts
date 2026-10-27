@@ -5,14 +5,14 @@ import {
   buildTimeline,
   changeLine,
   fileEntries,
-  foldLine,
-  foldTimeline,
+  foldRuns,
   noteEntries,
   noteIsLong,
-  pinnedNote,
+  runLine,
   talkLine,
   type ChangeEntry,
   type FileEntry,
+  type RunRow,
   type TalkEntry,
 } from '@/lib/item-timeline';
 import type { ItemEvent } from '@/lib/db';
@@ -185,11 +185,14 @@ describe('a long history', () => {
     expect(texts([ev({ action: 'update', id: 'z', payload: { projectId: 'p1' } }, '2026-10-12T10:00:00')])).toEqual([]);
   });
 
-  it('sets changes between the messages, folds a long run, and never folds messages', () => {
-    const events = Array.from({ length: 6 }, (_, n) =>
-      ev({ action: 'update', id: `p${n}`, payload: { priority: n % 2 ? 'low' : 'high' } }, `2026-10-0${n + 1}T10:00:00`)
-    );
-    events.push(ev({ action: 'update', id: 'late', payload: { title: 'Later' } }, '2026-10-12T12:00:00'));
+  const sameDay = [
+    ev({ action: 'update', id: 'a', payload: { priority: 'high' } }, '2026-10-11T10:00:00'),
+    ev({ action: 'update', id: 'b', payload: { title: 'Renamed' } }, '2026-10-11T10:30:00'),
+    ev({ action: 'update', id: 'c', payload: { pausedAt: 'x' } }, '2026-10-11T11:00:00'),
+  ];
+
+  it('sets changes between the messages, folds a day’s run to its newest line, and never folds messages', () => {
+    const events = [...sameDay, ev({ action: 'update', id: 'late', payload: { title: 'Later' } }, '2026-10-12T12:00:00')];
     const messages = [
       { createdAt: new Date('2026-10-12T09:00:00').getTime() },
       { createdAt: new Date('2026-10-12T09:01:00').getTime() },
@@ -197,19 +200,42 @@ describe('a long history', () => {
     const slots = buildStream(events, messages, { filter: 'all', now });
     expect(slots).toHaveLength(3);
     const kinds = slots.map((rows) => rows.map((r) => r.kind));
-    expect(kinds[0]).toEqual(['fold', 'day', 'change', 'day', 'change', 'day', 'change', 'day']);
-    expect(slots[0][0]).toMatchObject({ kind: 'fold', hidden: 3 });
-    expect(foldLine(3)).toBe('Show 3 earlier changes');
+    expect(kinds[0]).toEqual(['day', 'run', 'day']);
+    const run = slots[0][1] as RunRow;
+    expect(run).toMatchObject({ hidden: 2, newest: { text: 'paused it' } });
+    expect(runLine(run)).toBe('paused it · 2 more');
     expect(kinds[1]).toEqual([]);
     expect(kinds[2]).toEqual(['change']);
-    const open = buildStream(events, messages, { filter: 'all', now, unfolded: new Set([0]) });
-    expect(open[0].filter((r) => r.kind === 'change')).toHaveLength(6);
+    const open = buildStream(events, messages, { filter: 'all', now, unfolded: new Set([run.key]) });
+    expect(open[0].filter((r) => r.kind === 'change')).toHaveLength(3);
     expect(
       buildStream(events, messages, { filter: 'talk', now })
         .flat()
         .every((r) => r.kind === 'day')
     ).toBe(true);
     expect(buildStream(events, messages, { filter: 'changes', now })).toHaveLength(1);
+  });
+
+  it('never folds across days, and keeps a run’s key when a newer change joins it', () => {
+    const apart = Array.from({ length: 4 }, (_, n) =>
+      ev({ action: 'update', id: `p${n}`, payload: { priority: n % 2 ? 'low' : 'high' } }, `2026-10-0${n + 1}T10:00:00`)
+    );
+    expect(buildStream(apart, [], { filter: 'all', now })[0].some((r) => r.kind === 'run')).toBe(false);
+    const [two] = buildStream(sameDay.slice(0, 2), [], { filter: 'all', now });
+    const [three] = buildStream(sameDay, [], { filter: 'all', now });
+    expect((two[1] as RunRow).key).toBe((three[1] as RunRow).key);
+    expect((three[1] as RunRow).hidden).toBe(2);
+  });
+
+  it('never folds what an agent did, and lets it end a run', () => {
+    const events = [
+      sameDay[0],
+      sameDay[1],
+      ev({ action: 'update', id: 'q', payload: { aiStatus: 'needs_input', by: 'openclaw' } }, '2026-10-11T10:40:00'),
+      sameDay[2],
+    ];
+    const [slot] = buildStream(events, [], { filter: 'all', now });
+    expect(slot.map((r) => r.kind)).toEqual(['day', 'run', 'change', 'change']);
   });
 });
 
@@ -297,14 +323,18 @@ describe('files', () => {
     );
     const files = fileEntries([f('a', '2026-10-01T09:00:00'), f('b', '2026-10-01T12:00:00', { addedBy: 'openclaw' })]);
     const [slot] = buildStream(events, [], { filter: 'all', now, files });
-    expect(slot.find((r) => r.kind === 'fold')).toMatchObject({ hidden: 3 });
     expect(slot.filter((r) => r.kind === 'file')).toHaveLength(2);
-    expect(slot.filter((r) => r.kind === 'change')).toHaveLength(3);
+    expect(slot.filter((r) => r.kind === 'change')).toHaveLength(6);
 
-    const days = buildTimeline(events, [], { filter: 'changes', now, files });
-    const folded = foldTimeline(days);
-    expect(folded.hidden).toBe(3);
-    expect(folded.days.flatMap((d) => d.entries).filter((e) => e.kind === 'file')).toHaveLength(2);
+    const day = [
+      ev({ action: 'update', id: 'a', payload: { priority: 'high' } }, '2026-10-01T10:00:00'),
+      ev({ action: 'update', id: 'b', payload: { title: 'Renamed' } }, '2026-10-01T10:30:00'),
+      ev({ action: 'update', id: 'c', payload: { pausedAt: 'x' } }, '2026-10-01T11:00:00'),
+    ];
+    const one = fileEntries([f('x', '2026-10-01T10:45:00')]);
+    const entries = buildTimeline(day, [], { filter: 'changes', now, files: one }).flatMap((d) => foldRuns(d.entries));
+    expect(entries.map((e) => e.kind)).toEqual(['run', 'file', 'change']);
+    expect((entries[0] as RunRow).hidden).toBe(1);
   });
 
   it('shows files under Talk and under Changes', () => {
@@ -354,21 +384,13 @@ describe('notes', () => {
   });
   const move = (id: string, at: string, day: string) => ev({ action: 'update', id, payload: { startDate: day } }, at);
 
-  it('leaves out the pinned note, and places a note where it was placed on this page', () => {
+  it('keeps a pinned note in the stream like any other, and places a note where it was placed on this page', () => {
     const entries = noteEntries(
       [n('a', '2026-10-12T10:00:00'), n('p', '2026-10-12T09:00:00', { pinnedAt: '2026-10-12T11:00:00Z' })],
       { a: ms('2026-10-12T09:30:00') }
     );
-    expect(entries.map((e) => [e.kind, e.key, e.by])).toEqual([['note', 'note-a', 'you']]);
-    expect(entries[0].at).toBe(ms('2026-10-12T09:30:00'));
-  });
-
-  it('picks the newest pin when a stale list held two', () => {
-    const older = n('a', '2026-10-12T10:00:00', { pinnedAt: '2026-10-12T10:00:00Z' });
-    const newer = n('b', '2026-10-12T10:00:00', { pinnedAt: '2026-10-12T12:00:00Z' });
-    expect(pinnedNote([older, newer])).toBe(newer);
-    expect(pinnedNote([newer, older])).toBe(newer);
-    expect(pinnedNote([n('c', '2026-10-12T10:00:00')])).toBeNull();
+    expect(entries.map((e) => e.key).sort()).toEqual(['note-a', 'note-p']);
+    expect(entries.find((e) => e.key === 'note-a')?.at).toBe(ms('2026-10-12T09:30:00'));
   });
 
   const messages = [{ createdAt: ms('2026-10-12T10:00:00') }, { createdAt: ms('2026-10-12T10:00:10') }];
@@ -412,7 +434,6 @@ describe('notes', () => {
     );
     const notes = noteEntries([n('a', '2026-10-01T09:00:00'), n('b', '2026-10-01T12:00:00')]);
     const [slot] = buildStream(events, [], { filter: 'all', now, notes });
-    expect(slot.find((r) => r.kind === 'fold')).toMatchObject({ hidden: 3 });
     expect(slot.filter((r) => r.kind === 'note')).toHaveLength(2);
     for (const filter of ['all', 'talk', 'changes'] as const) {
       expect(
@@ -454,17 +475,15 @@ describe('notes', () => {
     expect(buildTimeline(events, [], { filter: 'changes', now }).flatMap((d) => d.entries)).toHaveLength(1);
   });
 
-  it('foldTimeline does not count notes', () => {
-    const events = Array.from({ length: 5 }, (_, i) =>
-      ev({ action: 'update', id: `p${i}`, payload: { priority: i % 2 ? 'low' : 'high' } }, `2026-10-0${i + 1}T10:00:00`)
-    );
-    const notes = noteEntries([n('a', '2026-10-01T09:00:00'), n('b', '2026-10-02T09:00:00')]);
-    const folded = foldTimeline(buildTimeline(events, [], { filter: 'changes', now, notes }));
-    // Five changes fold to three; counted with the notes, it would have hidden four.
-    expect(folded.hidden).toBe(2);
-    const kept = folded.days.flatMap((d) => d.entries);
-    expect(kept.filter((e) => e.kind === 'note')).toHaveLength(2);
-    expect(kept.filter((e) => e.kind === 'change')).toHaveLength(3);
+  it('foldRuns: a note ends a run and is never folded', () => {
+    const events = [
+      ev({ action: 'update', id: 'a', payload: { priority: 'high' } }, '2026-10-12T10:00:00'),
+      ev({ action: 'update', id: 'b', payload: { title: 'Renamed' } }, '2026-10-12T10:30:00'),
+      ev({ action: 'update', id: 'c', payload: { pausedAt: 'x' } }, '2026-10-12T11:00:00'),
+    ];
+    const notes = noteEntries([n('a', '2026-10-12T10:45:00')]);
+    const kept = buildTimeline(events, [], { filter: 'changes', now, notes }).flatMap((d) => foldRuns(d.entries));
+    expect(kept.map((e) => e.kind)).toEqual(['run', 'note', 'change']);
   });
 
   it('folds a body over 480 characters or over 8 lines under "Show all"', () => {

@@ -258,7 +258,7 @@ function DeskItem({ item }: { item: Item }) {
           item is handed off. Nothing at all when nobody can answer. */}
       {/* Ask only: Jot above already writes a note (the description), so no
           Ask / Note switch here, or the desk would have two "note" boxes. */}
-      <ItemConversation item={item} mode="inline" className="pt-2" noteSwitch={false} />
+      <ItemConversation item={item} mode="inline" className="pt-2" />
       {/* The bar (the room's round two): done and skip wait at the foot of
           the room in the list card's capsule (now-capsule.tsx), with what
           comes up next, so the top of it is the item and nothing else.

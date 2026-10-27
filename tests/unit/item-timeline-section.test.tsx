@@ -57,8 +57,8 @@ import type { TaskItem } from '@/lib/planner-types';
 
 /**
  * The item's timeline in the panel: changes with who made them, a day's talk
- * as one line with AI on, the filter, and nothing at all for an item with no
- * history.
+ * as one line with AI on, a day's changes in a row folded to one line, and
+ * nothing at all for an item with no history.
  */
 
 const ITEM: TaskItem = { type: 'task', id: 'i1', title: 'Call the dentist', status: 'pending', isScheduled: false, order: 0 };
@@ -124,10 +124,7 @@ describe('the timeline', () => {
     expect(changes.map((c) => c.getAttribute('data-by'))).toEqual(['you', 'ai']);
     expect(changes[1]).toHaveTextContent('AI renamed it “Call the dentist”');
     expect(screen.getByTestId('item-timeline-talk')).toHaveTextContent('You and the AI talked it through · 2 messages');
-    fireEvent.click(screen.getByTestId('item-timeline-filter-changes'));
-    expect(screen.queryByTestId('item-timeline-talk')).toBeNull();
-    fireEvent.click(screen.getByTestId('item-timeline-filter-talk'));
-    expect(screen.queryAllByTestId('item-timeline-change')).toHaveLength(0);
+    expect(screen.queryByTestId('item-timeline-filter')).toBeNull();
   });
 
   it('shows changes alone, with no filter and no talk, without AI', async () => {
@@ -136,6 +133,9 @@ describe('the timeline', () => {
     withThread();
     render(<ItemTimeline item={ITEM} />);
     await act(async () => {});
+    // With no talk between them, the day's two changes fold to the newest.
+    expect(screen.getByTestId('item-timeline-run')).toHaveTextContent('AI renamed it “Call the dentist” · 1 more');
+    fireEvent.click(screen.getByTestId('item-timeline-run'));
     expect(screen.getAllByTestId('item-timeline-change')).toHaveLength(2);
     expect(screen.queryByTestId('item-timeline-talk')).toBeNull();
     expect(screen.queryByTestId('item-timeline-filter-all')).toBeNull();
@@ -149,7 +149,7 @@ describe('the timeline', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('folds a long history to its newest three, and opens it again', async () => {
+  it('folds a day’s run of changes to its newest line, and opens it again', async () => {
     unseed = seedAI(NOTHING_CONNECTED);
     fetchItemEvents.mockResolvedValue(
       ['high', 'low', 'medium', 'high', 'low', 'none'].map((priority, n) => ({
@@ -163,17 +163,13 @@ describe('the timeline', () => {
     );
     render(<ItemTimeline item={ITEM} />);
     await act(async () => {});
-    expect(screen.getAllByTestId('item-timeline-change')).toHaveLength(3);
-    fireEvent.click(screen.getByTestId('item-timeline-fold'));
+    expect(screen.queryAllByTestId('item-timeline-change')).toHaveLength(0);
+    expect(screen.getByTestId('item-timeline-run')).toHaveTextContent('· 5 more');
+    fireEvent.click(screen.getByTestId('item-timeline-run'));
     expect(screen.getAllByTestId('item-timeline-change')).toHaveLength(6);
+    expect(screen.queryByTestId('item-timeline-run')).toBeNull();
   });
 });
-
-/** The conversation's filter is a menu: open it, then pick. */
-function pickFilter(f: string) {
-  fireEvent.pointerDown(screen.getByTestId('item-timeline-filter'), { button: 0, ctrlKey: false, pointerType: 'mouse' });
-  fireEvent.click(screen.getByTestId(`item-timeline-filter-${f}`));
-}
 
 describe('the timeline inside the conversation', () => {
   it('is one stream: each change sits between the messages by time, and no second timeline', async () => {
@@ -184,15 +180,14 @@ describe('the timeline inside the conversation', () => {
     render(<ItemConversation item={ITEM} mode="pinned" />);
     await act(async () => {});
     const section = screen.getByTestId('item-conversation');
-    // The filter menu heads it, naming what shows; no "Timeline" heading.
-    expect(screen.getByTestId('item-timeline-filter')).toHaveTextContent('All activity');
+    // One "Timeline" heading and no filter.
+    expect(section).toHaveTextContent('Timeline');
+    expect(screen.queryByTestId('item-timeline-filter')).toBeNull();
     const text = section.textContent ?? '';
     const order = ['You added it', 'hi', 'hello', 'AI renamed it'].map((t) => text.indexOf(t));
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(screen.queryByTestId('item-timeline-talk')).toBeNull();
-    pickFilter('changes');
-    expect(section).not.toHaveTextContent('hello');
     expect(screen.getAllByTestId('item-timeline-change')).toHaveLength(2);
   });
 });
@@ -219,20 +214,14 @@ describe('files on the timeline', () => {
     expect(screen.getByTestId('item-file-card')).toHaveTextContent('PDF · 2 KB');
     // Its own row, never counted as a change.
     expect(screen.queryAllByTestId('item-timeline-change')).toHaveLength(0);
-    // Talk and Changes show it too.
-    pickFilter('changes');
-    expect(screen.getByTestId('item-timeline-file')).toBeInTheDocument();
-    pickFilter('talk');
-    expect(screen.getByTestId('item-timeline-file')).toBeInTheDocument();
   });
 
-  it('shows the timeline for an item whose only history is a file, under Talk too', async () => {
+  it('shows the timeline for an item whose only history is a file', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     fetchItemEvents.mockResolvedValue([]);
     filesDb.rows = [fileRow('a', today(9))];
     await pinned();
     expect(screen.getByTestId('item-conversation')).toBeInTheDocument();
-    pickFilter('talk');
     expect(screen.queryByTestId('item-timeline-empty')).toBeNull();
     expect(screen.getByTestId('item-timeline-file')).toBeInTheDocument();
   });
@@ -311,41 +300,26 @@ describe('notes on the timeline', () => {
     expect(screen.getByTestId('item-timeline-note')).toHaveTextContent('You · note');
   });
 
-  it('draws the pinned card under every filter', async () => {
-    unseed = seedAI(CONNECTED_MODEL);
-    fetchItemEvents.mockResolvedValue(events);
-    notesDb.rows = [noteRow('p', today(7), { pinned_at: today(8).toISOString() })];
-    withThread();
-    await conversation();
-    for (const f of ['all', 'talk', 'changes']) {
-      pickFilter(f);
-      expect(screen.getByTestId('item-note-pinned')).toHaveTextContent('Note · pinned');
-      expect(screen.getByTestId('item-note-pinned')).toHaveTextContent('Note p');
-      // Drawn on top, never also in the stream.
-      expect(screen.queryByTestId('item-timeline-note')).toBeNull();
-    }
-  });
-
-  it('shows the conversation for an item whose only history is a pinned note', async () => {
+  it('keeps a once-pinned note in the stream, with no card on top', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     fetchItemEvents.mockResolvedValue([]);
     notesDb.rows = [noteRow('p', today(7), { pinned_at: today(8).toISOString() })];
     await conversation();
     expect(screen.getByTestId('item-conversation')).toBeInTheDocument();
-    expect(screen.getByTestId('item-note-pinned')).toBeInTheDocument();
+    expect(screen.queryByTestId('item-note-pinned')).toBeNull();
+    expect(screen.getByTestId('item-timeline-note')).toHaveTextContent('Note p');
   });
 
-  it('shows a note under Talk with no messages, not the empty line', async () => {
+  it('shows a note with no messages, not the empty line', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     fetchItemEvents.mockResolvedValue([]);
     notesDb.rows = [noteRow('a', today(9))];
     await conversation();
-    pickFilter('talk');
     expect(screen.queryByTestId('item-timeline-empty')).toBeNull();
     expect(screen.getByTestId('item-timeline-note')).toBeInTheDocument();
   });
 
-  it('in note mode, the inline box draws no agent route line and saves mid-reply', async () => {
+  it('the inline box is Ask only: no Note switch, and the agent route line stays mid-reply', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     fetchItemEvents.mockResolvedValue([]);
     notesDb.rows = [];
@@ -354,23 +328,9 @@ describe('notes on the timeline', () => {
     useConversationsStore.setState((s) => ({ sending: { ...s.sending, 'item:i1': true } }) as never);
     await conversation('inline');
     expect(screen.getByTestId('agent-route-line')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('box-mode-note'));
-    expect(screen.queryByTestId('agent-route-line')).toBeNull();
-    expect(screen.getByTestId('note-mode-line')).toHaveTextContent(
-      'Saved on this item. Not sent to the AI or OpenClaw.'
-    );
-    const input = screen.getByTestId('item-thread-input');
-    expect(input).toHaveAttribute('placeholder', 'Add a note…');
-    fireEvent.change(input, { target: { value: 'remember the form' } });
-    expect(screen.getByRole('button', { name: 'Save note' })).toBeEnabled();
-  });
-
-  it('draws no switch where the host says so (the Do stuff desk)', async () => {
-    unseed = seedAI(CONNECTED_MODEL);
-    fetchItemEvents.mockResolvedValue([]);
-    notesDb.rows = [];
-    await conversation('inline', { noteSwitch: false });
     expect(screen.queryByTestId('box-mode-ask')).toBeNull();
     expect(screen.queryByTestId('box-mode-note')).toBeNull();
+    expect(screen.getByTestId('item-thread-input')).not.toHaveAttribute('placeholder', 'Add a note…');
+    expect(screen.queryByRole('button', { name: 'Save note' })).toBeNull();
   });
 });

@@ -167,21 +167,6 @@ export function bindingKey(b: ComposerBinding): string {
 }
 
 /**
- * The key an item's NOTE draft is kept under, in the same `drafts` map as
- * every box's text (so `setDraft` and `reset()` cover it), and never the
- * item's Ask key: a box in Note mode reads and writes only this one, and every
- * other box (Ask mode, the phone's dock, home, a conversation) only its own,
- * so a note can never be shown or sent as a message by a box that does not
- * know it is a note (lib/item-notes-store.ts, migration 082).
- */
-export function noteDraftKey(itemId: string): string {
-  return `note:${itemId}`;
-}
-
-/** What an item's box does with its text: ask whoever answers, or keep it as a note on the item. */
-export type BoxMode = 'ask' | 'note';
-
-/**
  * A consumable focus request: the matching field focuses when it is mounted,
  * or when it mounts next, and clears it. Set only by an explicit summon (a
  * keypress, a command, a chip), never because something mounted.
@@ -210,14 +195,8 @@ interface RailState {
    * it. Every other open lands at the item's top.
    */
   pendingReveal: { itemId: string } | null;
-  /** Half-typed composer text by `bindingKey` (and an item's note by `noteDraftKey`). Memory only. */
+  /** Half-typed composer text by `bindingKey`. Memory only. */
   drafts: Record<string, string>;
-  /**
-   * The item boxes in Note mode, by `bindingKey` (only item keys are ever
-   * written); absence means Ask. Shared by the rail's box and the inline box,
-   * as the draft is. Memory only, cleared by reset().
-   */
-  boxModes: Record<string, 'note'>;
   /** Which way the last move went, for the slide. */
   lastNav: 'push' | 'back' | null;
   /**
@@ -292,8 +271,6 @@ interface RailState {
    */
   consumeFocus(target: FocusRequest['target'], binding?: ComposerBinding): boolean;
   setDraft(key: string, text: string): void;
-  /** An item box's mode, by `bindingKey`: 'ask' deletes the key. */
-  setBoxMode(key: string, mode: BoxMode): void;
   /**
    * Open Ask: `askOpen` (persisted) and `summoned`. `focus` asks for the box
    * (an explicit open from the keyboard or a command; History's search field
@@ -425,7 +402,6 @@ export const useRailStore = create<RailState>()((set, get) => {
     pendingFocus: null,
     pendingReveal: null,
     drafts: {},
-    boxModes: {},
     lastNav: null,
     reservePx: 0,
     reserveInstant: false,
@@ -555,15 +531,6 @@ export const useRailStore = create<RailState>()((set, get) => {
         return { drafts };
       }),
 
-    setBoxMode: (key, mode) =>
-      set((s) => {
-        if (((s.boxModes[key] as BoxMode | undefined) ?? 'ask') === mode) return s;
-        const boxModes = { ...s.boxModes };
-        if (mode === 'note') boxModes[key] = 'note';
-        else delete boxModes[key];
-        return { boxModes };
-      }),
-
     summon: (o = {}) => {
       if (railModeNow() !== 'ask') rememberFocus();
       if (o.persist !== false) useSidebarStore.getState().setAskOpen(true);
@@ -664,7 +631,6 @@ export const useRailStore = create<RailState>()((set, get) => {
         pendingFocus: null,
         pendingReveal: null,
         drafts: {},
-        boxModes: {},
         lastNav: null,
       });
     },
