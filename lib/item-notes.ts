@@ -7,14 +7,15 @@
  *
  * A note is the user's own writing: saved to the item, never sent to a model,
  * and not the description under the title (`items.notes`, which you and the
- * agents share). One per item may be pinned; only `item_note_pin` pins (082's
- * touch trigger refuses any other), under a per-item lock.
+ * agents share). 082's pin (`pinned_at`, `item_note_pin`) is no longer
+ * offered: the item panel tidy, round 3 made the description the one place
+ * for what is true about an item, and a stored pin is simply not drawn.
  *
  * Over NOTE_MAX_CHARS a body is REFUSED, never clipped, so the text stays in
  * the box or the editor: a silent cut would lose what was written. Counted in
  * code points (`noteLength`), as 082's `char_length` counts.
  *
- * No `item_events` row is written for a note, its edit, its pin or its delete.
+ * No `item_events` row is written for a note, its edit or its delete.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -61,8 +62,6 @@ export const NOTE_COPY = {
     failed: () => 'Couldn’t save your note. It’s back in the box.',
   } satisfies Record<NoteRefusal, (n?: number) => string>,
   noteGone: 'That note was deleted somewhere else.',
-  pinFailed: 'Couldn’t pin that note. Try again.',
-  unpinFailed: 'Couldn’t unpin that note. Try again.',
   editFailed: 'Couldn’t save your changes. Try again.',
   deleteFailed: 'Couldn’t delete that note. Try again.',
   copyNote: 'Copy note',
@@ -196,37 +195,6 @@ export async function updateItemNoteBody(
     const probe = await client.from('item_notes').select('id').eq('id', id).maybeSingle();
     if (probe.error) return { ok: false, refusal: 'failed' };
     return { ok: false, refusal: probe.data ? 'conflict' : 'gone' };
-  } catch {
-    return { ok: false, refusal: 'failed' };
-  }
-}
-
-/** Pin through 082's RPC (it unpins the item's other note in the same transaction). */
-export async function pinItemNote(
-  id: string,
-  db?: Db
-): Promise<{ ok: true; pinnedAt: string } | { ok: false; refusal: NoteRefusal }> {
-  try {
-    const { data, error } = await (db ?? createClient()).rpc('item_note_pin', { p_note: id });
-    // Any error, 23505 included, is a failure: the RPC's lock serializes pins.
-    if (error) return { ok: false, refusal: 'failed' };
-    if (typeof data !== 'string' || !data) return { ok: false, refusal: 'gone' };
-    return { ok: true, pinnedAt: data };
-  } catch {
-    return { ok: false, refusal: 'failed' };
-  }
-}
-
-export async function unpinItemNote(id: string, db?: Db): Promise<{ ok: true } | { ok: false; refusal: NoteRefusal }> {
-  try {
-    const { data, error } = await (db ?? createClient())
-      .from('item_notes')
-      .update({ pinned_at: null })
-      .eq('id', id)
-      .select('id')
-      .maybeSingle();
-    if (error) return { ok: false, refusal: 'failed' };
-    return data ? { ok: true } : { ok: false, refusal: 'gone' };
   } catch {
     return { ok: false, refusal: 'failed' };
   }

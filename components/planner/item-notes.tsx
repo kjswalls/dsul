@@ -1,8 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { format, isToday } from 'date-fns';
-import { ArrowUp, MoreHorizontal, Pin } from 'lucide-react';
+import { MoreHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,21 +15,21 @@ import { SERIF_NOTES_CLASS } from '@/components/planner/surface';
 import { TimelineAvatar } from '@/components/planner/item-timeline';
 import { useEscapeRung } from '@/components/planner/organize/escape-ladder';
 import { NOTE_COPY, cleanNoteBody, noteLength, noteRefusal, type ItemNote } from '@/lib/item-notes';
-import { holdNoteEditor, saveNoteFrom, useItemNotesStore } from '@/lib/item-notes-store';
+import { holdNoteEditor, useItemNotesStore } from '@/lib/item-notes-store';
+import { usePlannerStore } from '@/lib/planner-store';
 import { noteIsLong, type NoteEntry } from '@/lib/item-timeline';
-import { noteDraftKey, useRailStore } from '@/lib/rail-store';
 import { noteKey } from '@/lib/sync-sheen';
 import { cn } from '@/lib/utils';
 
 /**
  * Notes on an item's timeline (lib/item-notes.ts, migration 082), as every
- * host of the timeline draws them: a line in the stream (`TimelineNoteRow`),
- * the one pinned note on top (`PinnedNote`), each with its menu (Pin to top or
- * Unpin, Edit, Delete), its editor, and an inline delete confirm; and, where
- * no AI answers, the Note box at the timeline's foot (`ItemNoteBox`).
+ * host of the timeline draws them: a line in the stream (`TimelineNoteRow`)
+ * with its menu (Move to Notes, Edit, Delete), its editor, and an inline
+ * delete confirm. Nothing writes a new one since the item panel tidy, round 3
+ * made the description under the title (`items.notes`) the one place for what
+ * is true about an item; Move to Notes carries one there.
  *
- * A note is yours: saved to the item, never sent to a model. The description
- * under the title (`items.notes`) is a different field and is untouched here.
+ * A note is yours: saved to the item, never sent to a model.
  *
  * ESCAPE goes through the item's Escape ladder (ItemDialog owns it): Radix
  * Dialog and vaul decide on Escape in the capture phase, before any onKeyDown
@@ -50,7 +49,7 @@ export function NoteBody({ note, clampable = true }: { note: ItemNote; clampable
     <div className="flex flex-col items-start gap-0.5">
       <p
         className={cn(
-          'text-foreground font-serif text-sm leading-relaxed break-words whitespace-pre-wrap',
+          'text-foreground font-sans text-sm leading-relaxed break-words whitespace-pre-wrap',
           long && !open && 'line-clamp-8'
         )}
         data-testid="item-note-body"
@@ -73,7 +72,23 @@ export function NoteBody({ note, clampable = true }: { note: ItemNote; clampable
   );
 }
 
-/** Pin to top or Unpin, Edit, Delete. Disabled while the note's insert has not answered. */
+/**
+ * Carry a timeline note into the item's description, after what is there, and
+ * then delete it. The description is written first: if the delete then fails,
+ * the text is in both places, never in neither.
+ */
+async function moveToNotes(itemId: string, note: ItemNote): Promise<void> {
+  const planner = usePlannerStore.getState();
+  const item = planner.items.find((i) => i.id === itemId);
+  if (!item) return;
+  const had = item.notes?.trimEnd() ?? '';
+  const notes = had ? `${had}\n\n${note.body}` : note.body;
+  if (item.type === 'habit') planner.updateHabit(itemId, { notes });
+  else planner.updateTask(itemId, { notes });
+  await useItemNotesStore.getState().remove(itemId, note.id);
+}
+
+/** Move to Notes, Edit, Delete. Disabled while the note's insert has not answered. */
 export function NoteMenu({
   itemId,
   note,
@@ -88,7 +103,6 @@ export function NoteMenu({
   const pending = useItemNotesStore((s) => !!s.pending[note.id]);
   // An Edit or Delete moves focus into the foot it opens, not back to this button.
   const steered = useRef(false);
-  const pinned = note.pinnedAt !== null;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild disabled={pending}>
@@ -115,21 +129,9 @@ export function NoteMenu({
           e.preventDefault();
         }}
       >
-        {pinned ? (
-          <DropdownMenuItem
-            data-testid="item-note-unpin"
-            onSelect={() => void useItemNotesStore.getState().unpin(itemId, note.id)}
-          >
-            Unpin
-          </DropdownMenuItem>
-        ) : (
-          <DropdownMenuItem
-            data-testid="item-note-pin"
-            onSelect={() => void useItemNotesStore.getState().pin(itemId, note.id)}
-          >
-            Pin to top
-          </DropdownMenuItem>
-        )}
+        <DropdownMenuItem data-testid="item-note-move" onSelect={() => void moveToNotes(itemId, note)}>
+          Move to Notes
+        </DropdownMenuItem>
         <DropdownMenuItem
           data-testid="item-note-edit"
           onSelect={() => {
@@ -330,9 +332,8 @@ function NoteFrame({
   const [mode, setMode] = useState<'view' | 'edit' | 'confirm'>('view');
   const back = () => setMode('view');
   if (lost) return <>{body(<NoteEditor itemId={itemId} note={note} onDone={back} />)}</>;
-  // No menu while editing or confirming: a pin or unpin would move the note to
-  // the other host (PinnedNote / TimelineNoteRow), remounting this frame and
-  // dropping the edit.
+  // No menu while editing or confirming: a move would take the note out from
+  // under the edit.
   const menu =
     mode === 'view' ? (
       <NoteMenu itemId={itemId} note={note} onEdit={() => setMode('edit')} onDelete={() => setMode('confirm')} />
@@ -381,102 +382,6 @@ export function TimelineNoteRow({ itemId, entry }: { itemId: string; entry: Note
         )}
         body={(content) => <div className="my-1 pl-7">{content}</div>}
       />
-    </div>
-  );
-}
-
-/**
- * The item's one pinned note, on top of the timeline. No lime, no opacity.
- * Hosts key it by the note's id, so a different note pinned (here or on another
- * device) never inherits this one's open editor or confirm.
- */
-export function PinnedNote({ itemId, note }: { itemId: string; note: ItemNote }) {
-  const created = new Date(note.createdAt);
-  return (
-    <div
-      data-testid="item-note-pinned"
-      data-note-id={note.id}
-      className="group/note border-border bg-surface-2 flex flex-col gap-1.5 rounded-xl border px-3 py-2.5"
-    >
-      <NoteFrame
-        key={note.id}
-        itemId={itemId}
-        note={note}
-        header={(menu) => (
-          <div className="flex items-center gap-1.5">
-            <Pin className="text-muted-foreground size-3 shrink-0" aria-hidden />
-            <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-[10px] tracking-wider uppercase">
-              Note · pinned
-            </span>
-            <time
-              className="text-muted-foreground/70 shrink-0 font-mono text-[10px]"
-              dateTime={created.toISOString()}
-              title={created.toLocaleString()}
-            >
-              {isToday(created) ? timeOf(note.createdAt) : format(created, 'MMM d')}
-            </time>
-            {menu}
-          </div>
-        )}
-        body={(content) => content}
-      />
-    </div>
-  );
-}
-
-/**
- * The Note box where no AI answers (part (d)): at the foot of ItemTimeline,
- * with no switch, since there is only one thing it can do. Its text is the
- * item's note draft (rail-store `noteDraftKey`), so a half-written note
- * outlives the view and a failed save's put-back lands here. Drawn only once
- * notes are known to be available.
- */
-export function ItemNoteBox({ itemId }: { itemId: string }) {
-  const available = useItemNotesStore((s) => s.available);
-  const key = noteDraftKey(itemId);
-  const draft = useRailStore((s) => s.drafts[key] ?? '');
-  const fieldRef = useRef<HTMLTextAreaElement>(null);
-  useAutoGrow(fieldRef, draft, 160);
-  if (available !== true) return null;
-  const save = () => {
-    const body = cleanNoteBody(draft);
-    const why = noteRefusal(body);
-    if (why) {
-      if (why === 'too_long') toast.error(NOTE_COPY.refusal.too_long(noteLength(body)));
-      return;
-    }
-    useRailStore.getState().setDraft(key, '');
-    void saveNoteFrom(itemId, body);
-  };
-  return (
-    <div className="field flex items-end gap-1.5 border px-2 py-1" data-testid="item-note-box">
-      <Textarea
-        ref={fieldRef}
-        value={draft}
-        rows={1}
-        onChange={(e) => useRailStore.getState().setDraft(key, e.target.value)}
-        placeholder="Add a note…"
-        aria-label="Note on this item"
-        data-sub-input
-        data-testid="item-note-input"
-        className="placeholder:text-muted-foreground -mx-1 min-h-0 min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-0.5 text-xs leading-5 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent"
-        onKeyDown={(e) => {
-          if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing) return;
-          e.preventDefault();
-          save();
-        }}
-      />
-      <Button
-        size="icon"
-        variant="ghost"
-        className="size-6 shrink-0"
-        disabled={!draft.trim()}
-        onClick={save}
-        aria-label="Save note"
-        data-testid="item-note-box-save"
-      >
-        <ArrowUp className="size-3.5" />
-      </Button>
     </div>
   );
 }
