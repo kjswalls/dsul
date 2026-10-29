@@ -111,6 +111,16 @@ describe('the Ask key carries the count', () => {
     expect(railModeNow()).toBe('hidden');
   });
 
+  it('keeps the key lit while the questions hang from it', () => {
+    renderRow();
+    const key = document.querySelector('[data-ask-opener]')!;
+    expect(key).not.toHaveAttribute('data-peek');
+    fireEvent.click(screen.getByTestId('ask-count'));
+    expect(key).toHaveAttribute('data-peek');
+    act(() => useNeedsYouStore.getState().closeInbox());
+    expect(key).not.toHaveAttribute('data-peek');
+  });
+
   it('says nothing while nothing waits', () => {
     usePlannerStore.setState({ items: [] });
     renderRow();

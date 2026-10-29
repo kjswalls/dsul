@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { AskMark, ASK_MARK_LIGHT } from '@/components/ai/ask-mark';
 import { useAICapabilities } from '@/lib/ai-connection-store';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { INBOX_SURFACE, NeedsYouInbox, useNeedsYouCount } from '@/components/ai/needs-you/needs-you-badge';
 import { useNeedsYouStore } from '@/lib/needs-you-store';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
@@ -371,6 +371,12 @@ export function AskOpener({ className }: { className?: string }) {
   const hostInbox = useNeedsYouStore((s) => s.hostInbox);
   useEffect(() => (counted ? hostInbox() : undefined), [counted, hostInbox]);
   const peek = useHoverPeek(counted);
+  // The questions are open under the key: it stays lit as though hovered
+  // (globals.css [data-peek]), so the card reads as coming from it.
+  const inboxOpen = useNeedsYouStore((s) => s.inbox.open);
+  const openInbox = useNeedsYouStore((s) => s.openInbox);
+  const closeInbox = useNeedsYouStore((s) => s.closeInbox);
+  const peekOpen = counted && inboxOpen;
 
   if (!offered || isMobile) return null;
   const full = fit === 'full';
@@ -403,63 +409,70 @@ export function AskOpener({ className }: { className?: string }) {
       onPointerEnter={peek.enter}
       onPointerLeave={peek.leave}
     >
-      <button
-        ref={ref}
-        type="button"
-        data-ask-opener=""
-        data-tour="ask-key"
-        data-form={plate ? fit : 'icon'}
-        data-lit={canChat ? undefined : 'false'}
-        onClick={(e) => {
-          if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true });
-          if (e.detail > 0) holdRailHeader(e.currentTarget);
-          // A peek the pointer rested into gives way to Ask, which lists the same questions.
-          peek.dismiss();
-          toggleRail();
-        }}
-        // Lit, it opens Ask and says so; unlit, its name is its word.
-        aria-label={canChat ? 'Open Ask' : word}
-        // Not while the count shows: resting on the key peeks the questions,
-        // and the browser's tooltip would stack on them.
-        title={counted ? undefined : `${canChat ? 'Open Ask' : word} (${chord})`}
-        style={light}
-        className={cn(
-          'titlebar-hole group/ask-key relative isolate flex min-w-0 cursor-pointer items-center gap-2 text-[12px] leading-[17px] font-medium whitespace-nowrap text-[var(--ink-1)]',
-          // The well is even all round the key in every form, the chord being
-          // on the key (keyFormWidth counts on it).
-          !plate
-            ? 'size-7 rounded-[8px]'
-            : raised
-              ? 'h-11 rounded-[10px] p-2'
-              : 'h-9 rounded-[11px] p-1',
-          // The drawn key keeps its inset off the row's end in every form
-          // (Notebook's ribbon sits just past it), and the fit counts it.
-          !raised && 'mr-3.5'
-        )}
-      >
-        <span
-          data-ask-key=""
-          className={cn(
-            'inline-flex h-7 shrink-0 items-center gap-1.5 border border-transparent text-foreground',
-            // KEY_END_PX after the word; less beside the chord's own inset.
-            plate ? (full ? 'pr-[5px] pl-[9px]' : 'pr-[11px] pl-[9px]') : 'w-7 justify-center',
-            plate && !raised ? 'rounded-[7px]' : 'rounded-[8px]'
-          )}
-        >
-          <AskMark lit={canChat} />
-          {plate && <span>{word}</span>}
-          {full && (
-            <kbd
-              data-ask-opener-chord=""
-              aria-hidden
-              className="inline-flex h-4 items-center rounded-[4px] px-[4px] pt-px font-sans text-[10.5px] leading-none font-medium tracking-[0.01em] tabular-nums"
+      {/* The popover's root draws nothing, so the button stays the slot's
+          first child for the fit; the card hangs from the whole key. */}
+      <Popover open={peekOpen} onOpenChange={(next) => (next ? openInbox() : closeInbox())}>
+        <PopoverAnchor asChild>
+          <button
+            ref={ref}
+            type="button"
+            data-ask-opener=""
+            data-tour="ask-key"
+            data-form={plate ? fit : 'icon'}
+            data-peek={peekOpen ? '' : undefined}
+            data-lit={canChat ? undefined : 'false'}
+            onClick={(e) => {
+              if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true });
+              if (e.detail > 0) holdRailHeader(e.currentTarget);
+              // A peek the pointer rested into gives way to Ask, which lists the same questions.
+              peek.dismiss();
+              toggleRail();
+            }}
+            // Lit, it opens Ask and says so; unlit, its name is its word.
+            aria-label={canChat ? 'Open Ask' : word}
+            // Not while the count shows: resting on the key peeks the questions,
+            // and the browser's tooltip would stack on them.
+            title={counted ? undefined : `${canChat ? 'Open Ask' : word} (${chord})`}
+            style={light}
+            className={cn(
+              'titlebar-hole group/ask-key relative isolate flex min-w-0 cursor-pointer items-center gap-2 text-[12px] leading-[17px] font-medium whitespace-nowrap text-[var(--ink-1)]',
+              // The well is even all round the key in every form, the chord being
+              // on the key (keyFormWidth counts on it).
+              !plate
+                ? 'size-7 rounded-[8px]'
+                : raised
+                  ? 'h-11 rounded-[10px] p-2'
+                  : 'h-9 rounded-[11px] p-1',
+              // The drawn key keeps its inset off the row's end in every form
+              // (Notebook's ribbon sits just past it), and the fit counts it.
+              !raised && 'mr-3.5'
+            )}
+          >
+            <span
+              data-ask-key=""
+              className={cn(
+                'inline-flex h-7 shrink-0 items-center gap-1.5 border border-transparent text-foreground',
+                // KEY_END_PX after the word; less beside the chord's own inset.
+                plate ? (full ? 'pr-[5px] pl-[9px]' : 'pr-[11px] pl-[9px]') : 'w-7 justify-center',
+                plate && !raised ? 'rounded-[7px]' : 'rounded-[8px]'
+              )}
             >
-              {chord}
-            </kbd>
-          )}
-        </span>
-      </button>
-      {counted && <AskCount count={waiting} plate={plate} raised={raised} peek={peek} />}
+              <AskMark lit={canChat} />
+              {plate && <span>{word}</span>}
+              {full && (
+                <kbd
+                  data-ask-opener-chord=""
+                  aria-hidden
+                  className="inline-flex h-4 items-center rounded-[4px] px-[4px] pt-px font-sans text-[10.5px] leading-none font-medium tracking-[0.01em] tabular-nums"
+                >
+                  {chord}
+                </kbd>
+              )}
+            </span>
+          </button>
+        </PopoverAnchor>
+        {counted && <AskCount count={waiting} plate={plate} raised={raised} peek={peek} />}
+      </Popover>
     </span>
   );
 }
@@ -474,12 +487,9 @@ export function AskOpener({ className }: { className?: string }) {
  * absolutely placed, so the header's fit never counts it.
  */
 function AskCount({ count, plate, raised, peek }: { count: number; plate: boolean; raised: boolean; peek: HoverPeek }) {
-  const inbox = useNeedsYouStore((s) => s.inbox);
-  const openInbox = useNeedsYouStore((s) => s.openInbox);
-  const closeInbox = useNeedsYouStore((s) => s.closeInbox);
   const label = `${count} waiting on you`;
   return (
-    <Popover open={inbox.open} onOpenChange={(next) => (next ? openInbox() : closeInbox())}>
+    <>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -503,8 +513,9 @@ function AskCount({ count, plate, raised, peek }: { count: number; plate: boolea
         </button>
       </PopoverTrigger>
       <PopoverContent
+        // Below the whole key, clear of it (Kirby's pick, 2026-10-29).
         align="end"
-        sideOffset={6}
+        sideOffset={8}
         data-testid="needs-you-inbox"
         aria-label="Needs you"
         className={INBOX_SURFACE}
@@ -517,7 +528,7 @@ function AskCount({ count, plate, raised, peek }: { count: number; plate: boolea
       >
         <NeedsYouInbox />
       </PopoverContent>
-    </Popover>
+    </>
   );
 }
 

@@ -2436,21 +2436,25 @@ body {
 /* Engaged. Hover is pointer-only, as Tailwind's hover is (the mark's own
    engaged state is a group-hover), so a tap never leaves it lit. The way in
    is half as long again as the way back: you see the well arrive, and it is
-   out of the way sooner once you have moved on. */
+   out of the way sooner once you have moved on. [data-peek] holds the same
+   state while the questions hang from the key (ask-opener.tsx). */
 @media (hover: hover) {
-  [data-ask-opener]:hover::before {
+  [data-ask-opener]:hover::before,
+  [data-ask-opener][data-peek]::before {
     background-color: var(--surface-3);
     box-shadow: var(--shadow-elev-bar);
     transform: none;
     transition-duration: 240ms;
   }
-  [data-ask-opener]:hover [data-ask-key] {
+  [data-ask-opener]:hover [data-ask-key],
+  [data-ask-opener][data-peek] [data-ask-key] {
     --ask-key-hold: 30px;
     --ask-key-tail: 52px;
     --ask-key-reach: 84px;
     transition-duration: 240ms, 240ms, 240ms, 150ms, 150ms, 150ms, 150ms;
   }
-  [data-ask-opener]:hover [data-ask-opener-chord] {
+  [data-ask-opener]:hover [data-ask-opener-chord],
+  [data-ask-opener][data-peek] [data-ask-opener-chord] {
     color: var(--foreground);
     transition-duration: 240ms;
   }
@@ -2539,12 +2543,14 @@ body {
     var(--ease-out-soft);
 }
 @media (hover: hover) {
-  [data-ask-opener][data-form='icon']:hover [data-ask-key] {
+  [data-ask-opener][data-form='icon']:hover [data-ask-key],
+  [data-ask-opener][data-form='icon'][data-peek] [data-ask-key] {
     --ask-key-hold: 18px;
     --ask-key-tail: 32px;
     --ask-key-reach: 48px;
   }
-  [data-ask-opener][data-form='icon']:hover:not(:active) [data-ask-key] {
+  [data-ask-opener][data-form='icon']:hover:not(:active) [data-ask-key],
+  [data-ask-opener][data-form='icon'][data-peek]:not(:active) [data-ask-key] {
     --ask-key-fill: color-mix(in oklab, var(--surface-2), var(--foreground) 4%);
     transition-duration: 240ms, 240ms, 240ms, 240ms, 240ms, 150ms, 150ms;
   }
@@ -2597,7 +2603,8 @@ body {
   --ask-key-fill: var(--nb-page, var(--canvas));
 }
 @media (hover: hover) {
-  :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:hover::before {
+  :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:hover::before,
+  :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener][data-peek]::before {
     background-color: var(--ask-wash);
     box-shadow: none;
   }
