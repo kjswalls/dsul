@@ -176,7 +176,7 @@ function ModelPickerContent({
   const total = models?.length ?? 0;
 
   return (
-    <Command shouldFilter={false} loop className="bg-popover">
+    <Command shouldFilter={false} loop className="bg-transparent">
       <CommandInput
         value={query}
         onValueChange={setQuery}

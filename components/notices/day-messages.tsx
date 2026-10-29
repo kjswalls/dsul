@@ -119,12 +119,14 @@ export function DayMessages({
         avoidCollisions={place.side === 'bottom'}
         data-testid="day-messages-popover"
         data-side={place.side}
-        className="relative flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-0.5 p-1.5"
+        className="bg-popover relative flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-0.5 p-1.5"
         onClickCapture={closeOnAction}
       >
         {/* The caret, pointing at the key. Drawn here rather than with Radix's
             Arrow, whose fill-only triangle vanishes against the canvas: this
-            one carries the card's own border. */}
+            one carries the card's own border. It is why this card stays solid
+            (bg-popover over the wrapper's glass-surface): a blurred caret
+            inside a blurred card samples only the card, a faint smear. */}
         {place.side === 'right' && (
           <span
             aria-hidden
