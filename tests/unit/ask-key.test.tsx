@@ -675,11 +675,25 @@ describe("the key's paint (app/globals.css)", () => {
   // Keyboard focus brings only its focus line promptly, so a pointer on a
   // focused key still sees the card fade, and a press with no hover first
   // brings the card with the key's sink.
+  it('holds the hover state while the questions hang from the key', () => {
+    const all = rules(stripComments(askBlock()));
+    for (const hover of [
+      '[data-ask-opener]:hover::before',
+      '[data-ask-opener]:hover [data-ask-key]',
+      '[data-ask-opener]:hover [data-ask-opener-chord]',
+    ]) {
+      const r = all.find((x) => x.selectors.includes(hover));
+      expect(r?.selectors, hover).toContain(hover.replace(':hover', '[data-peek]'));
+    }
+  });
+
   it('fades the well up under the pointer where you can see it, and back a little quicker, with the light in step', () => {
     const css = stripComments(read('app/globals.css'));
     const all = rules(stripComments(askBlock()));
+    // A hover rule may share its body with [data-peek], the same state held
+    // while the questions hang from the key.
     const find = (sel: string) => {
-      const r = all.find((x) => x.selectors.length === 1 && x.selectors[0] === sel);
+      const r = all.find((x) => x.selectors[0] === sel && x.selectors.every((s) => s === sel || s.includes('[data-peek]')));
       expect(r, sel).toBeDefined();
       return r!;
     };

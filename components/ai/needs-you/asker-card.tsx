@@ -30,7 +30,7 @@ import type { AgentItem } from '@/lib/ask-home';
 export type QuestionFrame = 'card' | 'bare';
 export const QUESTION_FRAME: Record<QuestionFrame, string> = {
   card: 'rounded-xl border border-border bg-card px-3 py-2.5',
-  bare: 'px-3 py-2.5',
+  bare: 'px-5 py-4',
 };
 
 export function AskerCard({
