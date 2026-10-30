@@ -373,7 +373,17 @@ function SingleBody({
     status.push(
       <Row
         key="tick"
-        icon={done ? <Undo2 className="size-3.5" /> : <Check className="size-3.5" />}
+        icon={
+          done ? (
+            <Undo2 className="size-3.5" />
+          ) : (
+            // The menu's one lime mark: a solid tile, its own opaque fill, so the
+            // accent never shows through the glass behind it.
+            <span className="bg-primary grid size-3.5 place-items-center rounded-[4px]">
+              <Check className="text-primary-foreground size-2.5" strokeWidth={3} />
+            </span>
+          )
+        }
         label={onDay(label('tick'))}
         testId="item-menu-tick"
         onSelect={run('tick')}
@@ -418,7 +428,7 @@ function SingleBody({
             <Row icon={null} label="Tomorrow" testId="item-menu-reschedule-tomorrow" onSelect={run('reschedule', addDaysStr(todayStr, 1))} />
             <Row icon={null} label="Next week" testId="item-menu-reschedule-next-week" onSelect={run('reschedule', nextWeek)} />
           </div>
-          <ContextMenuSeparator className="my-0" />
+          <ContextMenuSeparator className="mx-0 my-0" />
           {/* The menu claims the arrows and Tab anywhere inside it, which would
               make the grid unusable from the keyboard. Escape still closes. */}
           <div onKeyDown={(e) => e.key !== 'Escape' && e.stopPropagation()}>

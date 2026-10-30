@@ -327,7 +327,7 @@ export function NewTypeMenu({
       })}
       {organizers.length > 0 && (
         <>
-          <div className="bg-border -mx-1 my-1 h-px" />
+          <div className="bg-border mx-2 my-1 h-px" />
           <ChipSectionLabel>Organizers</ChipSectionLabel>
           {organizers.map((kind) => {
             const value = `container:${kind}`;
@@ -358,7 +358,7 @@ export function NewTypeMenu({
       )}
       {itemTypesAvailable && organizeOn && (
         <>
-          <div className="bg-border -mx-1 my-1 h-px" />
+          <div className="bg-border mx-2 my-1 h-px" />
           <ChipOption
             tone="muted"
             onSelect={() => {

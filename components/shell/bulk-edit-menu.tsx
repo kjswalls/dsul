@@ -158,9 +158,13 @@ export type OptionSpec = {
   onSelect: () => void;
 };
 
-/** The desktop row and panel: the sidebar Display menu's own. */
-export const MENU_ROW = 'h-8 gap-2 rounded-[5px] px-2 text-xs';
-export const PANEL = 'w-60 rounded-[10px] p-1 shadow-[var(--shadow-elev-md)]';
+/**
+ * The desktop row and panel: the sidebar Display menu's own. A 12px panel with
+ * 4px padding holds 8px rows, so the hover pill's corners sit concentric with
+ * the panel's (Kirby's pick of the macOS-style menu, 2026-10-29).
+ */
+export const MENU_ROW = 'h-7 gap-2 rounded-[8px] px-2 text-xs';
+export const PANEL = 'w-60 rounded-[12px] p-1 shadow-[var(--shadow-elev-md)]';
 
 /**
  * A root row's value on the rail beside its chevron. "None" reads a step
@@ -266,7 +270,7 @@ export function RemindPane({
           {undated} have no date. Give them one and they will fire.
         </p>
       )}
-      {anySet && <div className="bg-border -mx-1 my-1 h-px" />}
+      {anySet && <div className="bg-border mx-2 my-1 h-px" />}
       {anySet && (
         <button
           type="button"

@@ -327,7 +327,7 @@ function MemberMenu({
                 <DropdownMenuItem onSelect={() => v.reschedule!(addDaysStr(todayStr, 1))}>Tomorrow</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => v.reschedule!(nextWeek)}>Next week</DropdownMenuItem>
               </div>
-              <DropdownMenuSeparator className="my-0" />
+              <DropdownMenuSeparator className="mx-0 my-0" />
               {/* The menu claims ArrowLeft (closes the submenu) and Tab (cancelled)
                   anywhere inside it, which would make the grid unusable from the
                   keyboard. Keep those keys for the calendar; Escape still closes. */}

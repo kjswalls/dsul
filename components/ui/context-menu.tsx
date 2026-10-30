@@ -242,7 +242,7 @@ function ContextMenuSeparator({
   return (
     <ContextMenuPrimitive.Separator
       data-slot="context-menu-separator"
-      className={cn('bg-border -mx-1 my-1 h-px', className)}
+      className={cn('bg-border mx-2 my-1 h-px', className)}
       {...props}
     />
   )
