@@ -24,6 +24,13 @@ without `pnpm --filter @dsul/types build` is a red build. Nothing is published t
 `GET /api/agent/events`). The OpenClaw plugin itself was removed on 2026-10-15, once Ask
 could chat with OpenClaw straight from the browser (see Plans).
 
+Vercel builds only what the web app is made of. `vercel.json`'s `ignoreCommand`
+([scripts/vercel-ignore-build.sh](scripts/vercel-ignore-build.sh)) skips a preview or
+production deployment whose changes are all in `ios/`, `electron/`, `tests/`, `.github/`,
+`supabase/`, `memory/`, `design/`, root `*.md` or the test configs, because every kept
+deployment counts against the free team's 10 GB Deployment Storage. A new path the
+build never reads goes on that list; anything not on it builds.
+
 ## Setting up a new machine
 
 ```bash
