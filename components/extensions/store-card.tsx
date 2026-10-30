@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { SettingsLink } from '@/components/settings/settings-link';
 
 import { cn } from '@/lib/utils';
 import { extensionPaneId } from '@/lib/settings/manifest';
@@ -35,7 +35,7 @@ export function StoreCard({
 }) {
   const Icon = extension.icon;
   return (
-    <Link
+    <SettingsLink
       href={`/settings/${extensionPaneId(extension.slug)}?${linkQuery}`}
       data-store-card={extension.slug}
       data-extension-state={state.label}
@@ -60,6 +60,6 @@ export function StoreCard({
         <ExtensionChips extension={extension} state={state} className="mt-0.5" />
         {adoption && <span className="text-muted-foreground font-num mt-auto pt-1 text-[10px]">{adoption}</span>}
       </span>
-    </Link>
+    </SettingsLink>
   );
 }
