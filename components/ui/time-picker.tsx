@@ -119,7 +119,7 @@ export function TimeList({
 
   return (
     <div className={cn('flex flex-col', className)}>
-      <div className="border-border mx-1 mb-1 flex h-8 items-center border-b px-1.5">
+      <div className="border-border mx-1 mb-1 flex h-8 items-center border-b px-0.5">
         <input
           {...inputProps}
           ref={inputRef}
@@ -142,7 +142,7 @@ export function TimeList({
             if (listRef.current) listRef.current.scrollTop = 0;
           }}
           onKeyDown={onKeyDown}
-          className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-xs outline-none"
+          className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent px-1 text-xs outline-none"
         />
       </div>
       <div
