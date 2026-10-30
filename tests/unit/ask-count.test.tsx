@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 /**
  * What waits on the user rides the Ask key (Kirby's pick, 2026-10-24):
@@ -89,6 +89,43 @@ const renderRow = () =>
       <AskOpener className="ml-auto" />
     </div>
   );
+
+describe('the card hangs from the key', () => {
+  // jsdom lays nothing out, so the key alone gets a box: a card measured
+  // against anything else (the count, or a node no longer in the page) reads
+  // an anchor 0px wide and lands at the window's top left.
+  const realRect = Element.prototype.getBoundingClientRect;
+  beforeEach(() => {
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      return this.matches('[data-ask-opener]') && this.isConnected
+        ? ({ x: 900, y: 16, left: 900, top: 16, right: 1050, bottom: 60, width: 150, height: 44, toJSON() {} } as DOMRect)
+        : realRect.call(this);
+    };
+  });
+  afterEach(() => {
+    Element.prototype.getBoundingClientRect = realRect;
+  });
+
+  it.each(['count', 'hover'])('anchors to the whole key when opened by the %s', async (how) => {
+    renderRow();
+    if (how === 'count') fireEvent.click(screen.getByTestId('ask-count'));
+    else act(() => openNeedsYou());
+    const wrapper = () => screen.getByTestId('needs-you-inbox').parentElement!;
+    await waitFor(() => expect(wrapper().style.getPropertyValue('--radix-popper-anchor-width')).toBe('150px'));
+    expect(wrapper().style.getPropertyValue('--radix-popper-anchor-height')).toBe('44px');
+  });
+
+  it('shuts again from the count, and a press on it is not a click away', () => {
+    renderRow();
+    const count = screen.getByTestId('ask-count');
+    fireEvent.click(count);
+    expect(count).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.pointerDown(count);
+    fireEvent.click(count);
+    expect(useNeedsYouStore.getState().inbox.open).toBe(false);
+    expect(count).toHaveAttribute('aria-expanded', 'false');
+  });
+});
 
 describe('the Ask key carries the count', () => {
   it('draws the count and leaves the mark as it is, and the header pill stays away', () => {

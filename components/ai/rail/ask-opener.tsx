@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { AskMark, ASK_MARK_LIGHT } from '@/components/ai/ask-mark';
 import { useAICapabilities } from '@/lib/ai-connection-store';
-import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { INBOX_SURFACE, NeedsYouInbox, useNeedsYouCount } from '@/components/ai/needs-you/needs-you-badge';
 import { useNeedsYouStore } from '@/lib/needs-you-store';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
@@ -485,33 +485,43 @@ export function AskOpener({ className }: { className?: string }) {
  * the key opens Ask, whose home lists every question. A sibling
  * of the button, never inside it, so a press here never toggles the rail, and
  * absolutely placed, so the header's fit never counts it.
+ *
+ * Not a PopoverTrigger: the card hangs from the key (PopoverAnchor), and a
+ * trigger drawn before the anchor registers wraps itself in an anchor of its
+ * own, then remounts unwrapped, leaving the popper measuring a detached node
+ * (the card at the window's top left, 2026-10-30). So the count opens and
+ * shuts the inbox itself.
  */
 function AskCount({ count, plate, raised, peek }: { count: number; plate: boolean; raised: boolean; peek: HoverPeek }) {
   const label = `${count} waiting on you`;
+  const open = useNeedsYouStore((s) => s.inbox.open);
   return (
     <>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          data-ask-count=""
-          data-testid="ask-count"
-          aria-label={label}
-          onClick={(e) => {
-            // Over a peek, a press keeps it rather than toggling it shut.
-            if (peek.pin()) e.preventDefault();
-          }}
-          className={cn(
-            'titlebar-hole absolute z-10 grid size-6 cursor-pointer place-items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-            // On the key's top corner in each form; the drawn key's inset off
-            // the row's end (mr-3.5) moves the corner in.
-            plate ? (raised ? '-top-1 -right-1' : '-top-2 right-1.5') : raised ? '-top-3 -right-3' : '-top-3 right-0.5'
-          )}
-        >
-          <span className="ask-count-disc grid h-[17px] min-w-[17px] place-items-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums">
-            {count > 9 ? '9+' : count}
-          </span>
-        </button>
-      </PopoverTrigger>
+      <button
+        type="button"
+        data-ask-count=""
+        data-testid="ask-count"
+        aria-label={label}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => {
+          // Over a peek, a press keeps it rather than toggling it shut.
+          if (peek.pin()) return;
+          const store = useNeedsYouStore.getState();
+          if (store.inbox.open) store.closeInbox();
+          else store.openInbox();
+        }}
+        className={cn(
+          'titlebar-hole absolute z-10 grid size-6 cursor-pointer place-items-center rounded-full focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+          // On the key's top corner in each form; the drawn key's inset off
+          // the row's end (mr-3.5) moves the corner in.
+          plate ? (raised ? '-top-1 -right-1' : '-top-2 right-1.5') : raised ? '-top-3 -right-3' : '-top-3 right-0.5'
+        )}
+      >
+        <span className="ask-count-disc grid h-[17px] min-w-[17px] place-items-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums">
+          {count > 9 ? '9+' : count}
+        </span>
+      </button>
       <PopoverContent
         // Below the whole key, clear of it (Kirby's pick, 2026-10-29).
         align="end"
@@ -525,6 +535,10 @@ function AskCount({ count, plate, raised, peek }: { count: number; plate: boolea
         onPointerLeave={peek.leave}
         onPointerDown={() => peek.pin()}
         onFocusCapture={() => peek.pin()}
+        // The count toggles the card itself; a press there is not a click away.
+        onInteractOutside={(e) => {
+          if ((e.target as Element | null)?.closest?.('[data-ask-count]')) e.preventDefault();
+        }}
       >
         <NeedsYouInbox />
       </PopoverContent>
