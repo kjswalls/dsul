@@ -28,6 +28,10 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { formatClock, timeRows, toMinutes } from '@/lib/time-text';
 import { cn } from '@/lib/utils';
 
+/** A mouse or trackpad: the field takes focus on open. A phone keeps its keyboard down. */
+const finePointer = () =>
+  typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: fine)').matches;
+
 const nowMinutes = () => {
   const d = new Date();
   return d.getHours() * 60 + d.getMinutes();
@@ -37,7 +41,7 @@ export function TimeList({
   value,
   onPick,
   ariaLabel,
-  placeholder = 'Type a time…',
+  placeholder,
   testId,
   autoFocus,
   className,
@@ -48,9 +52,11 @@ export function TimeList({
   value: string;
   onPick: (hhmm: string) => void;
   ariaLabel: string;
+  /** Defaults to an example in the user's clock, so it reads as a place to type. */
   placeholder?: string;
   /** On the field; each row is `${testId}-option-HH:mm`. */
   testId?: string;
+  /** Focus the field on open. Defaults to on with a mouse, off on touch. */
   autoFocus?: boolean;
   className?: string;
   listClassName?: string;
@@ -73,18 +79,31 @@ export function TimeList({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Opens scrolled so the highlighted row sits a couple of rows down, with the
-  // times before it in view.
+  // times before it in view. The list is the rows' offsetParent (it is
+  // `relative`), and the scroll is set again a frame later: a menu flyout lays
+  // its content out after mounting it, and a scroll set before that is lost.
   useLayoutEffect(() => {
-    const list = listRef.current;
-    const row = list?.querySelector<HTMLElement>(`[data-index="${Math.max(0, active - 2)}"]`);
-    if (list && row) list.scrollTop = row.offsetTop - list.offsetTop;
+    const scroll = () => {
+      const list = listRef.current;
+      const row = list?.querySelector<HTMLElement>(`[data-index="${Math.max(0, active - 2)}"]`);
+      if (list && row) list.scrollTop = row.offsetTop;
+    };
+    scroll();
+    const frame = requestAnimationFrame(scroll);
+    return () => cancelAnimationFrame(frame);
     // Once, on open; later moves scroll only as far as they need to.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [focusOnOpen] = useState(() => autoFocus ?? finePointer());
   useEffect(() => {
-    if (autoFocus) inputRef.current?.focus({ preventScroll: true });
-  }, [autoFocus]);
+    if (!focusOnOpen) return;
+    // A frame later too, for the same reason: a flyout that is still being
+    // placed can drop focus given to it on mount.
+    inputRef.current?.focus({ preventScroll: true });
+    const frame = requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+  }, [focusOnOpen]);
 
   const move = (to: number) => {
     const next = Math.max(0, Math.min(rows.length - 1, to));
@@ -134,7 +153,7 @@ export function TimeList({
           autoComplete="off"
           spellCheck={false}
           data-testid={testId}
-          placeholder={placeholder}
+          placeholder={placeholder ?? (format === '24h' ? 'Type a time, like 14:30' : 'Type a time, like 2pm')}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -150,7 +169,7 @@ export function TimeList({
         id={listId}
         role="listbox"
         aria-label={ariaLabel}
-        className={cn('max-h-48 overflow-y-auto py-0.5', listClassName)}
+        className={cn('relative max-h-48 overflow-y-auto py-0.5', listClassName)}
       >
         {rows.length === 0 && (
           <p className="text-muted-foreground px-2 py-1.5 text-xs">
@@ -239,10 +258,6 @@ export function TimeField({
   const format = usePlannerStore((s) => s.timeFormat);
   const [open, setOpen] = useState(false);
   const shown = toMinutes(value) != null ? formatClock(value, format) : '';
-  // A phone opens the list without raising the keyboard over it.
-  const [finePointer] = useState(
-    () => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: fine)').matches
-  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -276,7 +291,6 @@ export function TimeField({
           value={value}
           ariaLabel={ariaLabel}
           testId={testId ? `${testId}-input` : undefined}
-          autoFocus={finePointer}
           onPick={(hhmm) => {
             onChange(hhmm);
             setOpen(false);

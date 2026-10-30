@@ -240,7 +240,6 @@ export function RemindPane({
         value={value}
         onPick={onPick}
         ariaLabel="Reminder time"
-        placeholder="Nudge me at…"
         testId="bulk-remind-time"
       />
       {/* The dialog's reminderNeedsDate, counted: a cue fires only on a day the
