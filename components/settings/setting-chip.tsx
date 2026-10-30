@@ -264,7 +264,6 @@ function PickerChip({
                   testId={`setting-${record.id}-input`}
                   className="w-52"
                   value={String(value)}
-                  autoFocus
                   onPick={(next) => {
                     choose(next);
                     close();

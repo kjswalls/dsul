@@ -1171,7 +1171,6 @@ export function TimeChip({
             value={value ?? ''}
             testId={`${testId}-input`}
             ariaLabel={label}
-            autoFocus
             onPick={(next) => {
               onChange(next);
               close();
