@@ -616,7 +616,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
           // the lime completion mark through a parent's opacity.
           isMultiSelected ? 'bg-[var(--row-selected)]' : 'hover:bg-accent',
           compact ? 'py-1' : 'py-1.5',
-          isDragging && 'z-50 opacity-50'
+          // The twin is away (components/shell/drag-ghost.tsx): the row it left
+          // draws as a hollow slot, not a faded copy competing with the ghost.
+          isDragging && 'drag-source'
           // The completed fade is NOT applied here. Opacity on the row composites
           // the checkbox too, and lime at 60% over the dark ramp turns olive — the
           // one mark that has to stay bright, since it's the confirmation the

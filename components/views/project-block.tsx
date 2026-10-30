@@ -64,7 +64,7 @@ function BlockTask({ task, onClick, date }: { task: Task; onClick: () => void; d
       data-item-id={task.id}
       data-item-kind="task"
       data-multiselected={isMultiSelected ? 'true' : 'false'}
-      className={cn('group/blocktask relative flex items-center gap-1', isDragging && 'z-50 opacity-50')}
+      className={cn('group/blocktask relative flex items-center gap-1', isDragging && 'drag-source')}
     >
       <button
         {...attributes}

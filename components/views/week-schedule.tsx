@@ -105,7 +105,8 @@ function WeekHourCell({
       // the hairline glides with the blocks when the landing moves the window.
       data-settle-key={`hour:${hour}`}
       data-settle-role="frame"
-      className={cn('relative transition-colors', isOver && 'bg-primary/10')}
+      // No tint while a drag is over: the ghost snaps here as the block (drag-ghost.tsx).
+      className="relative"
       style={{ height: hourPx }}
     >
       {/* The hairline starts at the pane, leaving the lane an unbroken channel —

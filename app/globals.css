@@ -4118,6 +4118,76 @@ button[data-ai-chip]:focus-visible {
   animation: none;
 }
 
+/* ── Dragging: the twin and the slot it left (Kirby's pick B, 2026-10-30) ──
+   The ghost is a clone of what was grabbed, at its size, on a lifted card
+   (components/shell/drag-ghost.tsx). Over another place it changes size to
+   what it would land as there; that change eases, and only width and height
+   move. The grabbed element draws as a hollow slot meanwhile: its contents
+   hidden, a hairline where it was. Hidden, not faded, so the lime checkbox is
+   never composited through an opacity. Mock: drag-polish/drag-panel.html. */
+.drag-ghost {
+  /* The overlay sits under the pointer: without this the clone matches :hover
+     and shows the row's hover controls and title fade instead of the row. */
+  pointer-events: none;
+  transition:
+    width 140ms ease,
+    height 140ms ease;
+}
+.drag-ghost-face {
+  border-radius: 5px;
+  background: var(--card);
+  box-shadow: var(--shadow-soft-lg);
+}
+/* A selection travels as the grabbed row with the edges of two more behind it. */
+.drag-ghost-stack,
+.drag-ghost-stack::after {
+  position: absolute;
+  inset: 0;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  transform: translate(4px, 4px);
+}
+.drag-ghost-stack::after {
+  content: '';
+  inset: -1px;
+  transform: translate(4px, 4px);
+}
+/* A finger's 250ms hold ends in a short grow, so the hand knows it has the row. */
+.drag-ghost-touch .drag-ghost-face {
+  animation: drag-lift 160ms ease-out both;
+}
+@keyframes drag-lift {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.02);
+  }
+}
+.drag-source {
+  background: color-mix(in oklab, var(--foreground) 2.5%, transparent) !important;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--muted-foreground) 35%, transparent);
+}
+.drag-source > * {
+  visibility: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  .drag-ghost {
+    transition: none;
+  }
+  .drag-ghost-touch .drag-ghost-face {
+    animation: none;
+  }
+}
+[data-reduce-motion='true'] .drag-ghost {
+  transition: none;
+}
+[data-reduce-motion='true'] .drag-ghost-touch .drag-ghost-face {
+  animation: none;
+}
+
 /* ── Desktop app: the window's top band ─────────────────────────────────────
    The macOS desktop app has no title bar (electron/lib/window-chrome.cjs): its traffic
    lights sit in the 43px every desktop page leaves at the top. titleBarOverlay is the only

@@ -15,6 +15,7 @@ import { useFieldWidth, useFitHourPx, useResizeScrollCompensation } from '@/lib/
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
 import { isTouchPointer } from '@/lib/dnd/sensors';
 import {
+  DAY_FIELD_LEFT,
   HOUR_PX,
   HOVER_Z,
   LANE_PX,
@@ -105,19 +106,8 @@ const BLOCK_ASK_CHOICES_H = 104;
  */
 export { HOUR_PX, LANE_PX };
 
-/**
- * Day view: the gutter's width, which is also the events layer's left offset —
- * the two now meet. They used to be 88 and 132, leaving 44px of nothing between
- * the hour labels and the first thing they label. That gap was survivable while
- * the gutter was a bordered box that read as its own object; against a bare
- * column of marks it just reads as the labels having drifted off the grid, and
- * it separated the live time from its own diamond by the width of a thumb.
- *
- * Sized to hold the widest thing the column prints — the live time at
- * "12:40 pm" — with the inset below, and no wider: every px past that reopens
- * the gap the labels just closed.
- */
-export const DAY_FIELD_LEFT = 68;
+/** Day view: the gutter's width (lib/schedule-constants.ts, where the drag ghost reads it too). */
+export { DAY_FIELD_LEFT };
 
 /**
  * Where the hour marks start. This is TaskRow's own `px-2`, which is what puts
@@ -408,7 +398,9 @@ function HourSlot({
           style={{ left: DAY_FIELD_LEFT + LANE_PX }}
         />
       )}
-      <div className={cn('flex-1 transition-colors', isOver && 'bg-primary/10')} />
+      {/* No tint while a drag is over: the ghost snaps to this hour as the block
+          it would land as (components/shell/drag-ghost.tsx), which is the preview. */}
+      <div className="flex-1" />
     </div>
   );
 }
@@ -946,7 +938,7 @@ export function ScheduleBlock({
       : accent;
 
   // Blocks are drag sources — drop on another hour to reschedule, or on the
-  // Anytime section to un-time. The source stays in place (dimmed) while the
+  // Anytime section to un-time. The source stays in place (a hollow slot) while the
   // DragOverlay ghost moves — same as TaskRow, and cheaper to repaint than
   // transforming this shadowed block every pointermove. Post-drop click guard
   // keeps a drop from opening the edit dialog.
@@ -1179,7 +1171,7 @@ export function ScheduleBlock({
         // grown block stays a coherent object rather than a pane escaping its
         // own registration.
         canExpand && 'hover:h-auto hover:min-h-[var(--blk-h)]',
-        isDragging && 'opacity-50'
+        isDragging && 'drag-source'
       )}
       style={
         {

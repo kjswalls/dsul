@@ -11,11 +11,10 @@ import {
   DragEndEvent,
   DragMoveEvent,
   DragStartEvent,
-  DragOverlay,
   MeasuringStrategy,
 } from '@dnd-kit/core';
-import { GripVertical, Circle } from 'lucide-react';
 import { DesktopShell } from '@/components/shell/desktop-shell';
+import { DragGhost } from '@/components/shell/drag-ghost';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { BulkActionBar } from '@/components/shell/bulk-action-bar';
 import { OmniLauncher } from '@/components/shell/omni-launcher';
@@ -97,45 +96,6 @@ import { isOnboardingComplete } from '@/lib/user-profile';
 import { watchOnboardingAfterLoad } from '@/lib/onboarding-watch';
 import type { MobileSurface } from '@/lib/mobile-nav-store';
 import { BOOT_SIDEBAR_VAR } from '@/lib/shell-prepaint';
-
-function DraggableTaskOverlay({ title, count = 0 }: { title: string; count?: number }) {
-  return (
-    <div className="relative flex min-w-48 items-start gap-2 rounded-lg border border-border bg-card p-3 shadow-soft-lg">
-      {/* Group drag: a count badge over the primary row, so you see what you
-          grabbed AND how many travel with it. */}
-      {count > 1 && (
-        <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-xs font-medium text-primary-foreground shadow-soft-sm">
-          {count}
-        </span>
-      )}
-      <GripVertical className="mt-0.5 h-4 w-4 text-muted-foreground" />
-      <Circle className="mt-0.5 h-4 w-4 text-muted-foreground/40" />
-      <div className="min-w-0 flex-1">
-        <p className="font-content text-content text-foreground">{title}</p>
-      </div>
-    </div>
-  );
-}
-
-/** Own subscriber so mounting the ghost never waits on an AppShell render. */
-function DragGhost() {
-  const activeId = useDragStore((s) => s.activeId);
-  // Count travels only when the dragged row is itself part of a multi-selection.
-  const groupCount = useSelectionStore((s) =>
-    activeId && s.selectedIds.has(activeId) && s.selectedIds.size >= 2 ? s.selectedIds.size : 0
-  );
-  const title = usePlannerStore((s) =>
-    activeId
-      ? (s.tasks.find((t) => t.id === activeId) ?? s.habits.find((h) => h.id === activeId))?.title ??
-        null
-      : null
-  );
-  return (
-    <DragOverlay>
-      {title !== null && <DraggableTaskOverlay title={title} count={groupCount} />}
-    </DragOverlay>
-  );
-}
 
 /**
  * The first-run toasts, "Streaks are on" and the rituals intro, with their own
