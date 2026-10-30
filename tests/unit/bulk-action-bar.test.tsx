@@ -277,7 +277,7 @@ describe('BulkActionBar — Edit menu (touch: drilled in place)', () => {
     expect(setItemsGoal).toHaveBeenCalledWith(['a', 'b'], 'g1', true);
   });
 
-  it('No reminder clears, and Apply sets, over the remindable ids', () => {
+  it('No reminder clears, and a picked time sets, over the remindable ids', () => {
     seed({ items: [task('a', { reminderTime: '07:00' }), task('b')] });
     render(<BulkActionBar />);
     openEdit();
@@ -286,9 +286,9 @@ describe('BulkActionBar — Edit menu (touch: drilled in place)', () => {
     expect(setItemsReminder).toHaveBeenCalledWith(['a', 'b'], undefined);
 
     fireEvent.click(screen.getByTestId('bulk-edit-row-remind'));
-    fireEvent.change(screen.getByTestId('bulk-remind-time'), { target: { value: '09:15' } });
-    fireEvent.click(screen.getByTestId('bulk-remind-apply'));
-    expect(setItemsReminder).toHaveBeenLastCalledWith(['a', 'b'], '09:15');
+    // A click on a row sets it: there is no Apply.
+    fireEvent.click(screen.getByTestId('bulk-remind-time-option-09:30'));
+    expect(setItemsReminder).toHaveBeenLastCalledWith(['a', 'b'], '09:30');
   });
 
   it('Remove from project clears every filed type, habits included', () => {
@@ -395,7 +395,7 @@ describe('BulkActionBar — Edit menu (pointer: flyouts, like the Display menu)'
     fireEvent.change(field, { target: { value: '08:30' } });
     // Radix's menu content preventDefaults Tab (and runs typeahead on letters)
     // from its own onKeyDown; the pane stops the bubble before it gets there,
-    // so Tab still walks from the field to Apply.
+    // so Tab still leaves the field the browser's way.
     expect(fireEvent.keyDown(field, { key: 'Tab' })).toBe(true);
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(setItemsReminder).toHaveBeenCalledWith(['a', 'b'], '08:30');
@@ -407,7 +407,9 @@ describe('BulkActionBar — Edit menu (pointer: flyouts, like the Display menu)'
     render(<BulkActionBar />);
     openMenu();
     fireEvent.click(await screen.findByTestId('bulk-edit-row-remind'));
-    expect(await screen.findByTestId('bulk-remind-time')).toHaveValue('07:15');
+    await screen.findByTestId('bulk-remind-time');
+    // The shared time is the selected row (07:15 sits between two half hours).
+    expect(screen.getByTestId('bulk-remind-time-option-07:15')).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByTestId('bulk-remind-clear'));
     expect(setItemsReminder).toHaveBeenCalledWith(['a', 'b'], undefined);
     expect(screen.queryByTestId('bulk-edit-menu')).toBeNull();

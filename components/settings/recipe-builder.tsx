@@ -4,6 +4,7 @@ import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { TimeField } from '@/components/ui/time-picker';
 import { useModsStore } from '@/lib/mods-store';
 import { ALL_ITEM_TYPES, getItemTypeConfig } from '@/lib/item-registry';
 import { EMPTY_PICK_LISTS, fetchRecipePickLists, type RecipePickLists } from '@/lib/recipes/pick-lists';
@@ -192,11 +193,12 @@ export function RecipeBuilder({
       {draft.trigger === 'time' && (
         <div className="space-y-1">
           <Field label="At">
-            <Input
-              type="time"
-              data-testid="recipe-at"
+            <TimeField
+              testId="recipe-at"
+              ariaLabel="At"
+              align="start"
               value={draft.at}
-              onChange={(e) => patch({ at: e.target.value })}
+              onChange={(at) => patch({ at })}
             />
           </Field>
           <p data-testid="recipe-time-note" className="text-muted-foreground text-xs">

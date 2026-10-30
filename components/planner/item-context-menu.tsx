@@ -765,11 +765,11 @@ function EditSection({ edit }: { edit: EditModel }) {
         {r.key === 'remind' ? (
           <RemindPane
             value={remindTime}
-            onChange={setRemindTime}
             undated={edit.undatedReminders}
             anySet={edit.remindable.some((i) => !!i.reminderTime)}
-            onApply={() => {
-              if (remindTime) edit.setItemsReminder(ids(edit.remindable), remindTime);
+            onPick={(hhmm) => {
+              setRemindTime(hhmm);
+              edit.setItemsReminder(ids(edit.remindable), hhmm);
             }}
             onClear={() => edit.setItemsReminder(ids(edit.remindable), undefined)}
           />

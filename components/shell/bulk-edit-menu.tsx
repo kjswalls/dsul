@@ -17,7 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { TimeList } from '@/components/ui/time-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   DropdownMenu,
@@ -208,65 +208,45 @@ export function OptionBody({ o }: { o: OptionSpec }) {
 }
 
 /**
- * The Remind pane, the one pane that is a form rather than a list. In the
- * desktop flyout it sits inside a Radix menu, which claims Tab and every
- * printable key (typeahead) at the content, so the wrapper keeps key events
- * from bubbling out: the field owns its keys, and Tab reaches Apply.
+ * The Remind pane: the time picker (components/ui/time-picker.tsx), where a
+ * click or Enter sets the reminder. In the desktop flyout it sits inside a
+ * Radix menu, which claims every printable key (typeahead) and the arrows at
+ * the content, so the wrapper keeps key events from bubbling out: the field
+ * owns its keys.
  */
 export function RemindPane({
   value,
-  onChange,
+  onPick,
   undated,
   anySet,
-  onApply,
   onClear,
 }: {
   value: string;
-  onChange: (v: string) => void;
+  onPick: (hhmm: string) => void;
   undated: number;
   anySet: boolean;
-  onApply: () => void;
   onClear: () => void;
 }) {
   return (
     <div role="group" aria-label="Reminder" onKeyDown={(e) => {
-        // Escape still closes, and ArrowLeft off the buttons still steps back
-        // to the trigger; inside the field the arrows belong to the time.
+        // Escape still closes, and ArrowLeft off the field still steps back to
+        // the trigger; inside the field the keys belong to the time.
         if (e.key === 'Escape') return;
         if (e.key === 'ArrowLeft' && (e.target as HTMLElement).tagName !== 'INPUT') return;
         e.stopPropagation();
       }}
     >
-      <div className={sectionClass}>Nudge me at</div>
-      <div className="flex gap-1 px-2 pb-2">
-        <Input
-          type="time"
-          value={value}
-          data-testid="bulk-remind-time"
-          aria-label="Reminder time"
-          className="h-8 flex-1 text-sm"
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              onApply();
-            }
-          }}
-        />
-        <Button
-          size="sm"
-          className="h-8 px-2.5 text-xs"
-          data-testid="bulk-remind-apply"
-          disabled={!value}
-          onClick={onApply}
-        >
-          Apply
-        </Button>
-      </div>
+      <TimeList
+        value={value}
+        onPick={onPick}
+        ariaLabel="Reminder time"
+        placeholder="Nudge me at…"
+        testId="bulk-remind-time"
+      />
       {/* The dialog's reminderNeedsDate, counted: a cue fires only on a day the
           item occurs, and an undated anchored item has none. */}
       {undated > 0 && (
-        <p className="px-2 pb-2 text-[10px] text-muted-foreground">
+        <p className="px-2 pt-1 pb-2 text-[10px] text-muted-foreground">
           {undated} have no date. Give them one and they will fire.
         </p>
       )}
@@ -625,12 +605,11 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
   const remindBody = (onDone: () => void): ReactNode => (
     <RemindPane
       value={remindTime}
-      onChange={setRemindTime}
       undated={undatedReminders}
       anySet={remindable.some((i) => !!i.reminderTime)}
-      onApply={() => {
-        if (!remindTime) return;
-        setItemsReminder(remindable.map((i) => i.id), remindTime);
+      onPick={(hhmm) => {
+        setRemindTime(hhmm);
+        setItemsReminder(remindable.map((i) => i.id), hhmm);
         onDone();
       }}
       onClear={() => {

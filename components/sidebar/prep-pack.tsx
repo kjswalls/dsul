@@ -6,6 +6,7 @@ import { AskMark } from '@/components/ai/ask-mark';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { TimeField } from '@/components/ui/time-picker';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
@@ -267,11 +268,12 @@ function PackFields({ pack, onChange }: { pack: Pack; onChange: (next: Pack) => 
               />
             </Field>
             <Field label="At">
-              <Input
-                type="time"
+              <TimeField
+                ariaLabel="At"
+                align="start"
+                className="h-9"
                 value={pack.time}
-                className="w-[110px]"
-                onChange={(e) => e.target.value && onChange({ ...pack, time: e.target.value })}
+                onChange={(time) => onChange({ ...pack, time })}
               />
             </Field>
             <Field label="Minutes">

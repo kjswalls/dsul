@@ -14,6 +14,7 @@ import { currentDayOfWeek } from '@/lib/recurrence';
 import { WEEKDAY_LABELS } from '@/lib/planner-types';
 import { Segmented, SegmentedOption, SettingRow } from './primitives';
 import { BufferedInput } from './detail-parts';
+import { TimeField } from '@/components/ui/time-picker';
 import { cn } from '@/lib/utils';
 import { PropertyChip } from '@/components/primitives/property-chip';
 import { PROJECT_REPEATS, timeBlockSummary } from '@/lib/project-block';
@@ -157,13 +158,11 @@ export function ProjectTimeBlock({ project }: { project: Project }) {
           </SettingRow>
 
           <SettingRow label="Starts">
-            <BufferedInput
-              type="time"
+            <TimeField
               value={project.startTime ?? bucketDefault(bucket)}
               testId="project-start-time"
               ariaLabel="Start time"
-              className="w-[104px] font-num"
-              onCommit={(next) => patch({ startTime: next })}
+              onChange={(next) => patch({ startTime: next })}
             />
           </SettingRow>
 

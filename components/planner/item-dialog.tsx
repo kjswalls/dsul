@@ -69,6 +69,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
+import { TimeList } from '@/components/ui/time-picker';
 import { Textarea } from '@/components/ui/textarea';
 import {
   DropdownMenu,
@@ -2270,15 +2271,14 @@ function ItemDialogInner({
             {effectiveBucket !== 'none' && effectiveBucket !== 'anytime' && (
               <>
                 <ChipSectionLabel>Specific time</ChipSectionLabel>
-                <div className="px-2 pb-2">
-                  <Input
-                    type="time"
-                    value={d.startTime}
-                    onChange={(e) => patch({ startTime: e.target.value })}
-                    className="h-9 text-sm"
-                    data-sub-input
-                  />
-                </div>
+                <TimeList
+                  value={d.startTime}
+                  onPick={(hhmm) => patch({ startTime: hhmm })}
+                  ariaLabel="Specific time"
+                  testId="item-time-input"
+                  listClassName="max-h-40"
+                  data-sub-input
+                />
                 {/* A time, once set, comes back off through the chip — not only
                     through the browser's own clear on the time input. */}
                 {d.startTime && (
@@ -2480,18 +2480,17 @@ function ItemDialogInner({
         {(close) => (
           <>
             <ChipSectionLabel>Nudge me at</ChipSectionLabel>
-            <div className="px-2 pb-2">
-              <Input
-                type="time"
-                value={d.reminderTime}
-                onChange={(e) => patch({ reminderTime: e.target.value })}
-                className="h-9 text-sm"
-                data-sub-input
-              />
-            </div>
+            <TimeList
+              value={d.reminderTime}
+              onPick={(hhmm) => patch({ reminderTime: hhmm })}
+              ariaLabel="Reminder time"
+              testId="item-remind-input"
+              listClassName="max-h-40"
+              data-sub-input
+            />
 
             {d.reminderTime && reminderNeedsDate && (
-              <p className="text-muted-foreground px-2 pb-2 text-[10px]">
+              <p className="text-muted-foreground px-2 pt-1 pb-2 text-[10px]">
                 {EDIT_COPY.reminderNeedsDate}
               </p>
             )}
