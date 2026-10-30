@@ -1,7 +1,6 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Search, SlidersHorizontal, ArrowUpRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -36,6 +35,7 @@ import {
   type PaneGroup,
 } from '@/lib/settings/groups';
 import { ExtensionRailList } from './extension-rail-list';
+import { SettingsLink, showSettings } from './settings-link';
 import { ExtensionHero } from './extension-hero';
 import { ExtensionBrowse } from '@/components/extensions/extension-browse';
 import { DevicesList } from './devices-list';
@@ -170,7 +170,6 @@ export function SettingsShell({
   isMobile: boolean;
   onOpenDestination: (record: DestinationRecord) => void;
 }) {
-  const router = useRouter();
   const { canChat } = useAICapabilities();
   const [rawQuery, setRawQuery] = useState('');
   const [query, setQuery] = useState('');
@@ -416,7 +415,7 @@ export function SettingsShell({
   const openPanelFor = (record: SettingRecord) => {
     setRawQuery('');
     setQuery('');
-    router.push(`${paneHref(record.pane)}?focus=${encodeURIComponent(record.id)}`);
+    showSettings(`${paneHref(record.pane)}?focus=${encodeURIComponent(record.id)}`);
   };
 
   const setUpAction = (record: SettingRecord) =>
@@ -575,9 +574,9 @@ export function SettingsShell({
         {parentPane && (
           <>
             <span aria-hidden>/</span>
-            <Link href={paneHref(parentPane.id)} className="hover:text-foreground transition-colors">
+            <SettingsLink href={paneHref(parentPane.id)} className="hover:text-foreground transition-colors">
               {parentPane.name}
-            </Link>
+            </SettingsLink>
           </>
         )}
         <span aria-hidden>/</span>
@@ -629,7 +628,7 @@ export function SettingsShell({
                 onClick={() => {
                   setRawQuery('');
                   setQuery('');
-                  router.push(paneHref(p.id));
+                  showSettings(paneHref(p.id));
                 }}
                 className={cn(
                   'flex h-8 shrink-0 items-center gap-2.5 rounded-sm px-2 text-sm transition-colors md:w-full',

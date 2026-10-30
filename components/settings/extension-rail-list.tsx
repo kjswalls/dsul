@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import Link from 'next/link';
+import { SettingsLink } from './settings-link';
 import { ChevronRight, Store } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -127,7 +127,7 @@ export function ExtensionRailList({
       data-testid={`extension-list-${variant}`}
     >
       {rail && (
-        <Link
+        <SettingsLink
           href="/settings/extensions"
           aria-current={pane === 'extensions' ? 'page' : undefined}
           className={cn(
@@ -141,7 +141,7 @@ export function ExtensionRailList({
           <Store className="size-3.5 shrink-0" aria-hidden />
           <span className="flex-1">Browse</span>
           <span className="text-muted-foreground font-num text-[10px]">{OFFICIAL_EXTENSIONS.length}</span>
-        </Link>
+        </SettingsLink>
       )}
 
       {/* Until the store answers, every row says Loading and none of them is
@@ -240,7 +240,7 @@ function ExtensionRow({
   if (!rail) {
     return (
       <div className="flex items-center gap-3 py-3" data-extension-row={slug} data-extension-state={state.label}>
-        <Link
+        <SettingsLink
           href={`/settings/${sub.id}`}
           aria-describedby={stateId}
           className="focus-visible:ring-ring flex min-w-0 flex-1 items-center gap-3 rounded-[5px] focus-visible:ring-2 focus-visible:outline-none"
@@ -253,7 +253,7 @@ function ExtensionRow({
             </span>
           </span>
           <ChevronRight className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
-        </Link>
+        </SettingsLink>
         {sw}
       </div>
     );
@@ -268,7 +268,7 @@ function ExtensionRow({
       data-extension-row={slug}
       data-extension-state={state.label}
     >
-      <Link
+      <SettingsLink
         href={`/settings/${sub.id}`}
         aria-current={current ? 'page' : undefined}
         title={state.reason ? `${sub.name} · ${stateText}` : sub.name}
@@ -284,7 +284,7 @@ function ExtensionRow({
         <span id={stateId} className="sr-only">
           , {stateText}
         </span>
-      </Link>
+      </SettingsLink>
       {/* At rest a dot says the state; with a mouse over the row, or focus
           anywhere in it, the switch takes the dot's place. Touch has no hover,
           so there the switch is always drawn. At rest the switch is not just

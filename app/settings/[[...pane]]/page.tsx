@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
@@ -82,6 +82,17 @@ import { extensionEnabled } from '@/lib/extension-gates';
 
 /** The modals this page owns and opens by name (see the dynamic imports below). */
 type LocalDialog = 'bug' | 'deleteAccount';
+
+/** The pane part of a /settings address, `undefined` for a bare /settings. */
+function paneSegments(pathname: string | null): string | undefined {
+  const rest = (pathname ?? '').replace(/^\/settings\/?/, '').replace(/\/+$/, '');
+  if (!rest) return undefined;
+  try {
+    return rest.split('/').map(decodeURIComponent).join('/');
+  } catch {
+    return rest;
+  }
+}
 
 /** Where an unrecognised path goes. Nearest real pane, never a blank page. */
 function fallbackPane(path: string | undefined): PaneId {
@@ -217,7 +228,7 @@ function SettingsSkeleton({ userId }: { userId: string | null }) {
 
 export default function SettingsPage() {
   const router = useRouter();
-  const params = useParams<{ pane?: string[] }>();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const isMobile = useIsMobile();
 
@@ -245,8 +256,13 @@ export default function SettingsPage() {
      optional catch-all already captures as two segments. Joining them is what
      makes a sub-pane a real deep link rather than a URL that silently renders
      the extensions index — and it costs nothing for the one-segment panes,
-     whose join is themselves. */
-  const path = params?.pane?.join('/');
+     whose join is themselves.
+
+     Read off the PATHNAME, not useParams: the rail switches panes with
+     history.pushState (components/settings/settings-link.tsx), which Next
+     reflects in usePathname but not in the params, which come from the route
+     tree the page was loaded with. */
+  const path = paneSegments(pathname);
   // An alias (`ai`) is the pane it stands for, and stays in the address bar.
   const pane: PaneId = resolvePaneSlug(path) ?? fallbackPane(path);
   const focusId = searchParams?.get('focus') ?? undefined;
@@ -519,6 +535,10 @@ export default function SettingsPage() {
       {hydrated ? (
         <div data-testid="settings-page" data-settings-state="ready">
           <SettingsShell
+            // One mount per pane, as when each pane was its own navigation:
+            // the shell's per-pane state (search, the arrival ring, the
+            // Advanced disclosure) starts fresh on every switch.
+            key={pane}
             pane={pane}
             ctx={ctx}
             focusId={focusId}

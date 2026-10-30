@@ -24,7 +24,6 @@ const dialog = vi.hoisted(() => ({ mounts: 0, unmounts: 0 }));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => nav.router,
-  useParams: () => nav.params,
   useSearchParams: () => nav.search,
   usePathname: () => '/settings/dsul',
 }));

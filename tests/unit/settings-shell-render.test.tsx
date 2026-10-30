@@ -37,7 +37,10 @@ vi.mock('@/lib/settings-service', () => ({
   saveSettings: vi.fn(async () => {}),
   flushSettings: vi.fn(async () => {}),
 }));
-const nav = vi.hoisted(() => ({ push: vi.fn() }));
+// `push` is the router's, `pushed` is history.pushState's. The surface moves
+// between panes with the second (components/settings/settings-link.tsx): a
+// router.push to another pane was a server round trip before the pane drew.
+const nav = vi.hoisted(() => ({ push: vi.fn(), pushed: vi.fn() }));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: nav.push, replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
@@ -145,12 +148,18 @@ function answerAs(seed: SeedAI, o: { status?: () => Response | Promise<Response>
 
 beforeEach(() => {
   nav.push.mockReset();
+  nav.pushed.mockReset();
+  vi.spyOn(window.history, 'pushState').mockImplementation((_data, _unused, url) => {
+    nav.pushed(String(url));
+  });
+  vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   useExtensionsStore.setState({ available: true, configsLoaded: true, enabled: {}, configs: {} });
   useReminderStore.setState({ remindersEnabled: false, stakesEnabled: false });
 });
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   useExtensionsStore.getState().reset();
   useReminderStore.setState({ remindersEnabled: false, stakesEnabled: false });
 });
@@ -632,9 +641,9 @@ describe('the AI pane', () => {
     expect(screen.getAllByTestId('settings-set-up')).toHaveLength(1);
     fireEvent.click(within(hit).getByRole('button', { name: 'Set up API key' }));
 
-    expect(nav.push).toHaveBeenCalledTimes(1);
+    expect(nav.pushed).toHaveBeenCalledTimes(1);
     // By the pane's alias: the address bar says "ai", never "beacon".
-    expect(nav.push).toHaveBeenCalledWith('/settings/ai?focus=beacon.apiKey');
+    expect(nav.pushed).toHaveBeenCalledWith('/settings/ai?focus=beacon.apiKey');
     // The query is gone at once, so the pane (and its panel) is what renders, not the results.
     expect(input().value).toBe('');
     expect(row('beacon.apiKey')).toBeNull();
@@ -651,7 +660,7 @@ describe('the AI pane', () => {
     input().focus();
     await search('openai');
     fireEvent.click(screen.getByRole('button', { name: 'Set up API key' }));
-    expect(nav.push).toHaveBeenCalledTimes(2);
+    expect(nav.pushed).toHaveBeenCalledTimes(2);
     view.rerender(shell('beacon', 'beacon.apiKey'));
     await waitFor(() => expect(document.activeElement).toBe(anchor()));
   });
@@ -682,16 +691,43 @@ describe('the hrefs the surface builds', () => {
   it('the rail goes to the AI pane by its alias, and to every other pane by its id', () => {
     renderShell('day');
     fireEvent.click(railButton('AI'));
-    expect(nav.push).toHaveBeenLastCalledWith('/settings/ai');
+    expect(nav.pushed).toHaveBeenLastCalledWith('/settings/ai');
     fireEvent.click(railButton('Keyboard'));
-    expect(nav.push).toHaveBeenLastCalledWith('/settings/keyboard');
-    expect(nav.push.mock.calls.flat()).not.toContain('/settings/beacon');
+    expect(nav.pushed).toHaveBeenLastCalledWith('/settings/keyboard');
+    expect(nav.pushed.mock.calls.flat()).not.toContain('/settings/beacon');
+    // In place: no trip through the router, so no request before the pane draws.
+    expect(nav.push).not.toHaveBeenCalled();
   });
 
   it("an extension's parent crumb is a real link to the index", () => {
     renderShell('extensions/beeminder');
     const crumbs = screen.getAllByRole('navigation')[0];
     expect(within(crumbs).getByRole('link', { name: 'Extensions' })).toHaveAttribute('href', '/settings/extensions');
+  });
+
+  it('a link between panes switches in place, and a modified click is left to the browser', () => {
+    window.history.replaceState(null, '', '/settings/extensions/beeminder');
+    renderShell('extensions/beeminder');
+    const crumb = within(screen.getAllByRole('navigation')[0]).getByRole('link', { name: 'Extensions' });
+
+    // What the link left for the browser, read at the top of the bubble and
+    // then cancelled, since jsdom cannot follow a link to another document.
+    const leftToBrowser: boolean[] = [];
+    const watch = (e: MouseEvent) => {
+      leftToBrowser.push(!e.defaultPrevented);
+      e.preventDefault();
+    };
+    window.addEventListener('click', watch);
+
+    // ⌘-click is a new tab: nothing here may swallow it.
+    fireEvent.click(crumb, { metaKey: true });
+    expect(nav.pushed).not.toHaveBeenCalled();
+
+    fireEvent.click(crumb);
+    window.removeEventListener('click', watch);
+    expect(leftToBrowser).toEqual([true, false]);
+    expect(nav.pushed).toHaveBeenCalledWith('/settings/extensions');
+    expect(nav.push).not.toHaveBeenCalled();
   });
 
   it('the AI pane lights its one rail row', () => {

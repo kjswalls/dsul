@@ -193,8 +193,12 @@ describe('the store', () => {
     params = new URLSearchParams();
     const { rerender } = render(<ExtensionBrowse ctx={ctx} />);
     expect(document.querySelector(`[data-store-featured="${FEATURED_SLUG}"]`)).toBeTruthy();
+    // In place, never a router.replace: that was a server round trip per chip.
+    const replaceState = vi.spyOn(window.history, 'replaceState');
     fireEvent.click(screen.getByRole('button', { name: 'Put something on the line' }));
-    expect(replace).toHaveBeenCalledWith('/settings/extensions?shelf=stakes', { scroll: false });
+    expect(replaceState).toHaveBeenCalledWith(null, '', '/settings/extensions?shelf=stakes');
+    expect(replace).not.toHaveBeenCalled();
+    replaceState.mockRestore();
 
     params = new URLSearchParams('shelf=stakes');
     rerender(<ExtensionBrowse ctx={ctx} />);

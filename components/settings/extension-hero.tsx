@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import Link from 'next/link';
+import { SettingsLink } from './settings-link';
 import { useSearchParams } from 'next/navigation';
 import { ChevronLeft, Store } from 'lucide-react';
 
@@ -42,14 +42,14 @@ export function ExtensionHero({ slug }: { slug: string }) {
   return (
     <section className="mb-4 flex flex-col gap-4" data-extension-hero={slug} aria-label={`About ${extension.name}`}>
       {fromBrowse && (
-        <Link
+        <SettingsLink
           href={backHref}
           data-testid="extension-back-to-browse"
           className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 self-start text-xs transition-colors"
         >
           <ChevronLeft className="size-3.5" aria-hidden />
           Back to Browse
-        </Link>
+        </SettingsLink>
       )}
 
       {/* A thumbnail beside the summary, not a banner over it: the pane is a
@@ -85,13 +85,13 @@ export function ExtensionHero({ slug }: { slug: string }) {
           {adoption && <span className="font-num text-[11px]">{adoption}</span>}
           {!fromBrowse && (
             // A desktop has Browse in the rail beside this; a phone does not.
-            <Link
+            <SettingsLink
               href="/settings/extensions"
               className="hover:text-foreground inline-flex items-center gap-1 transition-colors md:hidden"
             >
               <Store className="size-3.5" aria-hidden />
               Browse all extensions
-            </Link>
+            </SettingsLink>
           )}
         </div>
       )}

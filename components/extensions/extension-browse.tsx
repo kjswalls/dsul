@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
-import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { SettingsLink, showSettings } from '@/components/settings/settings-link';
+import { useSearchParams } from 'next/navigation';
 
 import { cn } from '@/lib/utils';
 import { useExtensionAdoptionStore } from '@/lib/extension-adoption-store';
@@ -50,11 +50,11 @@ export function ExtensionBrowse({ ctx }: { ctx: SettingCtx }) {
 
   // The chip lives in the URL (?shelf=), and every card carries it on to the
   // extension's pane, so "Back to Browse" returns to the same shelf.
-  const router = useRouter();
   const shelfParam = useSearchParams()?.get('shelf');
   const filter: Filter = isFilter(shelfParam) ? shelfParam : 'all';
-  const setFilter = (next: Filter) =>
-    router.replace(browseHref(next), { scroll: false });
+  // In place, never through the router: a router.replace here was a server
+  // round trip for a chip (see settings-link.tsx).
+  const setFilter = (next: Filter) => showSettings(browseHref(next), { replace: true });
   const back = filter === 'all' ? '' : `&shelf=${filter}`;
 
   // The state words read these stores through getState(); the ticks are what
@@ -110,7 +110,7 @@ export function ExtensionBrowse({ ctx }: { ctx: SettingCtx }) {
       </div>
 
       {featured && (
-        <Link
+        <SettingsLink
           href={`/settings/${extensionPaneId(featured.slug)}?from=browse${back}`}
           data-store-featured={featured.slug}
           className={cn(
@@ -133,7 +133,7 @@ export function ExtensionBrowse({ ctx }: { ctx: SettingCtx }) {
             <span className="text-muted-foreground text-sm leading-relaxed">{featured.description}</span>
             <ExtensionChips extension={featured} state={states[featured.slug]} />
           </span>
-        </Link>
+        </SettingsLink>
       )}
 
       {shown.length === 0 ? (

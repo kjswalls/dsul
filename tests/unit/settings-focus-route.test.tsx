@@ -34,9 +34,11 @@ vi.mock('next/navigation', () => ({
   // effects list it as a dep, so a new identity per render would re-fire them
   // on every unrelated state change and double every assertion below.
   useRouter: () => nav.router,
-  useParams: () => nav.params,
+  // The page reads its pane off the pathname (the rail switches with
+  // pushState, which Next's params never see), so the path is built from the
+  // same segments a catch-all would capture.
+  usePathname: () => `/settings${nav.params.pane ? `/${nav.params.pane.join('/')}` : ''}`,
   useSearchParams: () => nav.search,
-  usePathname: () => '/settings',
 }));
 vi.mock('next-themes', () => ({ useTheme: () => ({ theme: 'system', setTheme: vi.fn() }) }));
 vi.mock('@/lib/settings-service', () => ({
