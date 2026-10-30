@@ -28,6 +28,7 @@ import { GoalsSection } from './sections/goals';
 import { ProjectsSection, TypesSection } from './sections/labels';
 import { OverviewSection } from './sections/overview';
 import { PausedSection, usePausedRailNote } from './sections/paused';
+import { CardsSection } from './sections/cards';
 import { TrashSection } from './sections/trash';
 import { cn } from '@/lib/utils';
 
@@ -461,6 +462,9 @@ function SectionBody({
     return <TypesSection selectedId={selectedId} onSelect={onSelect} {...make} />;
   }
 
+  if (section === 'cards') {
+    return <CardsSection selectedId={selectedId} onSelect={onSelect} />;
+  }
   if (section === 'paused') {
     return (
       <PausedSection

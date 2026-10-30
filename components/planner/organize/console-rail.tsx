@@ -4,6 +4,7 @@ import * as TabsPrimitive from '@radix-ui/react-tabs';
 import {
   CalendarRange,
   Folder,
+  Grid3x3,
   LayoutGrid,
   type LucideIcon,
   Moon,
@@ -13,7 +14,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Eyebrow } from './primitives';
-import { EXT_GOALS, EXT_ORGANIZE } from '@/lib/extension-registry';
+import { EXT_GOALS, EXT_ORGANIZE, EXT_X_EFFECT } from '@/lib/extension-registry';
 import { cn } from '@/lib/utils';
 import { CONTAINER_KINDS } from '@/lib/container-registry';
 
@@ -44,6 +45,7 @@ export type ConsoleSection =
   | 'goals'
   | 'projects'
   | 'types'
+  | 'cards'
   | 'paused'
   | 'trash';
 
@@ -127,6 +129,12 @@ export const CONSOLE_SECTIONS = [
   // back must not be either: a paused item is hidden from every other surface,
   // and this is where it is listed (programs-routines.md locked decision 10,
   // and its 2026-10-23 addendum, which moved it here from the braindump).
+  // Every habit's X effect card, current and filed. A record rather than a
+  // container, so it gets its own eyebrow, and it rides its own extension: with
+  // X effect off there are no cards to keep.
+  { id: 'cards', label: 'Cards', group: 'RECORDS', eyebrow: 'CARDS',
+    blurb: 'Every habit’s X effect card, and the ones you’ve filed.', extension: EXT_X_EFFECT,
+    filterable: true },
   { id: 'paused', label: 'Paused', group: 'RULE', eyebrow: 'PAUSED',
     blurb: 'Set aside for now, and when each comes back.', extension: null, filterable: true },
   { id: 'trash', label: 'Trash', group: null, eyebrow: 'TRASH',
@@ -184,6 +192,8 @@ export const SECTION_IDENTITY: Record<
   goals: { icon: Target, accent: 'var(--accent-6)' },
   projects: { icon: Folder, accent: 'var(--accent-1)' },
   types: { icon: Shapes, accent: 'var(--accent-4)' },
+  // Neutral: a record of habits, not a kind of container.
+  cards: { icon: Grid3x3, accent: 'var(--muted-foreground)' },
   // Muted like Trash, and for the same reason: a lifecycle surface, not a kind.
   paused: { icon: Moon, accent: 'var(--muted-foreground)' },
   trash: { icon: Trash2, accent: 'var(--muted-foreground)' },

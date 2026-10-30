@@ -5057,3 +5057,23 @@ body {
     }
   }
 }
+
+/* X effect (components/planner/x-effect-card.tsx): today's X arrives as two pen
+   strokes when the habit is ticked with its card on screen. The resting style
+   is the finished X, so reduced motion (and the global clamp, which snaps to
+   the end keyframe) shows it drawn. */
+@media (prefers-reduced-motion: no-preference) {
+  .x-effect-draw path {
+    stroke-dasharray: 30;
+    stroke-dashoffset: 30;
+    animation: x-effect-pen 220ms ease-out forwards;
+  }
+  .x-effect-draw path:nth-child(2) {
+    animation-delay: 180ms;
+  }
+}
+@keyframes x-effect-pen {
+  to {
+    stroke-dashoffset: 0;
+  }
+}

@@ -34,11 +34,13 @@ import {
 } from '@/lib/ai-pane-state';
 import { setUseAI } from '@/lib/no-ai';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { stampXEffectSince } from '@/lib/x-effect-since';
 import { useModsStore } from '@/lib/mods-store';
 import {
   EXT_COMPLETION_CONFETTI,
   EXT_GOALS,
   EXT_HABIT_HEATMAP,
+  EXT_X_EFFECT,
   EXT_ORGANIZE,
   EXT_STREAKS,
   EXT_DO_STUFF,
@@ -1873,6 +1875,26 @@ export const SETTINGS: SettingRecord[] = [
     read: () => ext().isEnabled(EXT_HABIT_HEATMAP),
     write: (v, ctx) => {
       if (ctx.userId) ext().setEnabled(ctx.userId, EXT_HABIT_HEATMAP, Boolean(v));
+    },
+    defaultValue: false,
+  },
+  {
+    id: 'extensions.x-effect',
+    pane: extensionPaneId(EXT_X_EFFECT),
+    label: 'X effect',
+    description:
+      'A 49-day card in each habit’s panel that gets an X every day you do it. Missed days stay blank and a card never resets.',
+    control: 'switch',
+    keywords: ['xeffect', 'card', '49 days', 'seven weeks', 'cross off', 'grid', 'habits'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => ext().isEnabled(EXT_X_EFFECT),
+    write: (v, ctx) => {
+      if (!ctx.userId) return;
+      ext().setEnabled(ctx.userId, EXT_X_EFFECT, Boolean(v));
+      // The first turn-on is when cards begin (lib/x-effect.ts). Never moved
+      // after that, so switching it off and on again keeps every card.
+      if (v) stampXEffectSince(ctx.userId);
     },
     defaultValue: false,
   },
