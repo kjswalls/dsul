@@ -91,6 +91,7 @@ import { useExtensionsStore } from '@/lib/extensions-store';
 import {
   EXT_GOALS,
   EXT_ORGANIZE,
+  EXT_X_EFFECT,
   OFFICIAL_EXTENSIONS,
   extensionManifest,
   resolveEnabled,
@@ -256,7 +257,7 @@ describe('Organize switched off — the console stops opening', () => {
   });
 
   it('opens the whole console once it is switched back on', () => {
-    enableExtensions(EXT_ORGANIZE, EXT_GOALS);
+    enableExtensions(EXT_ORGANIZE, EXT_GOALS, EXT_X_EFFECT);
     render(<OrganizeConsole open onOpenChange={() => {}} />);
 
     expect(screen.getByTestId('organize-console')).toBeInTheDocument();

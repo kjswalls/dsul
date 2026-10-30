@@ -17,6 +17,7 @@ import {
   EXT_SMS_NUDGE,
   EXT_STREAKS,
   EXT_VOICE_ANNOUNCEMENTS,
+  EXT_X_EFFECT,
   extensionManifest,
 } from '@/lib/extension-registry';
 import s from './previews.module.css';
@@ -200,6 +201,39 @@ const Heatmap: Scene = () => (
         <span>
           <b>71%</b> of days
         </span>
+      </div>
+    </div>
+  </div>
+);
+
+/** Day 31 of a card: X's on most days, a few blank squares, one rest, today last. */
+const X_CELLS = Array.from({ length: 49 }, (_, i) => {
+  const n = i + 1;
+  if (n > 31) return 'ahead';
+  if (n === 31) return 'today';
+  if (n === 22) return 'rest';
+  return [9, 17, 18, 26].includes(n) ? 'blank' : 'x';
+});
+const PEN_X = (
+  <svg viewBox="0 0 24 24" aria-hidden>
+    <path d="M5 5 19 19M19 5 5 19" />
+  </svg>
+);
+
+const XEffect: Scene = () => (
+  <div className={s.stage}>
+    <div className={cn(s.card, s.xCard)}>
+      <div className={s.cardHead}>
+        Morning pages<span>Card 2 · day 31 of 49</span>
+      </div>
+      <div className={s.xGrid}>
+        {X_CELLS.map((state, i) => (
+          <i key={i} className={cn(s.xCell, state === 'today' && s.xToday)}>
+            {state === 'x' && PEN_X}
+            {state === 'today' && <span className={s.xDraw}>{PEN_X}</span>}
+            {state === 'rest' && <b className={s.xRest} />}
+          </i>
+        ))}
       </div>
     </div>
   </div>
@@ -525,6 +559,7 @@ export const EXTENSION_PREVIEWS: Record<string, Scene> = {
   [EXT_DO_STUFF]: DoStuff,
   [EXT_STREAKS]: Streaks,
   [EXT_HABIT_HEATMAP]: Heatmap,
+  [EXT_X_EFFECT]: XEffect,
   [EXT_COMPLETION_CONFETTI]: Confetti,
   [EXT_VOICE_ANNOUNCEMENTS]: Voice,
   [EXT_SMS_NUDGE]: Text,

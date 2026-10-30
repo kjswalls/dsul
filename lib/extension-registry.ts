@@ -1,6 +1,7 @@
 import {
   CalendarRange,
   Flame,
+  Grid3x3,
   FolderCog,
   HandCoins,
   LineChart,
@@ -146,6 +147,13 @@ export const EXT_STREAKS = 'streaks';
 export const EXT_DO_STUFF = 'do-stuff';
 
 export const EXT_HABIT_HEATMAP = 'habit-heatmap';
+/**
+ * X effect (default OFF) — a 49-day card per habit, crossed off one X a day
+ * (lib/x-effect.ts). Off because a card is a new idea. Missed days are blank
+ * paper and a card never resets, so it can stay on without arguing with
+ * anyone; its config holds one date, `since`, and nothing per habit.
+ */
+export const EXT_X_EFFECT = 'x-effect';
 export const EXT_COMPLETION_CONFETTI = 'completion-confetti';
 /**
  * Reminder delivery channels (Tier 2).
@@ -278,6 +286,26 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     ],
     makerNote:
       'A streak tells you about today. The grid tells you about the season, which is usually the more honest story.',
+  },
+  {
+    slug: EXT_X_EFFECT,
+    name: 'X effect',
+    // Says the two promises a 49-day card has to keep to be worth turning on:
+    // a gap costs nothing, and the card never starts over.
+    description:
+      'A 49-day card in each habit’s panel that gets an X every day you do it. Missed days stay blank and a card never resets.',
+    icon: Grid3x3,
+    category: 'habits',
+    defaultEnabled: false,
+    tagline: 'A 49-day card you cross off',
+    shelf: 'habits',
+    whatChanges: [
+      'A 7 by 7 card in a habit’s panel. Each day you do it gets an X.',
+      'Missed days stay blank and the card never resets. After 49 days it files itself and the next one starts.',
+      'Every card, current and filed, under Cards in Organize.',
+    ],
+    makerNote:
+      'A streak breaks. A card just fills up. Seven weeks in, you have something to file, however many squares are blank.',
   },
   {
     slug: EXT_COMPLETION_CONFETTI,

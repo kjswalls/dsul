@@ -24,7 +24,8 @@ import { ItemConversation } from '@/components/ai/item-conversation';
 import { ItemFilesSection } from '@/components/planner/item-files';
 import { ItemTimeline } from '@/components/planner/item-timeline';
 import { useExtensionsStore } from '@/lib/extensions-store';
-import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
+import { EXT_HABIT_HEATMAP, EXT_X_EFFECT, resolveEnabled } from '@/lib/extension-registry';
+import { XEffectSection } from '@/components/planner/x-effect-card';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { agentStatusView, showsAgentChip } from '@/lib/agent-status';
 import { isAppAssignee } from '@/lib/handoff-wake';
@@ -785,6 +786,7 @@ export function ItemDetailSections({
   // Extension gate + capability gate: the heatmap is opt-in (Settings →
   // Extensions) and only meaningful where the registry says a streak exists.
   const heatmapOn = useExtensionsStore((s) => resolveEnabled(s.enabled, EXT_HABIT_HEATMAP));
+  const xEffectOn = useExtensionsStore((s) => resolveEnabled(s.enabled, EXT_X_EFFECT));
   // Where a conversation is on screen, the agent's exchange is drawn in it (ItemConversation).
   const { canChat } = useAICapabilities();
   return (
@@ -805,6 +807,7 @@ export function ItemDetailSections({
         />
       )}
       <ItemFilesSection itemId={item.id} />
+      {xEffectOn && config.counters.streak && <XEffectSection item={item} />}
       {heatmapOn && config.counters.streak && <HeatmapSection item={item} />}
       {/* Where the conversation is on screen, the timeline is drawn inside it, as one stream. */}
       {withActivity && !(canChat && (conversation !== 'none' || conversationElsewhere)) && <ItemTimeline item={item} />}

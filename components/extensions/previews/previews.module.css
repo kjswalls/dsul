@@ -222,6 +222,22 @@
 .foot { display: flex; gap: 1em; color: var(--secondary-foreground); font-size: 0.8em; }
 .foot b { font-family: var(--font-mono); }
 
+/* ── x effect ──────────────────────────────────────────────────────────── */
+/* The X is ink and the gaps are paper; lime marks only today's square. */
+.xCard { max-width: 17em; }
+.xGrid { display: grid; grid-template-columns: repeat(7, 1fr); border-top: 1px solid var(--border); border-left: 1px solid var(--border); }
+.xCell { position: relative; display: grid; place-items: center; aspect-ratio: 1; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); color: var(--foreground); }
+.xCell svg { width: 70%; height: 70%; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; opacity: 0.85; }
+.xToday { background: color-mix(in oklab, var(--primary) 15%, transparent); outline: 1.5px solid var(--primary); outline-offset: -1px; }
+.xDraw { display: contents; }
+.xRest { width: 34%; height: 2px; border-radius: 2px; background: var(--day-off); }
+.root[data-playing='true'] .xDraw path { stroke-dasharray: 40; animation: xPen 4s infinite; }
+@keyframes xPen {
+  0%, 20% { stroke-dashoffset: 40; }
+  40%, 90% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: 40; }
+}
+
 /* ── goals ─────────────────────────────────────────────────────────────── */
 .goalHead { display: flex; align-items: center; gap: 0.5em; font-weight: 600; }
 .goalHead svg { width: 1.1em; height: 1.1em; fill: none; stroke: var(--accent-3); stroke-width: 2.2; }
