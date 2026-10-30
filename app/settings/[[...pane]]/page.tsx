@@ -8,6 +8,7 @@ import { ChevronLeft } from 'lucide-react';
 import { useTheme } from 'next-themes';
 
 import { SettingsShell } from '@/components/settings/settings-shell';
+import { SETTINGS_PAGE_WIDTH } from '@/components/settings/page-width';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { Button } from '@/components/ui/button';
 
@@ -145,7 +146,7 @@ function SettingsSkeleton({ userId }: { userId: string | null }) {
     <main
       // Mirrors SettingsShell's own container exactly, so the real surface
       // lands where the skeleton stood instead of jumping under the cursor.
-      className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]"
+      className={`mx-auto flex ${SETTINGS_PAGE_WIDTH} flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]`}
       data-testid="settings-page"
       data-settings-state="loading"
     >
