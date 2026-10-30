@@ -22,6 +22,20 @@ export const WEEK_BUCKET_MAX_H = 320;
    importing a 'use client' component into lib/ would be a cycle.
    day-schedule.tsx re-exports LANE_PX, which is what week-schedule imports. */
 
+/**
+ * Day view: the gutter's width, which is also the events layer's left offset —
+ * the two now meet. They used to be 88 and 132, leaving 44px of nothing between
+ * the hour labels and the first thing they label. That gap was survivable while
+ * the gutter was a bordered box that read as its own object; against a bare
+ * column of marks it just reads as the labels having drifted off the grid, and
+ * it separated the live time from its own diamond by the width of a thumb.
+ *
+ * Sized to hold the widest thing the column prints — the live time at
+ * "12:40 pm" — with the inset below, and no wider: every px past that reopens
+ * the gap the labels just closed.
+ */
+export const DAY_FIELD_LEFT = 68;
+
 /** Width of the lane the rail, bead and now-marker live in. The pane starts
  *  here, and so do the hour hairlines, so the lane reads as one unbroken
  *  channel down the grid instead of a series of gaps. */
