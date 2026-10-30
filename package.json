@@ -19,7 +19,8 @@
     "db:push": "supabase db push",
     "db:new": "supabase migration new",
     "postinstall": "node scripts/build-mod-runtime.mjs",
-    "prebuild": "node scripts/build-mod-runtime.mjs"
+    "prebuild": "node scripts/build-mod-runtime.mjs",
+    "demo:record": "playwright test -c playwright.demo.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

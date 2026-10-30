@@ -42,3 +42,6 @@ lib/mods/sandbox/generated/
 
 # Chat eval reports (pnpm eval:chat)
 tests/evals/chat/results/
+
+# The demo reel's clips (pnpm demo:record)
+demo-reel/
