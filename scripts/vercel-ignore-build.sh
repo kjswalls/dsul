@@ -9,18 +9,16 @@
 # copy of the whole site on every push.
 #
 # The diff runs from the last deployment on this branch
-# (VERCEL_GIT_PREVIOUS_SHA) when the clone has it, otherwise from HEAD^. When
-# neither can be read, it builds: a wasted build is cheaper than a missed one.
+# (VERCEL_GIT_PREVIOUS_SHA). With none, or one the shallow clone lacks, it
+# builds: HEAD^ would see only the last commit of a multi-commit push, and a
+# wasted build is cheaper than a missed one.
 
 set -u
 
 base="${VERCEL_GIT_PREVIOUS_SHA:-}"
 if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
-  base="HEAD^"
-  if ! git rev-parse --verify -q "HEAD^" >/dev/null; then
-    echo "ignore-build: no base commit to compare against; building."
-    exit 1
-  fi
+  echo "ignore-build: no previous deployment to compare against; building."
+  exit 1
 fi
 
 # Paths the Next.js build never reads. Anything not listed here builds.
