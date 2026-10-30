@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { ChipOption, PropertyChip } from '@/components/primitives/property-chip';
+import { TimeList } from '@/components/ui/time-picker';
 import { ColorSwatchPicker } from '@/components/primitives/color-swatch-picker';
 import { accentColorForName } from '@/lib/accent-colors';
 import { formatShort, parseDay, useNameDraft } from '@/lib/collections';
@@ -973,7 +974,7 @@ export function BufferedInput({
   onCommit: (next: string) => void;
   /** Return false to reject — the field snaps back to `value`. */
   validate?: (next: string) => boolean;
-  type?: 'text' | 'time' | 'number';
+  type?: 'text' | 'number';
   testId: string;
   ariaLabel: string;
   placeholder?: string;
@@ -1125,9 +1126,8 @@ export function DayChip({
 /**
  * A wall-clock time as a chip — DayChip's shape for an 'HH:mm'.
  *
- * The field inside is a BufferedInput, so a half-typed time never writes: it
- * commits on blur or Enter, and only a value the input itself accepts as a
- * time. `display` formats through the user's 12h/24h preference; the stored
+ * The picker inside is the time list (components/ui/time-picker.tsx): a click
+ * or Enter writes once and closes, and a half-typed time never writes. `display` formats through the user's 12h/24h preference; the stored
  * value is always 24-hour.
  */
 export function TimeChip({
@@ -1149,10 +1149,6 @@ export function TimeChip({
   /** False drops the muted key from a set chip — see DayChip. */
   keyed?: boolean;
 }) {
-  // Enter commits AND blurs, and the blur commits again before the store's
-  // write has re-rendered `value` — so without this one keypress is two
-  // writes and two undo entries.
-  const sent = useRef<string | null>(null);
   return (
     <PropertyChip
       label={label}
@@ -1167,21 +1163,16 @@ export function TimeChip({
       }
       ariaLabel={display ? `${label}: ${display}` : label}
       testId={testId}
-      contentClassName="w-auto p-1"
+      contentClassName="w-56 p-1"
     >
       {(close) => (
         <div className="flex flex-col gap-1">
-          <BufferedInput
-            type="time"
+          <TimeList
             value={value ?? ''}
             testId={`${testId}-input`}
             ariaLabel={label}
-            className="w-[120px] px-2 py-1 font-num"
             autoFocus
-            validate={(next) => /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(next)}
-            onCommit={(next) => {
-              if (sent.current === next) return;
-              sent.current = next;
+            onPick={(next) => {
               onChange(next);
               close();
             }}
@@ -1192,7 +1183,6 @@ export function TimeChip({
                 tone="muted"
                 testId={`${testId}-clear`}
                 onSelect={() => {
-                  sent.current = null;
                   onChange(undefined);
                   close();
                 }}

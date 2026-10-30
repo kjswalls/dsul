@@ -1007,14 +1007,12 @@ describe('the project time block', () => {
     expect(p.repeatFrequency).toBe('daily');
   });
 
-  it('keeps a typed start time when the chip closes on Escape', () => {
-    // The start time commits on blur, and Escape unmounts the popover before
-    // any blur — PropertyChip blurs the field first so the edit lands.
+  it('sets a typed start time on Enter', () => {
     openProject(project({ timeBucket: 'evening', startTime: '19:00', repeatFrequency: 'daily' }));
-    const field = id('project-start-time') as HTMLInputElement;
-    field.focus();
+    click('project-start-time');
+    const field = id('project-start-time-input') as HTMLInputElement;
     fireEvent.change(field, { target: { value: '20:30' } });
-    fireEvent.keyDown(field, { key: 'Escape' });
+    fireEvent.keyDown(field, { key: 'Enter' });
     expect(usePlannerStore.getState().projects[0].startTime).toBe('20:30');
   });
 

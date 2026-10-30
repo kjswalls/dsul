@@ -270,7 +270,8 @@ describe('At a time of day', () => {
     fireEvent.click(screen.getByTestId('make-new-recipe'));
     change(screen.getByTestId('recipe-name'), 'Morning');
     change(screen.getByTestId('recipe-trigger'), 'time');
-    change(screen.getByTestId('recipe-at'), '07:30');
+    fireEvent.click(screen.getByTestId('recipe-at'));
+    fireEvent.click(await screen.findByTestId('recipe-at-input-option-07:30'));
     change(screen.getByTestId('recipe-step-text'), 'Hello');
     fireEvent.click(screen.getByTestId('recipe-save'));
     expect((await screen.findByTestId('recipe-problems')).textContent).toContain(

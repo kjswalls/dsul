@@ -2,7 +2,8 @@
 
 import { useId } from 'react';
 import { ArrowUpRight, RotateCcw } from 'lucide-react';
-import { PropertyChip, ChipOption } from '@/components/primitives/property-chip';
+import { PropertyChip, ChipOption, ChipSectionLabel } from '@/components/primitives/property-chip';
+import { TimeField, TimeList } from '@/components/ui/time-picker';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { formatCueTime } from '@/lib/reminders/copy';
@@ -255,25 +256,20 @@ function PickerChip({
                     On
                   </ChipOption>
                 )}
-                <div className="flex items-center justify-between gap-3 px-2 py-1.5">
-                  <label htmlFor={`${controlId}-time`} className="text-muted-foreground text-xs">
-                    {record.label}
-                  </label>
-                  <input
-                    id={`${controlId}-time`}
-                    type="time"
-                    data-setting={record.dbColumn ?? record.id}
-                    value={String(value)}
-                    onChange={(e) => {
-                      // '' is a cleared field, not a time.
-                      if (e.target.value) choose(e.target.value);
-                    }}
-                    className={cn(
-                      'field bg-background text-foreground h-8 w-[104px] border px-2',
-                      'font-num text-xs outline-none'
-                    )}
-                  />
-                </div>
+                <ChipSectionLabel>{record.label}</ChipSectionLabel>
+                <TimeList
+                  id={`${controlId}-time`}
+                  data-setting={record.dbColumn ?? record.id}
+                  ariaLabel={record.label}
+                  testId={`setting-${record.id}-input`}
+                  className="w-52"
+                  value={String(value)}
+                  autoFocus
+                  onPick={(next) => {
+                    choose(next);
+                    close();
+                  }}
+                />
               </>
             ) : (
               record.options?.map((option) => (
@@ -369,22 +365,17 @@ function TimeChip({
             <label htmlFor={controlId} className="text-muted-foreground">
               {record.label}
             </label>
-            <input
+            <TimeField
+              bare
+              align="start"
               id={controlId}
-              type="time"
               data-setting={record.dbColumn ?? record.id}
-              data-testid={`setting-${record.id}`}
+              testId={`setting-${record.id}`}
               aria-describedby={description ? descId : undefined}
+              ariaLabel={record.label}
               value={String(value)}
               disabled={disabled}
-              onChange={(e) => {
-                // '' is a cleared field, not a time — writing it would store a
-                // ritual that never fires.
-                if (e.target.value) onWrite(record, e.target.value);
-              }}
-              // -mx-1 px-1: room for the caret to paint, cancelled so the
-              // value still sits where the borderless text would (caret-room).
-              className="font-num -mx-1 min-w-0 bg-transparent px-1 font-medium focus-visible:outline-none disabled:cursor-not-allowed"
+              onChange={(next) => onWrite(record, next)}
             />
           </>
         )}

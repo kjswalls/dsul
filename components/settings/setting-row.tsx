@@ -6,6 +6,7 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { TimeField } from '@/components/ui/time-picker';
 import { PropertyChip, ChipOption } from '@/components/primitives/property-chip';
 import { cn } from '@/lib/utils';
 import {
@@ -241,24 +242,17 @@ function ControlFor({
       );
 
     case 'time':
+      // The picker hands back only a whole "HH:mm", never the '' a cleared
+      // native field used to send, so a cue that never fires can't be stored.
       return (
-        <input
+        <TimeField
           id={controlId}
-          type="time"
           data-setting={record.dbColumn ?? record.id}
           aria-describedby={describedBy}
+          ariaLabel={record.label}
           value={String(value)}
           disabled={disabled}
-          // Clearing a native time input (or a half-typed one, in some
-          // browsers) fires change with ''. That is not a time, and writing it
-          // would store a cue that never fires.
-          onChange={(e) => {
-            if (e.target.value) onWrite(e.target.value);
-          }}
-          className={cn(
-            'field bg-background text-foreground h-8 w-[104px] border px-2',
-            'font-num text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50'
-          )}
+          onChange={(next) => onWrite(next)}
         />
       );
 

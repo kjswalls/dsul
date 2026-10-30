@@ -244,7 +244,7 @@ describe('a merged chip', () => {
     );
   });
 
-  it('the time half lives in the picker as a labelled time input', async () => {
+  it('the time half lives in the picker as a labelled time list', async () => {
     act(() => useReminderStore.setState({ remindersEnabled: true, lastCallEnabled: true }));
     const time = spyWrite('rituals.lastCallTime');
     render(<Harness pane="rituals" />);
@@ -252,29 +252,30 @@ describe('a merged chip', () => {
     const trigger = screen.getByTestId('setting-rituals.lastCall');
     expect(trigger).toHaveAccessibleName('Last call: 8:30 pm');
     fireEvent.click(trigger);
-    const input = (await screen.findByLabelText('Last call at')) as HTMLInputElement;
-    expect(input.type).toBe('time');
-    fireEvent.change(input, { target: { value: '' } });
+    const input = (await screen.findByRole('combobox', { name: 'Last call at' })) as HTMLInputElement;
+    // Enter on nothing that reads as a time writes nothing.
+    fireEvent.change(input, { target: { value: 'soon' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
     expect(time).not.toHaveBeenCalled();
     fireEvent.change(input, { target: { value: '21:15' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
     expect(time).toHaveBeenCalledWith('21:15', expect.anything());
   });
 });
 
 describe('single chips', () => {
-  it('a lone time is a real time input, named by its own label, that ignores a cleared value', () => {
+  it('a lone time opens the time list, named by its own label', async () => {
     act(() => useEODStore.setState({ eodReviewEnabled: true }));
     const write = spyWrite('rituals.eodTime');
     render(<Harness pane="rituals" />);
 
-    const input = screen.getByLabelText('Review at') as HTMLInputElement;
-    expect(input.type).toBe('time');
-    expect(input.value).toBe('21:00');
-    expect(input.dataset.setting).toBe('eod_review_time');
+    const trigger = screen.getByTestId('setting-rituals.eodTime');
+    expect(trigger).toHaveAccessibleName('Review at: 9:00 PM');
+    expect(trigger.dataset.value).toBe('21:00');
+    expect(trigger.dataset.setting).toBe('eod_review_time');
 
-    fireEvent.change(input, { target: { value: '' } });
-    expect(write).not.toHaveBeenCalled();
-    fireEvent.change(input, { target: { value: '22:30' } });
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByTestId('setting-rituals.eodTime-input-option-22:30'));
     expect(write).toHaveBeenCalledWith('22:30', expect.anything());
   });
 
