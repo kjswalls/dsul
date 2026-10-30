@@ -88,7 +88,7 @@ export function ExtensionBrowse({ ctx }: { ctx: SettingCtx }) {
   ];
 
   return (
-    <div className="flex flex-col gap-7" data-testid="extension-browse">
+    <div className="flex flex-col gap-10" data-testid="extension-browse">
       <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter extensions">
         {chips.map((chip) => (
           <button
@@ -124,7 +124,7 @@ export function ExtensionBrowse({ ctx }: { ctx: SettingCtx }) {
             play="engaged"
             className="border-border border-b md:border-r md:border-b-0"
           />
-          <span className="flex flex-col justify-center gap-3 p-6">
+          <span className="flex flex-col justify-center gap-3 p-8">
             <span className="text-muted-foreground text-[11px] font-semibold tracking-wider uppercase">Featured</span>
             <span className="flex items-center gap-2">
               <span className="text-foreground text-xl font-semibold tracking-tight">{featured.name}</span>
@@ -144,7 +144,7 @@ export function ExtensionBrowse({ ctx }: { ctx: SettingCtx }) {
         catalogByShelf(shown).map(({ shelf, extensions }) => (
           <section
             key={shelf.id}
-            className="flex flex-col gap-3"
+            className="flex flex-col gap-4"
             data-store-shelf={shelf.id}
             aria-labelledby={`shelf-${shelf.id}`}
           >
@@ -154,7 +154,7 @@ export function ExtensionBrowse({ ctx }: { ctx: SettingCtx }) {
               </h2>
               <span className="text-muted-foreground text-xs">{shelf.blurb}</span>
             </header>
-            <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {extensions.map((extension) => (
                 <StoreCard
                   key={extension.slug}

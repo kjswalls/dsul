@@ -39,6 +39,7 @@ vi.mock('@/lib/settings-service', () => ({
 }));
 
 import { SettingsShell } from '@/components/settings/settings-shell';
+import { SETTINGS_PAGE_WIDTH } from '@/components/settings/page-width';
 import { extensionPaneId, type PaneId, type SettingCtx } from '@/lib/settings/manifest';
 import { EXT_BEEMINDER, EXT_HABIT_HEATMAP, OFFICIAL_EXTENSIONS } from '@/lib/extension-registry';
 import { useExtensionsStore } from '@/lib/extensions-store';
@@ -109,18 +110,29 @@ describe('the Extensions pane is the store', () => {
     ).toBe('true');
   });
 
-  it('widens the whole page around the store, so it stays centred', () => {
+  it('gives the store the whole column of the one page width', () => {
     renderShell();
     const main = document.querySelector('main')!;
     expect(main.className).toContain('mx-auto');
-    expect(main.className).toContain('max-w-[1320px]');
+    expect(main.className).toContain(SETTINGS_PAGE_WIDTH);
     // The store takes the full column; nothing caps it at 600px.
     expect(screen.getByTestId('extension-browse').closest('.md\\:max-w-\\[600px\\]')).toBeNull();
   });
 
-  it('keeps an extension’s own page at the usual width', () => {
+  // The rail used to jump sideways on the way into the store and back out,
+  // because the store widened the page and nothing else did.
+  it('keeps one page width on every pane, so the rail never moves', () => {
+    for (const p of ['day', 'look', 'keyboard', 'extensions', extensionPaneId(EXT_HABIT_HEATMAP)] as const) {
+      const { unmount } = renderShell(p);
+      expect(document.querySelector('main')!.className).toContain(SETTINGS_PAGE_WIDTH);
+      unmount();
+    }
+  });
+
+  it('keeps an extension’s own rows in the 600px column', () => {
     renderShell(extensionPaneId(EXT_HABIT_HEATMAP));
-    expect(document.querySelector('main')!.className).toContain('max-w-[880px]');
+    expect(screen.getByTestId('settings-search').closest('.md\\:max-w-\\[600px\\]')).toBeTruthy();
+    expect(document.querySelectorAll('main .md\\:max-w-\\[600px\\]').length).toBeGreaterThan(1);
   });
 
   it('keeps the search box in the 600px column', () => {

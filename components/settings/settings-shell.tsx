@@ -42,6 +42,7 @@ import { DevicesList } from './devices-list';
 import { ShortcutsPanel } from './shortcuts-panel';
 import { AIPane, AIPaneMark, UseAIRow } from './ai-pane';
 import { MakePane } from './make-pane';
+import { SETTINGS_PAGE_WIDTH } from './page-width';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { revealChat } from '@/lib/open-chat';
 
@@ -541,22 +542,22 @@ export function SettingsShell({
       : pane === 'look'
         ? paneOwn.rows.filter((r) => !LOOK_PICKER_RECORD_IDS.has(r.id))
         : paneOwn.rows;
-  const wide = pane === 'extensions';
   // Only the store itself runs past 600px; search results and an extension's
-  // own rows keep the column every other pane has.
+  // own rows keep the column every other pane has. (Look stays in it too: its
+  // gallery would gain, but its rows sit in and under the picker and would
+  // stretch with it.)
   const storeShowing = pane === 'extensions' && !searching;
   return (
     <main
       className={cn(
         'mx-auto flex flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]',
-        // The Extensions pane is the one whose body is a store, not a column
-        // of rows, so the whole page widens there and stays centred — widening
-        // the store alone, rightward, left the page heavy on one side. An
-        // extension's own page is rows again, so it is the usual width, centred
-        // like every other pane.
-        wide ? 'max-w-[1320px]' : 'max-w-[880px]'
+        // One width for every pane, so the rail stays put as you move between
+        // them. It used to be 880px, widening to 1320px for the store alone,
+        // and the whole rail jumped sideways on the way in and out. Rows still
+        // keep their 600px column (below): a label and its control 1000px apart
+        // read as two unrelated things.
+        SETTINGS_PAGE_WIDTH
       )}
-      data-wide={wide || undefined}
     >
       {/* Three crumbs inside an extension, two everywhere else. The rail's
           Extensions row does navigate back up, but from inside a sub-pane it
@@ -866,7 +867,7 @@ export function SettingsShell({
                     <ExtensionRailList ctx={ctx} pane={pane} variant="pane" />
                   </div>
                   {/* The store is the one pane body wider than a column of
-                      rows: it takes the whole column the wide page gives it,
+                      rows: it takes the whole column the page gives it,
                       while the search box above keeps the usual 600px. */}
                   <ExtensionBrowse ctx={ctx} />
                 </>
