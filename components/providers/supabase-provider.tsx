@@ -26,7 +26,7 @@ import {
 import { useUserThemes } from '@/lib/user-themes/store';
 import { DEFAULT_LAYOUT, LAYOUT_STORAGE_KEY, isLayoutTheme } from '@/lib/layout-themes';
 import { APP_ICON_STORAGE_KEY, isAppIcon } from '@/lib/app-icons';
-import { ATLAS_FAR_PAPER_STORAGE_KEY, DEFAULT_ATLAS_FAR_PAPER } from '@/lib/atlas-far-looks';
+import { ATLAS_FAR_PAPER_STORAGE_KEY, DEFAULT_ATLAS_FAR_PAPER, isAtlasFarPaper } from '@/lib/atlas-far-looks';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useModsStore } from '@/lib/mods-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
@@ -388,6 +388,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // Same null rule as the rest: never chosen leaves this device's pick.
       if (isAppIcon(settings.app_icon)) {
         useLookStore.getState().setAppIcon(settings.app_icon);
+      }
+      // Atlas zoomed out on a light theme (087). Same null rule, and outside
+      // the reset for the same reason as the icon: it cannot hide the page.
+      if (isAtlasFarPaper(settings.atlas_far_paper)) {
+        useLookStore.getState().setAtlasFarPaper(settings.atlas_far_paper);
       }
     };
 

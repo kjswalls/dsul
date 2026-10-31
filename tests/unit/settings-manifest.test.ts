@@ -315,6 +315,7 @@ describe('settings manifest — persistence contract', () => {
     // The desktop shell and a second browser learn the pick only from
     // user_settings.app_icon (migration 056), so the record must name it.
     expect(settingById('look.appIcon')?.dbColumn).toBe('app_icon');
+    expect(settingById('look.atlasFar')?.dbColumn).toBe('atlas_far_paper');
   });
 
   it('records that name a DB column use snake_case', () => {
@@ -334,8 +335,6 @@ describe('settings manifest — persistence contract', () => {
       'look.buckets',
       'look.markStyle',
       'look.showPaused',
-      // Atlas's far zoom on paper: device only until 087 is on prod (design D11).
-      'look.atlasFar',
       'beacon.provider',
       'beacon.instructions',
       'beacon.apiKey',

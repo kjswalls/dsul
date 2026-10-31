@@ -3,9 +3,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 /**
- * The Bloom/Dusk pick (design PR3, D11): a device-only look-store field,
- * mirrored to localStorage by supabase-provider, shown on the Look pane as a
- * desktop-only enum, and never a settings-service column until 087 is on prod.
+ * The Bloom/Dusk pick (design PR3, D11): a look-store field saved per account
+ * in user_settings.atlas_far_paper (087), applied at sign-in, mirrored to
+ * localStorage by supabase-provider, and shown on the Look pane as a
+ * desktop-only enum.
  */
 
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
@@ -43,7 +44,7 @@ describe('atlas far zoom on paper: the setting', () => {
     expect(again.useLookStore.getState().atlasFarPaper).toBe('bloom');
   });
 
-  it('the Look record is a desktop-only enum that writes the store and nothing else', async () => {
+  it('the Look record is a desktop-only enum that writes the store and the account', async () => {
     const { settingById } = await import('@/lib/settings/manifest');
     const { useLookStore } = await import('@/lib/look-store');
     const { saveSettings } = await import('@/lib/settings-service');
@@ -52,7 +53,7 @@ describe('atlas far zoom on paper: the setting', () => {
     expect(r.pane).toBe('look');
     expect(r.control).toBe('enum');
     expect(r.desktopOnly).toBe(true);
-    expect(r.dbColumn).toBeUndefined();
+    expect(r.dbColumn).toBe('atlas_far_paper');
     expect(r.defaultValue).toBe('bloom');
     expect(r.options!.map((o) => o.value)).toEqual(['bloom', 'dusk']);
     expect(r.label).toBe('Atlas zoomed out, light mode');
@@ -62,8 +63,13 @@ describe('atlas far zoom on paper: the setting', () => {
     r.write('dusk', ctx);
     expect(useLookStore.getState().atlasFarPaper).toBe('dusk');
     expect(r.read(ctx)).toBe('dusk');
+    expect(saveSettings).toHaveBeenCalledWith('u1', { atlas_far_paper: 'dusk' });
+    vi.mocked(saveSettings).mockClear();
+    // A bad value writes nothing, and no user means no save.
     r.write('neon', ctx);
     expect(useLookStore.getState().atlasFarPaper).toBe('dusk');
+    r.write('bloom', { ...ctx, userId: null });
+    expect(useLookStore.getState().atlasFarPaper).toBe('bloom');
     expect(saveSettings).not.toHaveBeenCalled();
   });
 
@@ -71,12 +77,11 @@ describe('atlas far zoom on paper: the setting', () => {
     const provider = src('components/providers/supabase-provider.tsx');
     expect(provider).toMatch(/atlasFarPaper === DEFAULT_ATLAS_FAR_PAPER\) window\.localStorage\.removeItem\(ATLAS_FAR_PAPER_STORAGE_KEY\)/);
     expect(provider).toMatch(/window\.localStorage\.setItem\(ATLAS_FAR_PAPER_STORAGE_KEY, atlasFarPaper\)/);
-    // No hydrate line until the follow-up.
-    expect(provider).not.toMatch(/atlas_far_paper/);
+    // And applied from the account at sign-in, only when the column holds a pick.
+    expect(provider).toMatch(/if \(isAtlasFarPaper\(settings\.atlas_far_paper\)\) \{\s*useLookStore\.getState\(\)\.setAtlasFarPaper\(settings\.atlas_far_paper\)/);
   });
 
-  it('names no atlas_far_paper column anywhere settings are read or written (rule 16)', () => {
-    expect(src('lib/settings-service.ts')).not.toContain('atlas_far_paper');
-    expect(src('lib/settings/manifest.ts')).not.toContain('atlas_far_paper');
+  it('is a pending-schema column, so a database without 087 still loads every other setting', () => {
+    expect(src('lib/settings-service.ts')).toMatch(/PENDING_SCHEMA_COLUMNS = \[[\s\S]*'atlas_far_paper',[\s\S]*\] as const/);
   });
 });

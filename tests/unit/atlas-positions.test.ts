@@ -227,12 +227,13 @@ describe('the per-device blob', () => {
 describe('the boundaries', () => {
   const ROOT = path.resolve(__dirname, '../..');
 
-  it('keeps atlas_far_paper out of settings-service until 087 is on prod (design D11)', () => {
-    // One missing pending column makes loadSettings fall back to the stable
-    // select and reset every pending setting, so the column waits for a
-    // follow-up that lands after Kirby confirms 087.
+  it('reads atlas_far_paper only as a pending-schema column (087 is on prod; design D11)', () => {
+    // A pending column falls back with the rest if a database lacks it, so a
+    // build ahead of 087 still loads every stable setting.
     const src = readFileSync(path.join(ROOT, 'lib/settings-service.ts'), 'utf8');
-    expect(src).not.toContain('atlas_far_paper');
+    const start = src.indexOf('PENDING_SCHEMA_COLUMNS = [');
+    const pending = src.slice(start, src.indexOf('] as const', start));
+    expect(pending).toContain("'atlas_far_paper'");
   });
 
   it('keeps atlas_positions out of every agent, model and server surface', () => {

@@ -59,6 +59,8 @@ export interface UserSettingsRow {
   layout?: string | null;
   /** The app icon (lib/app-icons.ts, migration 056). Same null rule. */
   app_icon?: string | null;
+  /** Atlas zoomed out on a light theme, Bloom or Dusk (lib/atlas-far-looks.ts, migration 087). Same null rule. */
+  atlas_far_paper?: string | null;
 }
 
 const DEFAULT_SETTINGS: UserSettingsRow = {
@@ -158,6 +160,8 @@ const PENDING_SCHEMA_COLUMNS = [
   'layout',
   // Migration 056: the app icon.
   'app_icon',
+  // Migration 087: Atlas zoomed out on a light theme (on prod 2026-10-31).
+  'atlas_far_paper',
 ] as const;
 
 const SETTINGS_SELECT = [...STABLE_SETTINGS_COLUMNS, ...PENDING_SCHEMA_COLUMNS].join(',');
