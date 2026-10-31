@@ -237,3 +237,35 @@ describe('the footer bar only teaches keys that work', () => {
     }
   });
 });
+
+/**
+ * Atlas PR1c: the console's "Open Atlas" door. It lets go of the console slot
+ * (closeDialog) and then switches the scope; it never arms the slot, so the
+ * console-door allow-list stays as it is. Desktop only.
+ */
+describe('the Open Atlas door', () => {
+  afterEach(() => {
+    cleanup();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
+  });
+
+  it('closes the console and opens Atlas', async () => {
+    const { useUIStore } = await import('@/lib/ui-store');
+    const { useViewStore } = await import('@/lib/view-store');
+    useViewStore.getState().setScope('day');
+    useUIStore.getState().openDialog({ type: 'organize', section: 'projects' });
+    render(<OrganizeConsole open onOpenChange={() => {}} section="projects" />);
+    const door = screen.getByTestId('organize-open-atlas');
+    expect(door).toHaveTextContent('Open Atlas');
+    fireEvent.click(door);
+    expect(useUIStore.getState().activeDialog).toBeNull();
+    expect(useViewStore.getState().scope).toBe('atlas');
+    useViewStore.getState().setScope('day');
+  });
+
+  it('is not offered on the phone', () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
+    render(<OrganizeConsole open onOpenChange={() => {}} />);
+    expect(screen.queryByTestId('organize-open-atlas')).toBeNull();
+  });
+});

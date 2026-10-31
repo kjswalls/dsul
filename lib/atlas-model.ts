@@ -154,6 +154,12 @@ export interface AtlasCard {
   feeds?: number;
   /** Season: the routines it holds (seeding puts them beside it). */
   routineIds?: readonly string[];
+  /**
+   * The subtasks of members that have any, keyed by the parent's id, in
+   * `order`. Never tiles and never on the card: the focus sheet draws them
+   * under their parent's row (design 1.2). Absent when no member has one.
+   */
+  subtasks?: Readonly<Record<string, readonly AtlasMember[]>>;
 }
 
 export interface AtlasModelInput {
@@ -238,6 +244,13 @@ export function buildAtlasCards(input: AtlasModelInput): AtlasCard[] {
     away: input.away,
   });
 
+  /** One member, or null for a cancelled item (no tile, no row). */
+  const memberOf = (item: Item): AtlasMember | null => {
+    const todayState = occurrenceOn(item, todayStr, todayStr, tz);
+    const state = memberStateOn(item, todayStr, inactive, tz, todayState);
+    return state ? { item, state, todayState } : null;
+  };
+
   /** Resolve join ids through the live map (rule 11), skip subtasks and cancelled. */
   const membersOf = (ids: readonly string[]): AtlasMember[] => {
     const seen = new Set<string>();
@@ -248,10 +261,37 @@ export function buildAtlasCards(input: AtlasModelInput): AtlasCard[] {
       const item = itemsById.get(id);
       if (!item) continue;
       if ((item as { parentItemId?: string }).parentItemId) continue;
-      const todayState = occurrenceOn(item, todayStr, todayStr, tz);
-      const state = memberStateOn(item, todayStr, inactive, tz, todayState);
-      if (!state) continue;
-      out.push({ item, state, todayState });
+      const m = memberOf(item);
+      if (m) out.push(m);
+    }
+    return out;
+  };
+
+  // Subtasks by parent, built once; members are resolved lazily per card.
+  const childrenOf = new Map<string, Item[]>();
+  for (const item of items) {
+    const parent = (item as { parentItemId?: string }).parentItemId;
+    if (!parent || item.type === 'habit') continue;
+    const list = childrenOf.get(parent);
+    if (list) list.push(item);
+    else childrenOf.set(parent, [item]);
+  }
+  const subtaskMembers = new Map<string, AtlasMember[]>();
+  const subtasksFor = (members: readonly AtlasMember[]): AtlasCard['subtasks'] => {
+    let out: Record<string, AtlasMember[]> | undefined;
+    for (const m of members) {
+      const kids = childrenOf.get(m.item.id);
+      if (!kids) continue;
+      let list = subtaskMembers.get(m.item.id);
+      if (!list) {
+        list = [...kids]
+          .sort((a, b) => orderOf(a) - orderOf(b))
+          .map(memberOf)
+          .filter((x): x is AtlasMember => !!x);
+        subtaskMembers.set(m.item.id, list);
+      }
+      if (list.length === 0) continue;
+      (out ??= {})[m.item.id] = list;
     }
     return out;
   };
@@ -290,6 +330,7 @@ export function buildAtlasCards(input: AtlasModelInput): AtlasCard[] {
   ): AtlasCard => {
     const nextOffersToday =
       !!next && !input.milestoneIds.has(next.item.id) && !isRecurring(next.item);
+    const subtasks = subtasksFor(members);
     return {
       ...head,
       members,
@@ -300,6 +341,7 @@ export function buildAtlasCards(input: AtlasModelInput): AtlasCard[] {
       nextOffersToday,
       touch,
       resting: touch.kind === 'resting' || touch.kind === 'paused' || touch.kind === 'ended',
+      ...(subtasks ? { subtasks } : {}),
       ...extra,
     };
   };
@@ -495,6 +537,22 @@ export function sameAtlasCard(a: AtlasCard, b: AtlasCard): boolean {
   for (let i = 0; i < a.openRows.length; i += 1) {
     if (a.openRows[i].item !== b.openRows[i].item) return false;
   }
+  return sameSubtasks(a.subtasks, b.subtasks);
+}
+
+function sameSubtasks(a: AtlasCard['subtasks'], b: AtlasCard['subtasks']): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  for (const k of keys) {
+    const x = a[k];
+    const y = b[k];
+    if (!y || x.length !== y.length) return false;
+    for (let i = 0; i < x.length; i += 1) {
+      if (x[i].item !== y[i].item || x[i].state !== y[i].state || x[i].todayState !== y[i].todayState) return false;
+    }
+  }
   return true;
 }
 
@@ -513,4 +571,50 @@ export function createAtlasCardSharer(): (built: AtlasCard[]) => AtlasCard[] {
     last = new Map(out.map((c) => [c.key, c]));
     return out;
   };
+}
+
+/** The focus sheet's groups (design 1.2): Next up, Later, Done, and a goal's milestones. */
+export interface AtlasSheetSections {
+  /** The card's next step, the same one the card offers. */
+  next: AtlasMember | null;
+  /** Every other open member in the card's order, then the quiet ones (not on today). */
+  later: AtlasMember[];
+  /** Members done today (lit). */
+  done: AtlasMember[];
+  /** Goal only: its milestones, in the goal's order, as rows. */
+  milestones: AtlasMember[];
+}
+
+/**
+ * Splits a card's members into the sheet's groups. Pure, over the card the
+ * hook already built: nothing here re-asks "does this want doing" (rule 17).
+ * A goal's milestones get their own group, never Next up or Later, since a
+ * milestone is never offered as the next step (rule 4).
+ */
+export function atlasSheetSections(card: AtlasCard): AtlasSheetSections {
+  const milestoneIds = new Set((card.milestones ?? []).map((m) => m.id));
+  const isMs = (m: AtlasMember) => card.kind === 'goal' && milestoneIds.has(m.item.id);
+  const next = card.next;
+  const later: AtlasMember[] = [];
+  const seen = new Set<string>(next ? [next.item.id] : []);
+  for (const m of card.openRows) {
+    if (seen.has(m.item.id) || isMs(m)) continue;
+    seen.add(m.item.id);
+    later.push(m);
+  }
+  for (const m of card.members) {
+    if (m.state !== 'quiet' || seen.has(m.item.id) || isMs(m)) continue;
+    seen.add(m.item.id);
+    later.push(m);
+  }
+  const done = card.members.filter((m) => m.state === 'lit' && !isMs(m));
+  const byId = new Map(card.members.map((m) => [m.item.id, m]));
+  const milestones =
+    card.kind === 'goal'
+      ? (card.milestones ?? []).flatMap((ms) => {
+          const m = byId.get(ms.id);
+          return m ? [m] : [];
+        })
+      : [];
+  return { next, later, done, milestones };
 }

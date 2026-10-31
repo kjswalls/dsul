@@ -74,6 +74,25 @@ export const ATLAS_COPY = {
   /** Accessible names. */
   cardLabel: (name: string, kind: string) => `${name}, ${kind}`,
   canvasLabel: 'Atlas map',
+  /** The focus sheet (PR1c). */
+  focus: 'Focus',
+  focusLabel: (name: string) => `Focus on ${name}`,
+  back: '‹ Atlas',
+  backLabel: 'Back to Atlas',
+  nextUp: 'Next up',
+  later: 'Later',
+  done: 'Done',
+  milestonesHeading: 'Milestones',
+  closeSheet: 'Done',
+  escKey: 'esc',
+  putOnToday: 'Put next step on Today',
+  putOnTodayDone: (title: string) => `"${title}" is on Today`,
+  openInOrganize: 'Open in Organize',
+  showMoreDone: (n: number) => `Show ${n} more`,
+  sheetLabel: (name: string) => `${name}, focused`,
+  /** The Organize console's door (desktop only). */
+  openAtlas: 'Open Atlas',
+  openAtlasLabel: 'Close Organize and open Atlas',
   /** The positions table's 2,000-row cap (087), said once a session. */
   placesFull: "Atlas can't remember more places",
 } as const;

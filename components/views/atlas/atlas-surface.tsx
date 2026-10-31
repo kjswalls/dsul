@@ -33,10 +33,13 @@ const WHEEL_LINE_PX = 16;
  */
 export function AtlasSurface({
   rootRef,
+  inert,
   children,
 }: {
   /** The Atlas root, focused on a bare-canvas press so its keys keep working. */
   rootRef: RefObject<HTMLDivElement | null>;
+  /** While the focus sheet is up: the map behind takes no focus and no press. */
+  inert?: boolean;
   children: ReactNode;
 }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -133,6 +136,7 @@ export function AtlasSurface({
     <div
       ref={surfaceRef}
       data-testid="atlas-surface"
+      inert={inert}
       className="absolute inset-0 touch-none select-none"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
