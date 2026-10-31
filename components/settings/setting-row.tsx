@@ -408,6 +408,12 @@ export function SettingRow({
   }
   const unavailableReason = pending ? null : (record.unavailable?.(ctx) ?? null);
   const disabled = pending || Boolean(inactive) || unavailableReason !== null;
+  let noteText: string | null = null;
+  try {
+    noteText = pending ? null : (record.note?.(ctx) ?? null);
+  } catch {
+    noteText = null;
+  }
   const modified = isModified(record, ctx) && !disabled;
   // Must agree with the variant switch above: only the textarea goes full width.
   const wide = record.control === 'text' && (record.textVariant ?? 'multiline') === 'multiline';
@@ -485,6 +491,12 @@ export function SettingRow({
         {matchedValue && (
           <p className="text-muted-foreground font-num mt-[3px] text-[10px]">
             matches: {matchedValue}
+          </p>
+        )}
+
+        {noteText && (
+          <p data-setting-note className="text-muted-foreground mt-[3px] max-w-[46ch] text-[11px]">
+            {noteText}
           </p>
         )}
 

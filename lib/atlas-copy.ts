@@ -205,7 +205,9 @@ export const ATLAS_COPY = {
   /** The Look setting (look.atlasFar). */
   farSettingLabel: 'Atlas zoomed out, light mode',
   farSettingDescription:
-    'How Atlas looks on this computer when you zoom far out on a light theme. Bloom keeps the paper. Dusk turns it to slate so the tiles glow.',
+    'How Atlas looks on this computer when you zoom out past half size on a light theme. Bloom keeps the paper. Dusk turns it to slate so the tiles glow.',
+  /** Under the row while a dark theme is showing, when neither pick changes anything yet. */
+  farSettingDarkNote: 'You are on a dark theme, where Atlas always glows. This takes effect on a light theme.',
   farBloom: 'Bloom',
   farDusk: 'Dusk',
   /** The minimap and its command (shortcut id toggle_atlas_minimap). */
