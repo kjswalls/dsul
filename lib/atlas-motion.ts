@@ -62,6 +62,14 @@ export const ATLAS_MOTION = {
   flourishMs: 640,
   /** When in the flight the assembly starts. */
   flourishDelayMs: 150,
+  /** Walk Atlas's panel rising into place as a walk starts, and settling away as it ends. */
+  walkPanelMs: 280,
+  /** Each stop's question rising a few pixels into place (globals.css `atlas-walk-rise`). */
+  walkRiseMs: 220,
+  /** The walk's veil coming up and lifting, by colour. */
+  walkScrimMs: 240,
+  /** The walk's progress line easing along. */
+  walkProgressMs: 280,
 } as const;
 
 /**

@@ -26,7 +26,8 @@ import {
  * and Undo takes it back; a row dragged from one routine's card to another's
  * moves it, as one undo. Round 2: a click on a far cluster flies in and
  * plays the handoff as a flourish that lets go, and Ctrl+wheel mid-flight
- * takes it back.
+ * takes it back. Walk Atlas stands on one card at a time from the palette,
+ * puts a step on Today through the verb, and Escape takes the camera back.
  *
  * Under its own prefix, swept by name like organize.spec.ts (projects are not
  * items, so the title sweep would miss them).
@@ -455,6 +456,56 @@ test.describe('atlas', () => {
     } finally {
       await cleanupTestCollections(scope.prefix);
     }
+  });
+
+  test('Walk Atlas stands on one card at a time, puts a step on Today, and Escape takes the camera back', async ({ page }) => {
+    const name = scope.title('Walk');
+    const projectId = await createProject(page, name);
+    const taskId = await createTestTask(page, { title: scope.title('Walk step'), project: name });
+    await reloadApp(page);
+
+    await setScope(page, 'Atlas');
+    const key = `project:${projectId}`;
+    await expect(page.locator(`[data-atlas-card="${key}"]`)).toBeVisible();
+    const world = page.getByTestId('atlas-world');
+    const before = await world.evaluate((el) => (el as HTMLElement).style.transform);
+
+    // From the palette (no default key). The toolbar's Walk says it is on.
+    await runCommand(page, 'atlas.walk', { query: '/Walk Atlas' });
+    const walk = page.getByTestId('atlas-walk');
+    await expect(walk).toBeVisible();
+    await expect(page.getByTestId('atlas-walk-button')).toHaveAttribute('aria-pressed', 'true');
+    await expect(walk.getByTestId('atlas-walk-next')).toBeFocused();
+    await expect(page.getByTestId('atlas-walk-veil')).toHaveAttribute('data-up', 'true');
+
+    // Step with the arrow key until the walk stands on our card (the suite
+    // shares one account, so other tests' cards are on the map too).
+    for (let i = 0; i < 60 && (await walk.getAttribute('data-walk-card')) !== key; i++) {
+      await page.keyboard.press('ArrowRight');
+    }
+    await expect(walk).toHaveAttribute('data-walk-card', key);
+    await expect(walk.getByTestId('atlas-walk-question')).toHaveText('Still the right next step?');
+    await expect(walk.getByTestId('atlas-walk-detail')).toContainText(scope.title('Walk step'));
+    // The card in the cut-out is live and never dimmed: it is on top at its centre.
+    const card = page.locator(`[data-atlas-card="${key}"]`);
+    const onTop = await card.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('[data-atlas-card]') === el;
+    });
+    expect(onTop).toBe(true);
+
+    // Put on Today is the reschedule verb; it goes once it has run.
+    await walk.getByTestId('atlas-walk-today').click();
+    await expect(walk.getByTestId('atlas-walk-today')).toHaveCount(0);
+    await expect(card.locator(`[data-testid="atlas-row"][data-item-id="${taskId}"]`)).toBeVisible();
+
+    // Escape ends it and the camera goes back where it was.
+    await page.keyboard.press('Escape');
+    await expect(walk).toHaveCount(0);
+    await expect(page.getByTestId('atlas-walk-button')).toHaveAttribute('aria-pressed', 'false');
+    await expect.poll(() => world.evaluate((el) => (el as HTMLElement).style.transform)).toBe(before);
+
+    await setScope(page, 'Day');
   });
 
   test('the phone shows no Atlas, even with Atlas left on this device', async ({ page }) => {

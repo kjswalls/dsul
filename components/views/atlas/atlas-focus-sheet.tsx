@@ -13,7 +13,6 @@ import {
   type RefObject,
 } from 'react';
 import Link from 'next/link';
-import { toast } from 'sonner';
 import { CalendarCheck, ExternalLink, LayoutGrid } from 'lucide-react';
 import { AtlasRow } from '@/components/views/atlas/atlas-row';
 import { AtlasTileStrip } from '@/components/views/atlas/atlas-tile-strip';
@@ -24,8 +23,7 @@ import { ATLAS_COPY } from '@/lib/atlas-copy';
 import { formatDay } from '@/lib/active';
 import { formatCueTime } from '@/lib/reminders/copy';
 import { usePlannerStore } from '@/lib/planner-store';
-import { ITEM_VERBS, type VerbContext } from '@/lib/item-verbs';
-import { toDateOnly } from '@/lib/overdue';
+import { canPutOnToday, putNextOnToday } from '@/lib/atlas-verbs';
 import { useOpenConsole } from '@/lib/console-door';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import type { Viewport } from '@/lib/atlas-camera';
@@ -49,7 +47,7 @@ type Phase = 'from' | 'open' | 'leaving';
 type Group = 'next' | 'later' | 'done' | 'milestones';
 
 /** Organize's section for each card kind (lib/console-door.ts opens it). */
-const CONSOLE_SECTION: Record<AtlasCard['kind'], string> = {
+export const CONSOLE_SECTION: Record<AtlasCard['kind'], string> = {
   project: 'projects',
   routine: 'routines',
   season: 'seasons',
@@ -534,41 +532,6 @@ function SheetGroup({ title, testId, children }: { title: string; testId: string
       <div className="-mx-[7px] flex flex-col">{children}</div>
     </section>
   );
-}
-
-/**
- * The verb context for today, where today is `useToday()`'s day (rule 4),
- * the same one the gate and the click both use. The Date is the instant the
- * store resolves the write against, read when this is built.
- */
-function todayContext(todayStr: string, milestoneIds: ReadonlySet<string>): VerbContext {
-  const tz = usePlannerStore.getState().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return { dateStr: todayStr, date: new Date(), todayStr, tz, milestoneIds, occurrence: 'absent' };
-}
-
-/**
- * Whether "Put next step on Today" is offered for this row (rule 4): the
- * card already said it may (never a milestone, never recurring), the verb's
- * own gate agrees, and the step is not on today already.
- */
-function canPutOnToday(next: AtlasMember, todayStr: string, milestoneIds: ReadonlySet<string>): boolean {
-  if (milestoneIds.has(next.item.id)) return false;
-  const start = 'startDate' in next.item && next.item.startDate ? toDateOnly(next.item.startDate) : undefined;
-  if (start === todayStr) return false;
-  return ITEM_VERBS.reschedule.eligible(next.item, todayContext(todayStr, milestoneIds));
-}
-
-/**
- * `ITEM_VERBS.reschedule.run(item, ctx, today)`, re-read and re-checked at
- * click time: the row may have been painted from a snapshot.
- */
-function putNextOnToday(itemId: string, todayStr: string, milestoneIds: ReadonlySet<string>): void {
-  const item = usePlannerStore.getState().items.find((i) => i.id === itemId);
-  if (!item || milestoneIds.has(item.id)) return;
-  const ctx = todayContext(todayStr, milestoneIds);
-  if (!ITEM_VERBS.reschedule.eligible(item, ctx)) return;
-  ITEM_VERBS.reschedule.run(item, ctx, todayStr);
-  toast(ATLAS_COPY.putOnTodayDone(item.title));
 }
 
 /**

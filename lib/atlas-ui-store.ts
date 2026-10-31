@@ -16,6 +16,18 @@ import type { AtlasKind } from './atlas-model';
  * this device's blob until 087 is applied), not here.
  */
 
+/**
+ * Walk Atlas (atlas-walk.tsx): where the walk is, and the camera it started
+ * from. `key` is the card it stands on, so a layout switch or a filter
+ * mid-walk keeps it on that card; `step` is the fallback when the card has
+ * gone (and equals the order's length on the closing stop).
+ */
+export interface AtlasWalk {
+  step: number;
+  key: string | null;
+  returnTo: AtlasCamera;
+}
+
 export interface AtlasSheet {
   kind: AtlasKind;
   id: string;
@@ -67,6 +79,19 @@ interface AtlasUiStore {
    */
   minimapPinned: boolean;
   toggleMinimapPinned: () => void;
+  /** Walk Atlas, memory only; null while no walk is on. */
+  walk: AtlasWalk | null;
+  /**
+   * A walk that ended asking to go back where it started: AtlasView flies the
+   * camera there and clears it. Null otherwise.
+   */
+  walkHome: AtlasCamera | null;
+  /** Starts a walk from the camera as it is now (and closes the focus sheet). */
+  startWalk: () => void;
+  walkTo: (step: number, key: string | null) => void;
+  /** Ends the walk; with `restore`, asks for the camera it started from. */
+  endWalk: (restore: boolean) => void;
+  clearWalkHome: () => void;
   reset: () => void;
 }
 
@@ -80,6 +105,8 @@ const INITIAL = {
   seeded: {},
   hotLane: null,
   minimapPinned: false,
+  walk: null,
+  walkHome: null,
 } satisfies Partial<AtlasUiStore>;
 
 export const useAtlasUiStore = create<AtlasUiStore>()((set) => ({
@@ -103,6 +130,11 @@ export const useAtlasUiStore = create<AtlasUiStore>()((set) => ({
     set((s) => (Object.keys(places).length === 0 ? s : { seeded: { ...s.seeded, ...places } })),
   setHotLane: (hotLane) => set((s) => (s.hotLane === hotLane ? s : { hotLane })),
   toggleMinimapPinned: () => set((s) => ({ minimapPinned: !s.minimapPinned })),
+  startWalk: () => set((s) => ({ walk: { step: 0, key: null, returnTo: s.camera }, walkHome: null, sheet: null })),
+  walkTo: (step, key) =>
+    set((s) => (!s.walk || (s.walk.step === step && s.walk.key === key) ? s : { walk: { ...s.walk, step, key } })),
+  endWalk: (restore) => set((s) => (s.walk ? { walk: null, walkHome: restore ? s.walk.returnTo : null } : s)),
+  clearWalkHome: () => set((s) => (s.walkHome === null ? s : { walkHome: null })),
   reset: () => set({ ...INITIAL }),
 }));
 

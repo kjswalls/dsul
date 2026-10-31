@@ -4298,6 +4298,37 @@ button[data-ai-chip]:focus-visible {
   animation: none;
 }
 
+/* Walk Atlas (atlas-walk.tsx): the panel rises into place as a walk starts,
+   and each stop's question rises a few pixels as it arrives. Transform only,
+   never opacity (the Next key's lime sits inside the panel), and off under
+   reduced motion. The durations are ATLAS_MOTION.walkPanelMs and walkRiseMs. */
+.atlas-walk-panel[data-phase='on'] {
+  animation: atlas-walk-in 280ms var(--ease-out-soft) backwards;
+}
+.atlas-walk-rise {
+  animation: atlas-walk-rise 220ms var(--ease-out-soft) backwards;
+}
+@keyframes atlas-walk-in {
+  from {
+    transform: translateY(18px) scale(0.98);
+  }
+}
+@keyframes atlas-walk-rise {
+  from {
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .atlas-walk-panel[data-phase='on'],
+  .atlas-walk-rise {
+    animation: none;
+  }
+}
+[data-reduce-motion='true'] .atlas-walk-panel[data-phase='on'],
+[data-reduce-motion='true'] .atlas-walk-rise {
+  animation: none;
+}
+
 /* ── Dragging: the twin and the slot it left (Kirby's pick B, 2026-10-30) ──
    The ghost is a clone of what was grabbed, at its size, on a lifted card
    (components/shell/drag-ghost.tsx). Over another place it changes size to

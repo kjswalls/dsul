@@ -76,6 +76,8 @@ import { timelinePlace } from '@/lib/atlas-timeline';
 import { dropCard, goalDayAtClamped } from '@/lib/atlas-drop';
 import { formatDay } from '@/lib/active';
 import { useAtlasReducedMotion } from '@/components/views/atlas/use-atlas-reduced-motion';
+import { AtlasWalk } from '@/components/views/atlas/atlas-walk';
+import { atlasReadingOrder, atlasWalkOrder } from '@/lib/atlas-walk';
 
 /**
  * The viewport seeding lays a grid out against. Fixed rather than measured, so
@@ -282,18 +284,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // (Momentum column by column, the others row by row). The DOM is reordered
   // only once a glide has finished, since moving a node mid-transition would
   // cut its glide short.
-  const readingOrder = useMemo(() => {
-    if (layout === 'map') return cards.map((c) => c.key).join('\n');
-    const byCols = layout === 'momentum';
-    return [...cards]
-      .map((c) => ({ key: c.key, p: positions.get(c.key) }))
-      .sort((a, b) => {
-        if (!a.p || !b.p) return a.p ? -1 : b.p ? 1 : 0;
-        return byCols ? a.p.x - b.p.x || a.p.y - b.p.y : a.p.y - b.p.y || a.p.x - b.p.x;
-      })
-      .map((c) => c.key)
-      .join('\n');
-  }, [layout, cards, positions]);
+  const readingOrder = useMemo(() => atlasReadingOrder(layout, cards, positions).join('\n'), [layout, cards, positions]);
   const [domOrder, setDomOrder] = useState(readingOrder);
   useEffect(() => {
     if (domOrder === readingOrder) return;
@@ -710,6 +701,9 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     if (!ui.fitted || viewportRef.current.w <= 0) return;
     lastLayout.current = layout;
     useAtlasUiStore.getState().setHotLane(null);
+    // A walk keeps standing on its card: it flies there in the new layout
+    // (atlas-walk.tsx), and a fit here would cut that flight short.
+    if (ui.walk) return;
     ui.setCamera(fitBounds(rects(visible), viewportRef.current, 48, ui.camera, ATLAS_FIT_FLOOR));
   }, [layout, rects, visible, releaseHold]);
 
@@ -810,6 +804,26 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // The sheet is this view's: leaving Atlas (a scope switch, a page) closes
   // it, so it never springs open on the next visit.
   useEffect(() => () => useAtlasUiStore.getState().closeSheet(), []);
+
+  // Walk Atlas (atlas-walk.tsx) visits the drawn cards in the layout's
+  // reading order. A walk that ended asking to go home flies the camera back
+  // to where it started (it jumps under reduced motion). Leaving Atlas ends a
+  // walk, as it closes the sheet.
+  const walkOrder = useMemo(() => (ready ? atlasWalkOrder(layout, visible, positions) : []), [ready, layout, visible, positions]);
+  const walkHome = useAtlasUiStore((s) => s.walkHome);
+  useEffect(() => {
+    if (!walkHome) return;
+    useAtlasUiStore.getState().clearWalkHome();
+    flyTo(walkHome);
+  }, [walkHome, flyTo]);
+  useEffect(
+    () => () => {
+      const ui = useAtlasUiStore.getState();
+      ui.endWalk(false);
+      ui.clearWalkHome();
+    },
+    []
+  );
 
   // The root's two keys (rule 18: not global shortcuts, so not commands).
   // Escape closes the sheet, and claims the key (preventDefault) so the item
@@ -995,6 +1009,18 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
           <AtlasMinimap content={content} clusters={clusters} viewport={viewport} colors={colors} reduced={reduced} />
         )}
       </div>
+      <AtlasWalk
+        cards={visible}
+        order={walkOrder}
+        positions={positions}
+        viewport={viewport}
+        todayStr={todayStr}
+        milestoneIds={milestoneIds}
+        flyTo={flyTo}
+        rootRef={rootRef}
+        reduced={reduced}
+        previewing={previewing}
+      />
       <AtlasFocusSheet
         cards={cards}
         viewport={viewport}
