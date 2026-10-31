@@ -211,8 +211,29 @@ test.describe('Item panel', () => {
       // flush on its way out rather than leave the write to its unmount grace.
       await panel.getByTestId('item-dialog-title-input').fill(renamed);
       await expect(panel).toHaveAttribute('data-autosave', 'pending');
+      // TEMP diagnostics: what the page saw of the click-away press.
+      await page.evaluate(() => {
+        const w = window as unknown as { __dbg: unknown[] };
+        w.__dbg = [];
+        const poppers = () =>
+          [...document.querySelectorAll('[data-radix-popper-content-wrapper]')].map((x) => x.outerHTML.slice(0, 600));
+        const desc = (t: EventTarget | null) => (t instanceof Element ? t.outerHTML.slice(0, 160) : String(t));
+        document.addEventListener('pointerdown', (e) => w.__dbg.push({ ev: 'pd', t: desc(e.target), poppers: poppers(), active: desc(document.activeElement) }), true);
+        document.addEventListener('mousemove', (e) => w.__dbg.push({ ev: 'mm', x: e.clientX, y: e.clientY, t: desc(e.target) }), true);
+        document.addEventListener('click', (e) => w.__dbg.push({ ev: 'click', d: e.detail, dp: e.defaultPrevented, t: desc(e.target), m: [e.metaKey, e.ctrlKey, e.shiftKey, e.altKey] }));
+      });
+      const before = await page.evaluate(() => ({
+        poppers: [...document.querySelectorAll('[data-radix-popper-content-wrapper]')].map((x) => x.outerHTML.slice(0, 600)),
+        active: document.activeElement?.outerHTML.slice(0, 160),
+      }));
       await clickEmptySpace(page);
 
+      try {
+        await expect(page.getByTestId('item-dialog')).toHaveCount(0, { timeout: 3000 });
+      } catch {
+        const dbg = await page.evaluate(() => (window as unknown as { __dbg: unknown[] }).__dbg);
+        throw new Error('CLICKAWAY-DBG ' + JSON.stringify({ before, dbg }));
+      }
       await expect(page.getByTestId('item-dialog')).toHaveCount(0);
       await expect(itemCard(page, taskId)).toHaveAttribute('data-selected', 'false');
       await expect
