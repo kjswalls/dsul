@@ -14,6 +14,7 @@ const nav = vi.hoisted(() => {
   const router = { replace: vi.fn(), push: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() };
   return { router, params: { pane: ['look'] }, search: new URLSearchParams() };
 });
+const themes = vi.hoisted(() => ({ resolvedTheme: 'light' as string }));
 
 
 vi.mock('next/navigation', () => ({
@@ -21,7 +22,9 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => nav.search,
   usePathname: () => '/settings/look',
 }));
-vi.mock('next-themes', () => ({ useTheme: () => ({ theme: 'system', setTheme: vi.fn() }) }));
+vi.mock('next-themes', () => ({
+  useTheme: () => ({ theme: 'system', resolvedTheme: themes.resolvedTheme, setTheme: vi.fn() }),
+}));
 vi.mock('@/lib/settings-service', () => ({
   saveSettings: vi.fn(async () => {}),
   flushSettings: vi.fn(async () => {}),
@@ -75,6 +78,7 @@ afterEach(() => {
   usePlannerStore.setState({ userId: null });
   useMorningStore.setState({ settingsHydratedUserId: null });
   useLookStore.setState({ atlasFarPaper: 'bloom' });
+  themes.resolvedTheme = 'light';
 });
 
 describe('look.atlasFar on the settings page', () => {
@@ -93,5 +97,23 @@ describe('look.atlasFar on the settings page', () => {
     expect(r.note?.(ctx('dark'))).toMatch(/dark theme/);
     expect(r.note?.(ctx('light'))).toBeNull();
     expect(r.unavailable).toBeUndefined();
+    // Under "system", the theme actually showing decides, not the pick.
+    expect(r.note?.({ theme: 'system', resolvedTheme: 'dark' } as never)).toMatch(/dark theme/);
+    expect(r.note?.({ theme: 'system', resolvedTheme: 'light' } as never)).toBeNull();
+  });
+
+  it('shows the note on the page while a dark theme is showing under System, and not under light', async () => {
+    themes.resolvedTheme = 'dark';
+    const { unmount } = render(<SettingsPage />);
+    const row = (await screen.findByTestId('setting-look.atlasFar')).closest('[data-setting-row]');
+    expect(row).not.toBeNull();
+    await waitFor(() => expect(row!.querySelector('[data-setting-note]')).toHaveTextContent(/dark theme/));
+    unmount();
+
+    themes.resolvedTheme = 'light';
+    render(<SettingsPage />);
+    const lightRow = (await screen.findByTestId('setting-look.atlasFar')).closest('[data-setting-row]');
+    expect(lightRow).not.toBeNull();
+    expect(lightRow!.querySelector('[data-setting-note]')).toBeNull();
   });
 });

@@ -304,6 +304,12 @@ export function railPaneFor(pane: PaneId): RootPaneId {
  */
 export interface SettingCtx {
   theme: string | undefined;
+  /**
+   * The theme actually showing ('light' | 'dark'), next-themes' resolvedTheme:
+   * "system" already asked of the OS, and live when the OS flips. Optional, so
+   * a ctx built without it falls back to asking matchMedia once.
+   */
+  resolvedTheme?: string;
   setTheme: (value: string) => void;
   userId: string | null;
   /** Push is browser state, not a stored boolean — the Rituals pane supplies it. */
@@ -356,11 +362,14 @@ export interface SettingOption {
 }
 
 /**
- * Is a dark theme showing? The picked mode, with "system" (or no pick) asked
- * of the OS. Read from ctx.theme so the settings page re-renders it with the
- * theme row.
+ * Is a dark theme showing? next-themes' resolvedTheme when the page supplies
+ * it (live: it changes when the OS flips under "system", and the page's ctx
+ * memo re-renders the row off it); otherwise the picked mode, with "system"
+ * (or no pick) asked of the OS once.
  */
 function darkThemeShowing(ctx: SettingCtx): boolean {
+  if (ctx.resolvedTheme === 'dark') return true;
+  if (ctx.resolvedTheme === 'light') return false;
   if (ctx.theme === 'dark') return true;
   if (ctx.theme === 'light') return false;
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;

@@ -231,7 +231,7 @@ export default function SettingsPage() {
   const searchParams = useSearchParams();
   const isMobile = useIsMobile();
 
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useTheme();
   const userId = usePlannerStore((s) => s.userId);
   const hydratedUserId = useMorningStore((s) => s.settingsHydratedUserId);
   const push = usePushSubscription();
@@ -430,6 +430,7 @@ export default function SettingsPage() {
   const ctx = useMemo<SettingCtx>(
     () => ({
       theme,
+      resolvedTheme,
       setTheme: setThemeSmoothly,
       userId,
       push,
@@ -446,6 +447,7 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       theme,
+      resolvedTheme,
       setThemeSmoothly,
       userId,
       push,
