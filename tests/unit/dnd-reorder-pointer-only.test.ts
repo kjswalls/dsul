@@ -202,6 +202,15 @@ describe('a finger never reorders', () => {
     off();
   });
 
+  it('a cursor in the grip gutter left of the rows still reorders', () => {
+    // The grip sits about 14px left of the row; a drag started there rides
+    // that gutter all the way down.
+    const off = section();
+    expect(reorderTargetAt('a', ['a'], { x: -7, y: 115 }, 'pointer')?.sequence).toEqual(['b', 'c', 'a']);
+    expect(reorderTargetAt('a', ['a'], { x: -40, y: 115 }, 'pointer')).toBeNull();
+    off();
+  });
+
   it('the same gesture by a finger gets nothing', () => {
     const off = section();
     expect(reorderTargetAt('c', ['c'], { x: 10, y: 5 }, 'touch')).toBeNull();
