@@ -199,6 +199,7 @@ describe('buildAtlasCards', () => {
     );
     expect(onlyMs.next).toBeNull();
     expect(onlyMs.milestones?.[0].next).toBe(true);
+    expect(onlyMs.allDone).toBe(false);
   });
 
   it('never offers a recurring next step for Today', () => {

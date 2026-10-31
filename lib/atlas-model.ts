@@ -348,6 +348,8 @@ export function buildAtlasCards(input: AtlasModelInput): AtlasCard[] {
     );
     // A goal counts milestones, not tiles (goalProgress).
     card.lit = progress.achieved;
+    // An open milestone means the goal isn't done, even with no open feeder step.
+    if (milestones.some((m) => !m.done)) card.allDone = false;
     card.total = progress.total;
     cards.push(card);
   }
