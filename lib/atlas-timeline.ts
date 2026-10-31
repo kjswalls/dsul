@@ -54,15 +54,27 @@ function monthEnd(day: string): string {
 }
 
 /**
- * From the month before today to two months past the latest date shown (at
- * least three months ahead), clamped to {@link TIMELINE_MAX_MONTHS}.
+ * From the month before today (or the month of the earliest goal target, if
+ * that is earlier) to two months past the latest date shown (at least three
+ * months ahead), clamped to {@link TIMELINE_MAX_MONTHS} from the start. A goal
+ * card is drawn unclamped at its target, so the window always reaches every
+ * goal target (`goalSpan`): a goal never sits outside the drawn months, where
+ * a nudge would write the window's edge instead of the day it was nudged to.
  */
-export function timelineWindow(todayStr: string, latest?: string): TimelineWindow {
+export function timelineWindow(
+  todayStr: string,
+  latest?: string,
+  goalSpan?: { earliest?: string; latest?: string },
+): TimelineWindow {
   const today = toDateOnly(todayStr);
-  const start = monthStart(today, -1);
+  const defaultStart = monthStart(today, -1);
+  const earliestGoal = goalSpan?.earliest ? monthStart(goalSpan.earliest) : undefined;
+  const start = earliestGoal && earliestGoal < defaultStart ? earliestGoal : defaultStart;
   const floor = monthStart(today, 3);
   const wanted = latest && latest > floor ? monthStart(latest, 2) : floor;
-  const cap = monthStart(start, TIMELINE_MAX_MONTHS - 1);
+  const capped = monthStart(start, TIMELINE_MAX_MONTHS - 1);
+  const latestGoal = goalSpan?.latest ? monthStart(goalSpan.latest) : undefined;
+  const cap = latestGoal && latestGoal > capped ? latestGoal : capped;
   const end = monthEnd(wanted > cap ? cap : wanted);
   const months: TimelineMonth[] = [];
   for (let m = start; m <= end; m = monthStart(m, 1)) {
@@ -85,11 +97,24 @@ export function xForDate(win: Pick<TimelineWindow, 'start'>, day: string): numbe
 
 /** The day under an x, snapped to a whole day and kept inside the window. */
 export function dateForX(win: Pick<TimelineWindow, 'start' | 'end'>, x: number): string {
-  const n = Math.round(x / TIMELINE_DAY_PX);
-  const day = addDaysStr(win.start, Number.isFinite(n) ? n : 0);
+  const day = rawDateForX(win, x);
   if (day < win.start) return win.start;
   if (day > win.end) return win.end;
   return day;
+}
+
+/**
+ * The day under an x, snapped to a whole day, or null outside the window: a
+ * drop past the drawn months springs back rather than writing the edge.
+ */
+export function dateForXInWindow(win: Pick<TimelineWindow, 'start' | 'end'>, x: number): string | null {
+  const day = rawDateForX(win, x);
+  return day < win.start || day > win.end ? null : day;
+}
+
+function rawDateForX(win: Pick<TimelineWindow, 'start'>, x: number): string {
+  const n = Math.round(x / TIMELINE_DAY_PX);
+  return addDaysStr(win.start, Number.isFinite(n) ? n : 0);
 }
 
 /** The window's width in world px. */
@@ -142,6 +167,18 @@ export function timelinePlace(
   }
   const next = nextDatedStep(card, todayStr);
   return next ? { lane: 'dated', day: next, what: 'next' } : { lane: 'none' };
+}
+
+/** The earliest and latest goal targets: the window must reach both. */
+export function goalTargetSpan(places: Iterable<TimelinePlace>): { earliest?: string; latest?: string } {
+  let earliest: string | undefined;
+  let latest: string | undefined;
+  for (const p of places) {
+    if (p.lane !== 'goals') continue;
+    if (!earliest || p.day < earliest) earliest = p.day;
+    if (!latest || p.day > latest) latest = p.day;
+  }
+  return { earliest, latest };
 }
 
 /** The latest date anything on the Timeline wants shown (the window's end). */

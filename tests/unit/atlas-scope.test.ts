@@ -18,6 +18,7 @@ import { EXT_GOALS } from '@/lib/extension-registry';
 import { disableExtensions, enableExtensions } from './support/extensions';
 import { stepScope } from '@/lib/nav-commands';
 import { ATLAS_COPY } from '@/lib/atlas-copy';
+import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 
 /**
  * The 'atlas' ViewScope's plumbing (design PR1a): the store, the options, the
@@ -218,6 +219,19 @@ describe('the Atlas layout commands (PR2)', () => {
     expect(available(id, mobile)).toBe(false);
     c.run(ctx);
     expect(useViewStore.getState().atlasLayout).toBe(layout);
+  });
+
+  it('waits while the focus sheet is open, so the card it shrinks back into stays put', () => {
+    useViewStore.setState({ scope: 'atlas' });
+    useAtlasUiStore.getState().openSheet('project', 'p1', { x: 0, y: 0, width: 280, height: 190 });
+    try {
+      for (const [id] of KEYS) expect(available(id)).toBe(false);
+      expect(available('view.atlasLayout')).toBe(false);
+    } finally {
+      useAtlasUiStore.getState().closeSheet();
+    }
+    for (const [id] of KEYS) expect(available(id)).toBe(true);
+    expect(available('view.atlasLayout')).toBe(true);
   });
 
   it('no two Atlas keys collide with each other or anything else', () => {

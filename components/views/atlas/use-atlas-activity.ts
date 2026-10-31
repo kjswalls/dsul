@@ -14,7 +14,7 @@ import {
 import type { AtlasCard } from '@/lib/atlas-model';
 
 const DEPS: ActivityDeps = {
-  fetchEvents: (ids, since) => fetchItemEventsFor(ids, since),
+  fetchEvents: (ids, since) => fetchItemEventsFor(ids, since, undefined, { strict: true }),
   fetchCompletedAt: (ids) => fetchCompletedAt(ids),
   eventsAvailable: () => getItemEventsAvailable(),
 };

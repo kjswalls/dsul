@@ -25,6 +25,27 @@ describe('momentumBand', () => {
     expect(momentumCardSignals(c, TODAY).dueToday).toBe(false);
   });
 
+  it('a task dated in the past is a leftover, not "on today", and never pins a card in Now', () => {
+    const c = work([task({ id: 'a', project: 'Work', startDate: '2025-09-01' })]);
+    expect(momentumCardSignals(c, TODAY)).toMatchObject({ dueToday: false, nextDated: undefined });
+    // With an old known touch it rests, from that date.
+    expect(momentumBand(c, '2025-09-01', TODAY)).toMatchObject({ band: 'resting', why: 'resting' });
+    // With nothing known it is neutral, never Now.
+    expect(momentumBand(c, 'unknown', TODAY)).toMatchObject({ band: 'soon', reason: null });
+  });
+
+  it("a milestone's date is a target, never a day it is due or a next date", () => {
+    const g = goal('g', { milestoneIds: ['m1', 'm2'] });
+    const cards = build({
+      items: [task({ id: 'm1', startDate: TODAY }), task({ id: 'm2', startDate: '2026-03-12' })],
+      goals: [g],
+    });
+    const c = cardOf(cards, 'goal:g');
+    const ms = new Set(['m1', 'm2']);
+    expect(momentumCardSignals(c, TODAY, ms)).toMatchObject({ dueToday: false, nextDated: undefined });
+    expect(momentumBand(c, 'unknown', TODAY, null, ms).why).not.toBe('dueToday');
+  });
+
   it('a next date within a week is Now, within a month Soon', () => {
     expect(momentumBand(work([task({ id: 'a', project: 'Work', startDate: '2026-03-15' })]), undefined, TODAY)).toMatchObject({
       band: 'now',
@@ -38,8 +59,9 @@ describe('momentumBand', () => {
 
   it('reads a known touch: recent is Now or Soon, old is Resting since a date', () => {
     const c = work([task({ id: 'a', project: 'Work' })]);
-    expect(momentumBand(c, '2026-03-07', TODAY)).toMatchObject({ band: 'now', reason: ATLAS_COPY.touchedAgo(3) });
-    expect(momentumBand(c, '2026-02-28', TODAY)).toMatchObject({ band: 'soon', reason: ATLAS_COPY.touchedAgo(10) });
+    expect(momentumBand(c, '2026-03-07', TODAY)).toMatchObject({ band: 'now', reason: ATLAS_COPY.touchedOn('Mar 7') });
+    expect(momentumBand(c, '2026-03-09', TODAY)).toMatchObject({ band: 'now', reason: ATLAS_COPY.touchedYesterday });
+    expect(momentumBand(c, '2026-02-28', TODAY)).toMatchObject({ band: 'soon', reason: ATLAS_COPY.touchedOn('Feb 28') });
     expect(momentumBand(c, '2026-01-29', TODAY)).toMatchObject({
       band: 'resting',
       reason: ATLAS_COPY.restingSince('Jan 29'),

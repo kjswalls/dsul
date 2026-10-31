@@ -47,8 +47,12 @@ export interface MomentumCardSignals {
   tickedToday: boolean;
   /**
    * Something is on today: a member that is `open` by memberStateOn and is
-   * either recurring (so it occurs today) or dated today or earlier. An
-   * undated one-off is open every day, so it alone never makes a card Now.
+   * either recurring (so it occurs today) or dated exactly today. An undated
+   * one-off is open every day, and a one-off dated before today is a
+   * leftover (ghost rows' job, not a reason to be "on today"), so neither
+   * makes a card Now on its own; both fall through to the touch rules.
+   * A milestone's start date is a target date (long-term-goals.md), never a
+   * day it is due, so milestones count for neither signal.
    */
   dueToday: boolean;
   /** The earliest open one-off's start day after today (yyyy-MM-dd). */
@@ -59,7 +63,11 @@ function startDay(item: AtlasCard['members'][number]['item']): string | undefine
   return 'startDate' in item && item.startDate ? toDateOnly(item.startDate) : undefined;
 }
 
-export function momentumCardSignals(card: AtlasCard, todayStr: string): MomentumCardSignals {
+export function momentumCardSignals(
+  card: AtlasCard,
+  todayStr: string,
+  milestoneIds?: ReadonlySet<string>,
+): MomentumCardSignals {
   const today = toDateOnly(todayStr);
   let tickedToday = false;
   let dueToday = false;
@@ -67,14 +75,15 @@ export function momentumCardSignals(card: AtlasCard, todayStr: string): Momentum
   for (const m of card.members) {
     if (!tickedToday && lastDoneOn(m.item) === today) tickedToday = true;
     if (m.state !== 'open') continue;
+    if (milestoneIds?.has(m.item.id)) continue;
     if (isRecurring(m.item)) {
       dueToday = true;
       continue;
     }
     const day = startDay(m.item);
     if (!day) continue;
-    if (day <= today) dueToday = true;
-    else if (!nextDated || day < nextDated) nextDated = day;
+    if (day === today) dueToday = true;
+    else if (day > today && (!nextDated || day < nextDated)) nextDated = day;
   }
   return { tickedToday, dueToday, nextDated };
 }
@@ -113,8 +122,9 @@ export function momentumBand(
   lastTouch: string | 'unknown' | undefined,
   todayStr: string,
   pin: AtlasBand | null = null,
+  milestoneIds?: ReadonlySet<string>,
 ): MomentumResult {
-  const app = appBandOf(card, lastTouch, todayStr);
+  const app = appBandOf(card, lastTouch, todayStr, milestoneIds);
   if (pin && pin !== app.band) {
     return { band: pin, appBand: app.band, pinned: true, why: app.why, reason: ATLAS_COPY.pinnedHere(bandLabel(app.band)) };
   }
@@ -127,6 +137,7 @@ function appBandOf(
   card: AtlasCard,
   lastTouch: string | 'unknown' | undefined,
   todayStr: string,
+  milestoneIds?: ReadonlySet<string>,
 ): { band: AtlasBand; why: MomentumReasonKey | null; reason: string | null } {
   const t = card.touch;
   // A known pause or an end: Resting, said the way the footer says it.
@@ -153,7 +164,7 @@ function appBandOf(
   }
 
   const today = toDateOnly(todayStr);
-  const sig = momentumCardSignals(card, today);
+  const sig = momentumCardSignals(card, today, milestoneIds);
   const touch = lastTouch && lastTouch !== 'unknown' ? toDateOnly(lastTouch) : undefined;
   const touchDays = touch ? Math.max(0, daysBetween(touch, today)) : undefined;
   const dateDays = sig.nextDated ? daysBetween(today, sig.nextDated) : undefined;
@@ -162,13 +173,13 @@ function appBandOf(
   if (sig.tickedToday) return { band: 'now', why: 'tickedToday', reason: wrapping ? ATLAS_COPY.wrappingUp : ATLAS_COPY.tickedToday };
   if (sig.dueToday) return { band: 'now', why: 'dueToday', reason: ATLAS_COPY.dueToday };
   if (touchDays !== undefined && touchDays <= MOMENTUM_NOW_DAYS) {
-    return { band: 'now', why: wrapping ? 'wrappingUp' : 'touched', reason: wrapping ? ATLAS_COPY.wrappingUp : touchedLine(touchDays) };
+    return { band: 'now', why: wrapping ? 'wrappingUp' : 'touched', reason: wrapping ? ATLAS_COPY.wrappingUp : touchedLine(touchDays, touch!) };
   }
   if (dateDays !== undefined && dateDays <= MOMENTUM_NOW_DAYS) {
     return { band: 'now', why: 'nextDate', reason: ATLAS_COPY.nextDate(formatDay(sig.nextDated!)) };
   }
   if (touchDays !== undefined && touchDays <= MOMENTUM_SOON_TOUCH_DAYS) {
-    return { band: 'soon', why: wrapping ? 'wrappingUp' : 'touched', reason: wrapping ? ATLAS_COPY.wrappingUp : touchedLine(touchDays) };
+    return { band: 'soon', why: wrapping ? 'wrappingUp' : 'touched', reason: wrapping ? ATLAS_COPY.wrappingUp : touchedLine(touchDays, touch!) };
   }
   if (dateDays !== undefined && dateDays <= MOMENTUM_SOON_DATE_DAYS) {
     return { band: 'soon', why: 'nextDate', reason: ATLAS_COPY.nextDate(formatDay(sig.nextDated!)) };
@@ -180,6 +191,7 @@ function appBandOf(
   return { band: 'soon', why: null, reason: null };
 }
 
-function touchedLine(days: number): string {
-  return days === 0 ? ATLAS_COPY.touchedToday : ATLAS_COPY.touchedAgo(days);
+/** A date, never a tally of idle days (rule 13). */
+function touchedLine(days: number, touch: string): string {
+  return days === 0 ? ATLAS_COPY.touchedToday : days === 1 ? ATLAS_COPY.touchedYesterday : ATLAS_COPY.touchedOn(formatDay(touch));
 }

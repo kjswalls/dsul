@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { POINTER_ACTIVATION_DISTANCE_PX } from '@/lib/dnd/sensors';
 import type { Point } from '@/lib/atlas-camera';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
@@ -18,7 +18,10 @@ import { useAtlasUiStore } from '@/lib/atlas-ui-store';
  * - moves only this card's own transform while dragging (local state), and
  *   commits once, on pointerup; what the drop means is the layout's
  *   (lib/atlas-drop.ts), and a drop that means nothing springs back;
- * - swallows the click that ends a drag, so a drop never opens or ticks.
+ * - swallows the click that ends a drag, so a drop never opens or ticks;
+ * - Escape cancels a drag in flight: nothing is committed and the card
+ *   springs back. It claims the key (capture phase, before the root's and the
+ *   item panel's listeners), so the order is drag, then sheet, then item.
  */
 
 /**
@@ -44,8 +47,33 @@ export function useAtlasPointer({
   axis?: 'x' | null;
 }) {
   const [drag, setDrag] = useState<Point | null>(null);
-  const press = useRef<{ x: number; y: number; id: number; active: boolean } | null>(null);
+  const press = useRef<{ x: number; y: number; id: number; active: boolean; el: HTMLElement | null } | null>(null);
   const swallowClick = useRef(false);
+  const dragging = drag !== null;
+
+  // Escape while dragging: cancel, commit nothing, spring back.
+  useEffect(() => {
+    if (!dragging) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      const p = press.current;
+      if (!p?.active) return;
+      e.preventDefault();
+      e.stopPropagation();
+      press.current = null;
+      // The release that follows must not open or tick what it lands on.
+      swallowClick.current = true;
+      try {
+        p.el?.releasePointerCapture(p.id);
+      } catch {
+        // Not captured (jsdom, a synthetic pointer): nothing to release.
+      }
+      setDrag(null);
+      onDrag?.(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [dragging, onDrag]);
 
   const onPointerDown = useCallback((e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
@@ -59,7 +87,7 @@ export function useAtlasPointer({
     // No stopPropagation: document-level outside-press listeners (the omnibar
     // panel, Radix layers) must still hear it, and the surface already refuses
     // to pan from a press on a card.
-    press.current = { x: e.clientX, y: e.clientY, id: e.pointerId, active: false };
+    press.current = { x: e.clientX, y: e.clientY, id: e.pointerId, active: false, el: e.currentTarget };
   }, []);
 
   const onPointerMove = useCallback(
@@ -118,7 +146,7 @@ export function useAtlasPointer({
   return {
     /** Where to draw the card: the drag's position while dragging, else `at`. */
     pos: drag ?? at,
-    dragging: drag !== null,
+    dragging,
     handlers: {
       onPointerDown,
       onPointerMove,

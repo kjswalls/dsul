@@ -12,7 +12,7 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 import { AtlasSurface } from '@/components/views/atlas/atlas-surface';
-import { AtlasCard, ATLAS_LEAVE_MS } from '@/components/views/atlas/atlas-card';
+import { AtlasCard, ATLAS_GLIDE_MS, ATLAS_LEAVE_MS, ATLAS_TICK_HOLD_MS } from '@/components/views/atlas/atlas-card';
 import { AtlasLanes } from '@/components/views/atlas/atlas-lanes';
 import { useAtlasActivity } from '@/components/views/atlas/use-atlas-activity';
 import { AtlasFocusSheet } from '@/components/views/atlas/atlas-focus-sheet';
@@ -47,7 +47,7 @@ import {
   type AtlasLayoutResult,
 } from '@/lib/atlas-layouts';
 import { timelinePlace } from '@/lib/atlas-timeline';
-import { dropCard, goalDayAt } from '@/lib/atlas-drop';
+import { dropCard, goalDayAtClamped } from '@/lib/atlas-drop';
 import { formatDay } from '@/lib/active';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 
@@ -133,9 +133,11 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   });
   const bands = useMemo(() => {
     const out = new Map<string, MomentumResult>();
-    for (const c of cards) out.set(c.key, momentumBand(c, activity.get(c.key), todayStr, stored[c.key]?.band ?? null));
+    for (const c of cards) {
+      out.set(c.key, momentumBand(c, activity.get(c.key), todayStr, stored[c.key]?.band ?? null, milestoneIds));
+    }
     return out;
-  }, [cards, activity, todayStr, stored]);
+  }, [cards, activity, todayStr, stored, milestoneIds]);
   const visible = useMemo(
     () => filterCards(cards, { hideFinished, hideResting }, bands),
     [cards, hideFinished, hideResting, bands]
@@ -144,12 +146,98 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     () => (layout === 'goal' ? new Map(cards.map((c) => [c.key, laneFor(c, goals)])) : undefined),
     [layout, cards, goals]
   );
+  const goalCards = useMemo(() => cards.filter((c) => c.kind === 'goal'), [cards]);
   const [sharePositions] = useState(createPositionSharer);
-  const result: AtlasLayoutResult = useMemo(() => {
-    const r = layoutPositions(layout, visible, { places, bands, lanes, seasons, todayStr });
+  const computed: AtlasLayoutResult = useMemo(() => {
+    const r = layoutPositions(layout, visible, { places, bands, lanes, goalCards, seasons, todayStr });
     return { ...r, positions: sharePositions(r.positions) };
-  }, [sharePositions, layout, visible, places, bands, lanes, seasons, todayStr]);
+  }, [sharePositions, layout, visible, places, bands, lanes, goalCards, seasons, todayStr]);
+
+  // A tick in a computed layout can re-sort the card (Soon to Now, a next
+  // step moving on the Timeline, Hide finished taking it away). The layout
+  // drawn before the tick is held, as each card holds its ticked row, until
+  // ATLAS_TICK_HOLD_MS has passed and the pointer is off every card, so a
+  // second click never lands on another card's row. A drop or a layout switch
+  // lets go at once. Your map never re-sorts, so it never holds.
+  const [hold, setHold] = useState<{ layout: string; result: AtlasLayoutResult } | null>(null);
+  const result = hold && hold.layout === layout && layout !== 'map' ? hold.result : computed;
   const positions = result.positions;
+  const lastDrawn = useRef<{ layout: string; result: AtlasLayoutResult }>({ layout, result });
+  useLayoutEffect(() => {
+    lastDrawn.current = { layout, result };
+  });
+  const overCard = useRef(false);
+  const holdTimeUp = useRef(true);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+  }, []);
+  const releaseHold = useCallback(() => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+    holdTimeUp.current = true;
+    setHold(null);
+  }, []);
+  const onTick = useCallback(() => {
+    const drawn = lastDrawn.current;
+    if (drawn.layout === 'map') return;
+    setHold((h) => (h && h.layout === drawn.layout ? h : drawn));
+    holdTimeUp.current = false;
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = setTimeout(() => {
+      holdTimer.current = null;
+      holdTimeUp.current = true;
+      if (!overCard.current) setHold(null);
+    }, ATLAS_TICK_HOLD_MS);
+  }, []);
+  const onPointerOver = (e: { target: EventTarget }) => {
+    overCard.current = !!(e.target as Element).closest?.('[data-atlas-card]');
+    if (!overCard.current && holdTimeUp.current && hold) setHold(null);
+  };
+  const onPointerLeave = () => {
+    overCard.current = false;
+    if (holdTimeUp.current && hold) setHold(null);
+  };
+
+  // Tab order follows the layout shown: cards render in reading order
+  // (Momentum column by column, the others row by row). The DOM is reordered
+  // only once a glide has finished, since moving a node mid-transition would
+  // cut its glide short.
+  const readingOrder = useMemo(() => {
+    if (layout === 'map') return cards.map((c) => c.key).join('\n');
+    const byCols = layout === 'momentum';
+    return [...cards]
+      .map((c) => ({ key: c.key, p: positions.get(c.key) }))
+      .sort((a, b) => {
+        if (!a.p || !b.p) return a.p ? -1 : b.p ? 1 : 0;
+        return byCols ? a.p.x - b.p.x || a.p.y - b.p.y : a.p.y - b.p.y || a.p.x - b.p.x;
+      })
+      .map((c) => c.key)
+      .join('\n');
+  }, [layout, cards, positions]);
+  const [domOrder, setDomOrder] = useState(readingOrder);
+  useEffect(() => {
+    if (domOrder === readingOrder) return;
+    const t = setTimeout(() => setDomOrder(readingOrder), reduced ? 0 : ATLAS_GLIDE_MS + 50);
+    return () => clearTimeout(t);
+  }, [domOrder, readingOrder, reduced]);
+  const orderedCards = useMemo(() => {
+    const rank = new Map(domOrder.split('\n').map((k, i) => [k, i]));
+    const at = (k: string) => rank.get(k) ?? Number.MAX_SAFE_INTEGER;
+    return [...cards].sort((a, b) => at(a.key) - at(b.key));
+  }, [cards, domOrder]);
+
+  // Each card's lane, said to a screen reader (the lanes layer is aria-hidden).
+  const laneLabels = useMemo(() => {
+    const out = new Map<string, string>();
+    if (layout === 'map') return out;
+    const label = new Map(result.lanes.map((l) => [l.id, l.label]));
+    for (const [key, id] of result.cardLane) {
+      const name = label.get(id);
+      if (name) out.set(key, name);
+    }
+    return out;
+  }, [layout, result]);
 
   // The "why" line per card, in every layout but Your map.
   const reasons = useMemo(() => {
@@ -317,12 +405,13 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // never edits). An open item stays open; nothing here touches ui-store.
   useEffect(() => {
     if (lastLayout.current === layout) return;
+    releaseHold();
     const ui = useAtlasUiStore.getState();
     if (!ui.fitted || viewportRef.current.w <= 0) return;
     lastLayout.current = layout;
     useAtlasUiStore.getState().setHotLane(null);
     ui.setCamera(fitBounds(rects(visible), viewportRef.current, 48, ui.camera, ATLAS_FIT_FLOOR));
-  }, [layout, rects, visible]);
+  }, [layout, rects, visible, releaseHold]);
 
   // The toolbar's Fit.
   const lastFit = useRef(fitToken);
@@ -350,19 +439,23 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     const ctx = dropCtx.current;
     const card = ctx.cards.find((c) => c.key === key);
     if (!card) return;
+    // The lane the card is DRAWN in, so the drop's "from" is what the screen shows.
+    const drawnLane = ctx.result.cardLane.get(key);
     const out = dropCard({
       layout: ctx.layout,
       card,
       to,
+      from: ctx.result.positions.get(key),
       result: ctx.result,
       band: ctx.bands.get(key),
       mapAt: ctx.places[key],
-      lane: ctx.lanes?.get(key) ?? null,
+      lane: drawnLane && drawnLane !== 'none' ? drawnLane : null,
       goals: ctx.goals,
       goalsShown: ctx.goalsShown,
     });
+    releaseHold();
     if (out.message) toast(out.message);
-  }, []);
+  }, [releaseHold]);
   const onDrag = useCallback((key: string, pos: Point | null) => {
     const ctx = dropCtx.current;
     const ui = useAtlasUiStore.getState();
@@ -372,7 +465,9 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     }
     // A goal card heads its lane and never moves; nothing lights for it.
     if (ctx.layout === 'goal' && key.startsWith('goal:')) return;
-    ui.setHotLane(laneAt(ctx.result, ctx.layout, pos)?.id ?? null);
+    // The card's own column or lane means nothing as a drop, so it never lights.
+    const id = laneAt(ctx.result, ctx.layout, pos)?.id ?? null;
+    ui.setHotLane(id !== null && id === ctx.result.cardLane.get(key) ? null : id);
   }, []);
   const onPin = useCallback((key: string, band: AtlasBand | null) => {
     if (previewingRef.current) return;
@@ -382,7 +477,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     useAtlasStore.getState().pin(card.kind, card.id, band, ctx.places[key]);
     toast(band ? ATLAS_COPY.pinned(card.name, bandLabel(band)) : ATLAS_COPY.unpinned(card.name));
   }, []);
-  const dayAt = useCallback((x: number) => goalDayAt(dropCtx.current.result, x), []);
+  const dayAt = useCallback((x: number) => goalDayAtClamped(dropCtx.current.result, x), []);
   const onToggleExpanded = useCallback((key: string) => {
     useAtlasUiStore.getState().toggleExpanded(key);
   }, []);
@@ -475,12 +570,14 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
       onPointerCancelCapture={() => {
         pointerDown.current = false;
       }}
+      onPointerOver={onPointerOver}
+      onPointerLeave={onPointerLeave}
       className="relative min-h-0 flex-1 outline-none"
       style={{ overflow: 'clip' }}
     >
       <AtlasSurface rootRef={rootRef} inert={sheetOpen}>
         {layout !== 'map' && <AtlasLanes lanes={result.lanes} timeline={result.timeline} />}
-        {cards.map((card) => {
+        {orderedCards.map((card) => {
           const drawn = ready ? positions.get(card.key) : undefined;
           const gone = !drawn && ready ? leaving[card.key] : undefined;
           const at = drawn ?? gone;
@@ -510,6 +607,8 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
               axis={timelineGoal && card.targetOn ? 'x' : null}
               diamond={timelineGoal && !!card.targetOn}
               dayAt={timelineGoal ? dayAt : undefined}
+              laneLabel={laneLabels.get(card.key)}
+              onTick={layout === 'map' ? undefined : onTick}
             />
           );
         })}

@@ -51,6 +51,20 @@ describe('readItemTouches', () => {
     expect(r.touches.get('b')).toBe('2026-03-05T10:00:00Z');
   });
 
+  it('marks the read untrusted when a batch comes back at the row cap', async () => {
+    const rows = Array.from({ length: 200 }, (_, i) => ({
+      id: `e${i}`,
+      itemId: 'busy',
+      itemType: 'task',
+      action: 'create',
+      payload: {},
+      createdAt: '2026-03-01T10:00:00Z',
+    }));
+    const r = await readItemTouches(['busy', 'quiet'], deps({ fetchEvents: vi.fn(async () => rows) }));
+    expect(r.eventsOk).toBe(false);
+    expect(r.touches.get('busy')).toBe('2026-03-01T10:00:00Z');
+  });
+
   it('is quiet when fetchCompletedAt throws', async () => {
     const d = deps({ fetchCompletedAt: vi.fn(async () => Promise.reject(new Error('boom'))) });
     await expect(readItemTouches(['a'], d)).resolves.toMatchObject({ eventsOk: true });

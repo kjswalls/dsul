@@ -796,6 +796,9 @@ export async function fetchItemEvents(itemId: string, client?: DbClient): Promis
   }));
 }
 
+/** The row cap of {@link fetchItemEventsFor}: a full answer may be missing rows. */
+export const ITEM_EVENTS_FOR_CAP = 200;
+
 /**
  * The recent create and status events of a SET of items — a container's
  * members — for the container panes' Activity (2026-09-27). Newest first,
@@ -804,11 +807,17 @@ export async function fetchItemEvents(itemId: string, client?: DbClient): Promis
  * server-side: nearly every edit writes an update event (a drag, a rename, a
  * sweep), and fetched raw, a busy week of them crowds the creates out of the
  * cap. Same quiet failure as fetchItemEvents: a missing line, never an error.
+ *
+ * `strict` (Atlas's Momentum, which must tell "no events" from "the read
+ * failed"): an error other than the missing table throws instead of
+ * answering `[]`. The missing table still answers `[]` and latches
+ * `getItemEventsAvailable()` false, which the caller reads.
  */
 export async function fetchItemEventsFor(
   itemIds: readonly string[],
   sinceIso: string,
   client?: DbClient,
+  opts?: { strict?: boolean },
 ): Promise<ItemEvent[]> {
   if (!itemEventsAvailable || itemIds.length === 0) return [];
   const supabase = client ?? createClient();
@@ -819,9 +828,10 @@ export async function fetchItemEventsFor(
     .gte('created_at', sinceIso)
     .or('action.eq.create,and(action.eq.update,payload->>status.not.is.null)')
     .order('created_at', { ascending: false })
-    .limit(200);
+    .limit(ITEM_EVENTS_FOR_CAP);
   if (error) {
     if (missingEventsTable(error)) itemEventsAvailable = false;
+    else if (opts?.strict) throw new Error(`item_events fetch failed: ${error.message ?? 'unknown'}`);
     else console.error('item_events fetch failed', error);
     return [];
   }

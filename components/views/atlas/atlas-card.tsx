@@ -22,13 +22,16 @@ import { cn } from '@/lib/utils';
 
 /** How long a ticked row stays where it was before the card re-picks. */
 const TICK_HOLD_MS = 1500;
+/** The view holds a computed layout this long after a tick (and while the pointer is on a card). */
+export const ATLAS_TICK_HOLD_MS = TICK_HOLD_MS;
 
 /**
  * The glide between layouts, and the spring back from a drop that meant
  * nothing: transform only, never opacity (D8). Off while dragging and under
  * reduced motion.
  */
-export const ATLAS_GLIDE = 'transform .55s cubic-bezier(.2,.8,.2,1)';
+export const ATLAS_GLIDE_MS = 550;
+export const ATLAS_GLIDE = `transform ${ATLAS_GLIDE_MS}ms cubic-bezier(.2,.8,.2,1)`;
 /** A card a filter hides scales down this long, then unmounts. */
 export const ATLAS_LEAVE_MS = 150;
 
@@ -72,6 +75,8 @@ export const AtlasCard = memo(function AtlasCard({
   axis = null,
   diamond = false,
   dayAt,
+  laneLabel,
+  onTick,
 }: {
   card: AtlasCardModel;
   at: Point;
@@ -103,6 +108,10 @@ export const AtlasCard = memo(function AtlasCard({
   diamond?: boolean;
   /** Timeline: the day under the diamond for a top-left x, while dragging. */
   dayAt?: (x: number) => string | null;
+  /** The column or lane it is drawn in (computed layouts), for a screen reader. */
+  laneLabel?: string;
+  /** A row on this card was ticked (the view holds a computed layout). */
+  onTick?: (key: string) => void;
 }) {
   const ref = useRef<HTMLElement>(null);
   const commit = useCallback((to: Point) => onMove(card.key, to), [onMove, card.key]);
@@ -111,6 +120,20 @@ export const AtlasCard = memo(function AtlasCard({
   const momentum = !!momentumBand && !!onPin;
 
   const held = useTickHold(card);
+  const holdRow = held.hold;
+  const onRowTicked = useCallback(
+    (id: string) => {
+      holdRow(id);
+      onTick?.(card.key);
+    },
+    [holdRow, onTick, card.key]
+  );
+  // Unpin removes its own chip and the card glides to the app's column: focus
+  // goes to the card first, so a keyboard user is never dropped on <body>.
+  const unpin = useCallback(() => {
+    ref.current?.focus({ preventScroll: true });
+    onPin?.(card.key, null);
+  }, [onPin, card.key]);
   const rows = useMemo(() => {
     const base = expanded ? card.openRows : card.next ? [card.next] : [];
     if (!held.member) return base;
@@ -157,7 +180,11 @@ export const AtlasCard = memo(function AtlasCard({
       data-click-away-ignore=""
       role="group"
       tabIndex={0}
-      aria-label={ATLAS_COPY.cardLabel(card.name, card.kindLabel)}
+      aria-label={
+        laneLabel
+          ? ATLAS_COPY.cardInLane(ATLAS_COPY.cardLabel(card.name, card.kindLabel), laneLabel)
+          : ATLAS_COPY.cardLabel(card.name, card.kindLabel)
+      }
       {...handlers}
       onPointerEnter={held.onEnter}
       onPointerLeave={held.onLeave}
@@ -231,7 +258,7 @@ export const AtlasCard = memo(function AtlasCard({
                 icon={<PinOff className="size-3.5" />}
                 label={ATLAS_COPY.unpin}
                 testId="container-menu-unpin"
-                onSelect={() => onPin!(card.key, null)}
+                onSelect={unpin}
               />
             )}
           </>
@@ -308,7 +335,7 @@ export const AtlasCard = memo(function AtlasCard({
                 cardRowIds={rowIds}
                 todayStr={todayStr}
                 milestoneIds={milestoneIds}
-                onTicked={held.hold}
+                onTicked={onRowTicked}
               />
             ))}
           </div>
@@ -328,7 +355,7 @@ export const AtlasCard = memo(function AtlasCard({
             text={reason}
             pinned={momentum && pinned}
             name={card.name}
-            onUnpin={momentum ? () => onPin!(card.key, null) : undefined}
+            onUnpin={momentum ? unpin : undefined}
           />
         )}
 

@@ -36,7 +36,7 @@ import { getActionLog, usePlannerStore } from '@/lib/planner-store';
 import { useAtlasStore } from '@/lib/atlas-store';
 import * as db from '@/lib/db';
 import { dropCard } from '@/lib/atlas-drop';
-import { layoutPositions, type AtlasLayoutResult } from '@/lib/atlas-layouts';
+import { filterCards, layoutPositions, type AtlasFilters, type AtlasLayoutResult } from '@/lib/atlas-layouts';
 import { momentumBand } from '@/lib/atlas-momentum';
 import { laneFor } from '@/lib/atlas-by-goal';
 import { TIMELINE_DAY_PX, xForDate } from '@/lib/atlas-timeline';
@@ -65,34 +65,48 @@ async function load(items: Item[], projects: Project[], goals: Goal[] = []) {
 const cardsNow = () =>
   build({ items: store().items as Item[], projects: store().projects, goals: store().goals });
 
-function lay(layout: AtlasLayout, cards: AtlasCard[]): AtlasLayoutResult {
+const NO_FILTERS: AtlasFilters = { hideFinished: false, hideResting: false };
+const bandsOf = (cards: AtlasCard[]) =>
+  new Map(cards.map((c) => [c.key, momentumBand(c, undefined, TODAY, useAtlasStore.getState().places[c.key]?.band ?? null)]));
+
+/** As AtlasView lays out: filter first, then lay out the visible cards. */
+function lay(layout: AtlasLayout, cards: AtlasCard[], filters: AtlasFilters = NO_FILTERS): AtlasLayoutResult {
   const goals = store().goals;
-  return layoutPositions(layout, cards, {
+  const bands = bandsOf(cards);
+  return layoutPositions(layout, filterCards(cards, filters, bands), {
     places: {},
-    bands: new Map(cards.map((c) => [c.key, momentumBand(c, undefined, TODAY, useAtlasStore.getState().places[c.key]?.band ?? null)])),
+    bands,
     lanes: new Map(cards.map((c) => [c.key, laneFor(c, goals)])),
+    goalCards: cards.filter((c) => c.kind === 'goal'),
     todayStr: TODAY,
   });
 }
 
-function drop(layout: AtlasLayout, key: string, to: { x: number; y: number }) {
+/** As AtlasView's onMove: the lane and the start point are the ones DRAWN. */
+function drop(layout: AtlasLayout, key: string, to: { x: number; y: number }, filters: AtlasFilters = NO_FILTERS) {
   const cards = cardsNow();
   const card = cards.find((c) => c.key === key)!;
-  const result = lay(layout, cards);
+  const result = lay(layout, cards, filters);
   const goals = store().goals;
+  const drawn = result.cardLane.get(key);
   return dropCard({
     layout,
     card,
     to,
+    from: result.positions.get(key),
     result,
     band: momentumBand(card, undefined, TODAY, useAtlasStore.getState().places[key]?.band ?? null),
-    lane: laneFor(card, goals),
+    lane: drawn && drawn !== 'none' ? drawn : null,
     goals,
     goalsShown: true,
   });
 }
 
 const laneRect = (layout: AtlasLayout, id: string) => lay(layout, cardsNow()).lanes.find((l) => l.id === id)!.rect;
+const nudge = (layout: AtlasLayout, key: string, filters: AtlasFilters = NO_FILTERS, dx = 10) => {
+  const p = lay(layout, cardsNow(), filters).positions.get(key)!;
+  return { x: p.x + dx, y: p.y };
+};
 const inColumn = (id: string) => ({ x: laneRect('momentum', id).x + 20, y: 100 });
 const inLane = (id: string) => ({ x: 40, y: laneRect('goal', id).y + 10 });
 
@@ -132,6 +146,16 @@ describe('Momentum', () => {
       goalsShown: false,
     });
     expect(useAtlasStore.getState().places['project:p1']).toMatchObject({ x: 120, y: 80, band: 'resting' });
+  });
+
+  it('a drop in its own column says the app orders it; a nudge is silent', () => {
+    const at = lay('momentum', cardsNow()).positions.get('project:p1')!;
+    expect(drop('momentum', 'project:p1', { x: at.x + 5, y: at.y + 6 })).toEqual({ wrote: false });
+    expect(drop('momentum', 'project:p1', { x: at.x, y: at.y + 200 })).toEqual({
+      wrote: false,
+      message: ATLAS_COPY.orderIsTheApps,
+    });
+    expect(useAtlasStore.getState().places['project:p1']).toBeUndefined();
   });
 
   it('springs back outside every column, with a reason', () => {
@@ -195,6 +219,43 @@ describe('By goal', () => {
     expect(store().goals.find((g) => g.id === 'g2')!.memberIds).toEqual([]);
   });
 
+  it('with Hide finished on, a card feeding an achieved goal keeps that lane, and a nudge writes nothing', async () => {
+    await load(items, [WORK], [goal('g1', { name: 'Old', state: 'achieved', memberIds: ['a', 'b'] }), goal('g2', { name: 'New' })]);
+    const filters = { hideFinished: true, hideResting: false };
+    const r = lay('goal', cardsNow(), filters);
+    // The goal's own card is hidden, but its lane stays, headed by its name.
+    expect(r.positions.has('goal:g1')).toBe(false);
+    expect(r.lanes.find((l) => l.id === 'g1')).toMatchObject({ label: 'Old', count: 1 });
+    expect(r.cardLane.get('project:p1')).toBe('g1');
+    const updateGoal = vi.spyOn(store(), 'updateGoal');
+    const before = getActionLog().length;
+    expect(drop('goal', 'project:p1', nudge('goal', 'project:p1', filters), filters)).toEqual({ wrote: false });
+    expect(updateGoal).not.toHaveBeenCalled();
+    expect(getActionLog()).toHaveLength(before);
+    expect(store().goals.find((g) => g.id === 'g1')!.memberIds).toEqual(['a', 'b']);
+  });
+
+  it('a drop in its own lane says so after a real move', async () => {
+    await load(items, [WORK], [goal('g1', { memberIds: ['a'] })]);
+    expect(drop('goal', 'project:p1', nudge('goal', 'project:p1', NO_FILTERS, 260))).toEqual({
+      wrote: false,
+      message: ATLAS_COPY.alreadyInLane,
+    });
+  });
+
+  it('a link that adds nothing springs back with a reason; a partial link counts only what it adds', async () => {
+    // Both items are already the goal's milestones: nothing to add.
+    await load(items, [WORK], [goal('g1', { name: 'Ship', milestoneIds: ['a', 'b'] })]);
+    const before = getActionLog().length;
+    expect(drop('goal', 'project:p1', inLane('g1'))).toEqual({ wrote: false, message: ATLAS_COPY.alreadyPartOf('Ship') });
+    expect(getActionLog()).toHaveLength(before);
+
+    await load(items, [WORK], [goal('g1', { name: 'Ship', milestoneIds: ['a'] })]);
+    drop('goal', 'project:p1', inLane('g1'));
+    expect(getActionLog()[0].label).toBe(ATLAS_COPY.linked(1, 'Ship'));
+    expect(store().goals[0].memberIds).toEqual(['b']);
+  });
+
   it('a goal card springs back; so does a card with nothing to link', async () => {
     await load([], [WORK], [goal('g1'), goal('g2')]);
     expect(drop('goal', 'goal:g1', inLane('g2')).message).toBe(ATLAS_COPY.goalsStay);
@@ -225,6 +286,46 @@ describe('Timeline', () => {
     expect(drop('timeline', 'goal:g1', { x, y: at.y })).toEqual({
       wrote: false,
       message: ATLAS_COPY.cantEndBeforeStart('Apr 10'),
+    });
+    expect(store().goals[0].targetOn).toBe('2026-05-01');
+  });
+
+  it('a goal whose target is outside the default window is drawn inside it, and a nudge keeps its day', async () => {
+    await load([], [WORK], [goal('far', { targetOn: '2028-06-01' }), goal('past', { targetOn: '2025-11-01' })]);
+    const r = lay('timeline', cardsNow());
+    expect(r.timeline!.window.start <= '2025-11-01').toBe(true);
+    expect(r.timeline!.window.end >= '2028-06-01').toBe(true);
+    for (const key of ['goal:far', 'goal:past']) {
+      const at = r.positions.get(key)!;
+      expect(at.x).toBeGreaterThan(-ATLAS_CARD_W);
+      expect(at.x).toBeLessThan(r.timeline!.width);
+      // A one-pixel jitter is under half a day: nothing is written.
+      expect(drop('timeline', key, { x: at.x + 1, y: at.y })).toEqual({ wrote: false });
+    }
+    // A one-day move writes exactly one day later, never a window edge.
+    const at = r.positions.get('goal:far')!;
+    drop('timeline', 'goal:far', { x: at.x + TIMELINE_DAY_PX, y: at.y });
+    expect(store().goals.find((g) => g.id === 'far')!.targetOn).toBe('2028-06-02');
+  });
+
+  it('a drop past the drawn months springs back with a reason', async () => {
+    await load([], [WORK], [goal('g1', { targetOn: '2026-05-01' })]);
+    const r = lay('timeline', cardsNow());
+    const at = r.positions.get('goal:g1')!;
+    expect(drop('timeline', 'goal:g1', { x: r.timeline!.width + 400, y: at.y })).toEqual({
+      wrote: false,
+      message: ATLAS_COPY.dropInsideTimeline,
+    });
+    expect(store().goals[0].targetOn).toBe('2026-05-01');
+  });
+
+  it("a finished goal's target never moves", async () => {
+    await load([], [WORK], [goal('g1', { state: 'achieved', targetOn: '2026-05-01' })]);
+    const r = lay('timeline', cardsNow());
+    const at = r.positions.get('goal:g1')!;
+    expect(drop('timeline', 'goal:g1', { x: at.x + 60, y: at.y })).toEqual({
+      wrote: false,
+      message: ATLAS_COPY.finishedGoalKeepsDate,
     });
     expect(store().goals[0].targetOn).toBe('2026-05-01');
   });

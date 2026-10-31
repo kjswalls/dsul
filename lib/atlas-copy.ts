@@ -47,6 +47,9 @@ export const ATLAS_COPY = {
   /** Footer touch lines. */
   touchedToday: 'touched today',
   touchedAgo: (days: number) => `touched ${days}d ago`,
+  /** Momentum's reason line says the date (rule 13), not a count. */
+  touchedYesterday: 'touched yesterday',
+  touchedOn: (day: string) => `touched ${day}`,
   restingSince: (day: string) => `resting since ${day}`,
   pausedTill: (day: string) => `paused till ${day}`,
   paused: 'paused',
@@ -73,6 +76,8 @@ export const ATLAS_COPY = {
           : 'Nothing on the map yet. Projects show up here as cards.',
   /** Accessible names. */
   cardLabel: (name: string, kind: string) => `${name}, ${kind}`,
+  /** In a computed layout the name says the column or lane (the lanes layer is aria-hidden). */
+  cardInLane: (label: string, lane: string) => `${label}, in ${lane}`,
   canvasLabel: 'Atlas map',
   /** The focus sheet (PR1c). */
   focus: 'Focus',
@@ -116,7 +121,7 @@ export const ATLAS_COPY = {
   bandSoon: 'Soon',
   bandResting: 'Resting',
   bandNowHint: 'moving this week',
-  bandSoonHint: 'touched lately or dated this month',
+  bandSoonHint: 'touched lately or dated within a month',
   bandRestingHint: 'parked, no pressure',
   /* Momentum's reasons: what the app read, never a tally of idle days. */
   tickedToday: 'ticked today',
@@ -130,6 +135,7 @@ export const ATLAS_COPY = {
   pinned: (name: string, band: string) => `Pinned ${name} to ${band}`,
   unpinned: (name: string) => `${name} is back to the app's sort`,
   dropInColumn: 'Drop it in a column to pin it there',
+  orderIsTheApps: 'The app orders each column. Drop it in another to pin it.',
 
   /* By goal. */
   notFeeding: 'Not feeding a goal',
@@ -141,6 +147,8 @@ export const ATLAS_COPY = {
   dropInLane: 'Drop it in a lane to link it',
   goalsStay: 'Goals stay at the head of their lane',
   nothingToLink: 'Nothing in it to link yet',
+  alreadyInLane: "It's already here. Drop it in another lane to link or unlink it.",
+  alreadyPartOf: (goal: string) => `Already part of ${goal}`,
 
   /* Timeline. */
   laneRepeats: 'Repeats',
@@ -160,6 +168,8 @@ export const ATLAS_COPY = {
   routineNoDate: 'A routine repeats, so it has no single date',
   seasonsFollowDates: 'Seasons follow their own dates. Open one to change them.',
   dropAboveNoDates: 'Drop it on a month to give it a target',
+  dropInsideTimeline: 'Drop it on a month inside the timeline',
+  finishedGoalKeepsDate: 'A finished goal keeps its date',
   dragTarget: (day: string) => `target ${day}`,
 
   /*

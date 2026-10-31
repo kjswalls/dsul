@@ -8,6 +8,7 @@ import { MOMENTUM_BANDS, bandHint, bandLabel, type MomentumResult } from './atla
 import { ATLAS_COPY } from './atlas-copy';
 import {
   TIMELINE_DAY_PX,
+  goalTargetSpan,
   latestTimelineDate,
   timelinePlace,
   timelineWidth,
@@ -74,6 +75,12 @@ export interface AtlasLayoutResult {
   positions: Map<string, Point>;
   lanes: AtlasLane[];
   timeline: AtlasTimelineDecor | null;
+  /**
+   * The lane each card is DRAWN in (an AtlasLane id), in the computed
+   * layouts. A drop reads its "from" here, never re-derives it, so what a
+   * drag means always matches what the screen shows.
+   */
+  cardLane: Map<string, string>;
 }
 
 export interface AtlasLayoutCtx {
@@ -83,6 +90,12 @@ export interface AtlasLayoutCtx {
   bands: ReadonlyMap<string, MomentumResult>;
   /** By goal's lane per card key (a goal id, or null). */
   lanes?: ReadonlyMap<string, string | null>;
+  /**
+   * By goal: every goal card, filtered or not. A goal a filter hides still
+   * gets a lane (a heading, no head card) while a visible card feeds it, so a
+   * card is never drawn under "Not feeding a goal" while it feeds one.
+   */
+  goalCards?: readonly AtlasCard[];
   seasons?: readonly Season[];
   todayStr: string;
 }
@@ -121,7 +134,7 @@ export function layoutPositions(
     const p = ctx.places[c.key];
     if (p) positions.set(c.key, p);
   }
-  return { positions, lanes: [], timeline: null };
+  return { positions, lanes: [], timeline: null, cardLane: new Map() };
 }
 
 /* ── Momentum: three columns ───────────────────────────────────────────── */
@@ -132,8 +145,13 @@ const COL_HEAD = 64;
 
 function momentumLayout(cards: readonly AtlasCard[], ctx: AtlasLayoutCtx): AtlasLayoutResult {
   const positions = new Map<string, Point>();
+  const cardLane = new Map<string, string>();
   const by: Record<AtlasBand, AtlasCard[]> = { now: [], soon: [], resting: [] };
-  for (const c of cards) by[ctx.bands.get(c.key)?.band ?? 'soon'].push(c);
+  for (const c of cards) {
+    const band = ctx.bands.get(c.key)?.band ?? 'soon';
+    by[band].push(c);
+    cardLane.set(c.key, band);
+  }
   const tallest = Math.max(...MOMENTUM_BANDS.map((b) => by[b].length), 1);
   const h = Math.max(480, COL_HEAD + tallest * ATLAS_SLOT_H + 12);
   const lanes = MOMENTUM_BANDS.map((band, i): AtlasLane => {
@@ -149,7 +167,7 @@ function momentumLayout(cards: readonly AtlasCard[], ctx: AtlasLayoutCtx): Atlas
       drop: true,
     };
   });
-  return { positions, lanes, timeline: null };
+  return { positions, lanes, timeline: null, cardLane };
 }
 
 /* ── By goal: a lane per goal, then "Not feeding a goal" ───────────────── */
@@ -163,21 +181,30 @@ const LANE_W = LANE_PAD * 2 + GOAL_SLOT + PER_ROW * (ATLAS_CARD_W + GAP) - GAP;
 
 function goalLayout(cards: readonly AtlasCard[], ctx: AtlasLayoutCtx): AtlasLayoutResult {
   const positions = new Map<string, Point>();
-  const goalCards = cards.filter((c) => c.kind === 'goal');
+  const cardLane = new Map<string, string>();
+  const shown = new Set(cards.filter((c) => c.kind === 'goal').map((c) => c.key));
+  const heads = ctx.goalCards ?? cards.filter((c) => c.kind === 'goal');
   const feeders = new Map<string | null, AtlasCard[]>([[null, []]]);
-  for (const g of goalCards) feeders.set(g.id, []);
+  for (const g of heads) feeders.set(g.id, []);
   for (const c of cards) {
     if (c.kind === 'goal') continue;
-    const lane = ctx.lanes?.get(c.key) ?? null;
-    (feeders.get(lane) ?? feeders.get(null)!).push(c);
+    let lane = ctx.lanes?.get(c.key) ?? null;
+    if (!feeders.has(lane)) lane = null;
+    feeders.get(lane)!.push(c);
+    cardLane.set(c.key, lane ?? 'none');
   }
   const lanes: AtlasLane[] = [];
   let y = 0;
-  const lay = (head: AtlasCard | null, list: AtlasCard[]) => {
+  // `head` names the lane; `drawHead` is false for a goal a filter hides,
+  // whose lane keeps its heading and its feeders but draws no head card.
+  const lay = (head: AtlasCard | null, list: AtlasCard[], drawHead: boolean) => {
     const top = y;
     const x0 = head ? LANE_PAD + GOAL_SLOT : LANE_PAD;
     const perRow = head ? PER_ROW : PER_ROW + 1;
-    if (head) positions.set(head.key, { x: LANE_PAD, y: top + LANE_HEAD });
+    if (head && drawHead) {
+      positions.set(head.key, { x: LANE_PAD, y: top + LANE_HEAD });
+      cardLane.set(head.key, head.id);
+    }
     list.forEach((c, i) => {
       positions.set(c.key, {
         x: x0 + (i % perRow) * (ATLAS_CARD_W + GAP),
@@ -198,9 +225,13 @@ function goalLayout(cards: readonly AtlasCard[], ctx: AtlasLayoutCtx): AtlasLayo
     });
     y = top + h + LANE_GAP;
   };
-  for (const g of goalCards) lay(g, feeders.get(g.id) ?? []);
-  lay(null, feeders.get(null) ?? []);
-  return { positions, lanes, timeline: null };
+  for (const g of heads) {
+    const list = feeders.get(g.id) ?? [];
+    const drawHead = shown.has(g.key);
+    if (drawHead || list.length > 0) lay(g, list, drawHead);
+  }
+  lay(null, feeders.get(null) ?? [], false);
+  return { positions, lanes, timeline: null, cardLane };
 }
 
 /* ── Timeline: months, season bars, rows ───────────────────────────────── */
@@ -221,9 +252,11 @@ function packRow(rows: number[], x: number, w: number): number {
 
 function timelineLayout(cards: readonly AtlasCard[], ctx: AtlasLayoutCtx): AtlasLayoutResult {
   const positions = new Map<string, Point>();
+  const cardLane = new Map<string, string>();
   const seasonsById = new Map((ctx.seasons ?? []).map((s) => [s.id, s]));
   const placed = cards.map((c) => [c, timelinePlace(c, ctx.todayStr, seasonsById)] as const);
-  const win = timelineWindow(ctx.todayStr, latestTimelineDate(placed.map(([, p]) => p)));
+  const places = placed.map(([, p]) => p);
+  const win = timelineWindow(ctx.todayStr, latestTimelineDate(places), goalTargetSpan(places));
   const width = timelineWidth(win);
   const clampX = (x: number, w = 0) => Math.max(0, Math.min(width - w, x));
   const todayX = xForDate(win, ctx.todayStr);
@@ -245,6 +278,7 @@ function timelineLayout(cards: readonly AtlasCard[], ctx: AtlasLayoutCtx): Atlas
   let y = barsBottom + 12;
   const row = (id: string, label: string, list: (readonly [AtlasCard, TimelinePlace])[], place: (list: (readonly [AtlasCard, TimelinePlace])[], top: number) => number) => {
     const top = y;
+    for (const [c] of list) cardLane.set(c.key, id);
     const used = place(list, top + ROW_HEAD);
     const h = ROW_HEAD + Math.max(1, used) * ATLAS_SLOT_H;
     lanes.push({ id, kind: 'timeline', label, count: list.length, rect: { x: 0, y: top, w: width, h }, drop: false });
@@ -307,6 +341,7 @@ function timelineLayout(cards: readonly AtlasCard[], ctx: AtlasLayoutCtx): Atlas
       width,
       noDatesY,
     },
+    cardLane,
   };
 }
 

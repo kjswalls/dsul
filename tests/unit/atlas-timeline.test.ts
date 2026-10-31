@@ -29,6 +29,18 @@ describe('the window', () => {
   });
 });
 
+describe('the window reaches every goal target', () => {
+  it('starts at the earliest goal target and runs past the cap to the latest', () => {
+    const w = timelineWindow(TODAY, '2028-06-01', { earliest: '2025-11-01', latest: '2028-06-01' });
+    expect(w.start).toBe('2025-11-01');
+    expect(w.end >= '2028-06-01').toBe(true);
+  });
+
+  it('keeps the default start when every target is ahead', () => {
+    expect(timelineWindow(TODAY, '2026-05-01', { earliest: '2026-05-01', latest: '2026-05-01' }).start).toBe('2026-02-01');
+  });
+});
+
 describe('xForDate and dateForX', () => {
   const w = timelineWindow(TODAY, '2026-12-01');
   it('round trip on every day, and snap to a whole day', () => {

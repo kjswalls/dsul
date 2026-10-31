@@ -59,6 +59,7 @@ import {
   Puzzle,
   Map as MapIcon,
 } from 'lucide-react';
+import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 import { ATLAS_COPY } from '../atlas-copy';
 import { addDays, subDays } from 'date-fns';
 
@@ -177,6 +178,11 @@ const planner = () => usePlannerStore.getState();
 const view = () => useViewStore.getState();
 /** Atlas has no day of its own (design rule 4); a few commands step around it. */
 const onAtlas = () => view().scope === 'atlas';
+/**
+ * The focus sheet is open: a layout switch underneath would move the card the
+ * sheet shrinks back into, so Atlas's layout commands wait for it to close.
+ */
+const atlasSheetOpen = () => useAtlasUiStore.getState().sheet !== null;
 /** By goal needs Goals on and loaded; the other layouts always work. */
 const atlasGoalsShown = () => goalsEnabled() && planner().goalsAvailable;
 const atlasLayoutAllowed = (layout: AtlasLayout) => layout !== 'goal' || atlasGoalsShown();
@@ -821,7 +827,7 @@ export const STATIC_COMMANDS: Command[] = [
     // Atlas's own list (D2). view.layout is gated off Atlas, so no one
     // command offers both lists and no alias has two owners. Not flattened:
     // the four key commands below are the flat rows.
-    availableWhen: (ctx) => !ctx.isMobile && onAtlas(),
+    availableWhen: (ctx) => !ctx.isMobile && onAtlas() && !atlasSheetOpen(),
     hidden: (ctx) => ctx.isMobile,
     argument: {
       kind: 'enum',
@@ -850,7 +856,7 @@ export const STATIC_COMMANDS: Command[] = [
         keys: [ATLAS_LAYOUT_SHORTCUTS[o.value].key],
         context: ATLAS_COPY.layoutShortcutContext,
       },
-      availableWhen: (ctx) => !ctx.isMobile && onAtlas() && atlasLayoutAllowed(o.value),
+      availableWhen: (ctx) => !ctx.isMobile && onAtlas() && !atlasSheetOpen() && atlasLayoutAllowed(o.value),
       hidden: (ctx) => ctx.isMobile,
       run: () => view().setAtlasLayout(o.value),
     })

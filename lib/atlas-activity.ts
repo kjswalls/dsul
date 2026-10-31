@@ -1,5 +1,5 @@
 import type { AtlasCard } from './atlas-model';
-import type { ItemEvent } from './db';
+import { ITEM_EVENTS_FOR_CAP, type ItemEvent } from './db';
 import { lastDoneOn } from './goals';
 import { toDateStr } from './recurrence';
 import { toDateOnly } from './overdue';
@@ -19,10 +19,13 @@ import { ATLAS_RESTING_DAYS } from './atlas-model';
  *   a few busy items would push everyone else's last event out: it is asked
  *   about {@link ACTIVITY_BATCH} ids at a time.
  * - `fetchCompletedAt` throws on an error; that read is quiet.
- * - A failed or unavailable events read (it answers `[]` quietly, and
- *   `getItemEventsAvailable()` goes false once the table is missing) is
- *   UNKNOWN, never "quiet": then only a recent touch counts, and an old one
- *   reads 'unknown', so no card goes to Resting on a read that failed (rule 13).
+ * - A failed or unavailable events read is UNKNOWN, never "quiet": the read
+ *   is made `strict` (it throws on an error instead of answering `[]`), and
+ *   `getItemEventsAvailable()` goes false once the table is missing. A batch
+ *   that comes back at the row cap may have dropped quieter items' latest
+ *   events, so it counts as a failed read too. Then only a recent touch
+ *   counts, and an old one reads 'unknown', so no card goes to Resting on
+ *   missing data (rule 13).
  * - Read on Atlas mount, twice (now and at +2s, since events land
  *   fire-and-forget after the write), and cached for {@link ACTIVITY_CACHE_MS}
  *   so switching layouts never re-reads.
@@ -68,6 +71,9 @@ export async function readItemTouches(ids: readonly string[], deps: ActivityDeps
       try {
         const rows = await deps.fetchEvents(unique.slice(i, i + ACTIVITY_BATCH), since);
         for (const r of rows) touches.set(r.itemId, later(touches.get(r.itemId), r.createdAt)!);
+        // A full answer may have pushed a quieter item's latest event out:
+        // what was read stands, but "no event" can no longer be trusted.
+        if (rows.length >= ITEM_EVENTS_FOR_CAP) eventsOk = false;
       } catch {
         eventsOk = false;
         break;
