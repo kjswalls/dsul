@@ -142,8 +142,13 @@ export function SoundCues() {
           if (t.streaming) {
             cueSound('aiStart');
           } else {
+            // Only a reply that finished just now. One stopped before its first
+            // word is dropped in the same update, which leaves an EARLIER
+            // complete reply newest; it was already complete before, so it is
+            // not this turn's.
             const reply = [...t.messages].reverse().find((m) => m.role === 'assistant');
-            if (reply?.status === 'complete') cueSound('aiDone');
+            const before = reply && prev.threads[id]?.messages.find((m) => m.id === reply.id);
+            if (reply?.status === 'complete' && before?.status !== 'complete') cueSound('aiDone');
           }
         }
       })
