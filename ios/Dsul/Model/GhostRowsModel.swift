@@ -7,7 +7,7 @@ import Foundation
 /// `selectOverdue`), the gates are ghost-fold.tsx's (`ghostVerbAllowed`), and
 /// every write is one this planner already makes: Keep for today, Move to
 /// tomorrow and Reschedule are `move` (the store's `moveTaskToDate`), Send to
-/// sidebar is `unschedule` (`unscheduleTask`), and Let it go is the new
+/// sidebar is `unschedule`'s write (`unscheduleTask`), and Let it go is the new
 /// `letGo` (`letGoItems`). Showing a ghost writes nothing.
 extension SamplePlanner {
     /// The ghosts on today, newest first, or none when the fold must not
@@ -26,7 +26,10 @@ extension SamplePlanner {
 
     /// Does the fold offer `verb` on `ghost`? The fold's own gate on the
     /// ghost's day (`ghostVerbAllowed`), and the server taking the write the
-    /// verb sends (`canWrite`), so a control never no-ops.
+    /// verb sends (`canWrite`), so a control never no-ops. Send to sidebar
+    /// asks `canSendToBraindump` alone, as the web's fold does, never Move to
+    /// Braindump's "not already a braindump row": a dated row that is neither
+    /// scheduled nor in a part of day ghosts too, and the verb clears its date.
     func ghostOffers(_ verb: GhostVerb, _ ghost: SampleItem) -> Bool {
         guard ghostVerbAllowed(verb, ghost, milestoneIds: milestoneIds ?? []) else { return false }
         switch verb {
@@ -48,16 +51,38 @@ extension SamplePlanner {
     }
 
     /// Keep all and Send all to sidebar: `verb` on every ghost that takes it,
-    /// one write each (the phone has no bulk item route). Keep all keeps each
-    /// one's time, as Keep for today does; the web's bulk carry
-    /// (`moveTasksToDate`) drops a stale clock time, a difference the plan
-    /// records.
+    /// one write each (the phone has no bulk item route). Keep all lands as
+    /// the web's bulk carry (`moveTasksToDate`) does: today, its bucket kept,
+    /// and a stale clock time dropped, so a 9 AM leftover kept at 3 PM is an
+    /// untimed row in its part of day, not a block in the past. That is the
+    /// `move`, then the Time chip's own write clearing the time
+    /// (`edit(.time)`, behind its own gate); Keep for today on one keeps the
+    /// time, as the web's `moveTaskToDate` does.
     func settleAllGhosts(_ verb: GhostVerb) {
         noteSorted {
             for ghost in ghostRows where ghostOffers(verb, ghost) {
                 runGhostVerb(verb, on: ghost.id, day: nil)
+                if verb == .keep, item(ghost.id)?.startTime != nil {
+                    edit(ghost.id, .time(bucket: nil, startTime: .clear, duration: nil))
+                }
             }
         }
+    }
+
+    /// Would `verb` on `id` take the fold from its last ghost to none? The
+    /// views send that change with no animation, so "All sorted, you got
+    /// this" and its lime dot arrive at once (a List would fade the new row
+    /// in through its own opacity).
+    func ghostVerbEmptiesFold(_ verb: GhostVerb, _ id: UUID) -> Bool {
+        let ghosts = ghostRows
+        guard ghosts.count == 1, let ghost = ghosts.first, ghost.id == id else { return false }
+        return ghostOffers(verb, ghost)
+    }
+
+    /// Would the bulk `verb` take every ghost? See `ghostVerbEmptiesFold`.
+    func ghostBulkEmptiesFold(_ verb: GhostVerb) -> Bool {
+        let ghosts = ghostRows
+        return !ghosts.isEmpty && ghosts.allSatisfy { ghostOffers(verb, $0) }
     }
 
     /// Stamps `ghostsSortedAt` when `change` took the fold from some ghosts
@@ -97,7 +122,11 @@ extension SamplePlanner {
         case .reschedule:
             guard let day else { return }
             move(id, to: day.description)
-        case .sidebar: unschedule(id, on: today)
+        case .sidebar:
+            // `ghostOffers` was the gate; Move to Braindump's own would refuse
+            // a dated row the braindump already lists.
+            guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+            writeUnscheduling(at: i)
         case .letGo: letGo(id)
         }
     }

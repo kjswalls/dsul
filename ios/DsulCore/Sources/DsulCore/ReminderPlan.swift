@@ -61,7 +61,8 @@ import Foundation
 // memory/plans/ghost-rows.md). A review request an older build armed
 // (`dsul-eod…`) is a dsul identifier no plan asks for, so the scheduler's diff
 // removes it, and the scheduler takes one in the shade back out itself
-// (NotificationScheduler.swift `retiredReviewIds`).
+// (`NotificationKeys.isRetiredReview` in NotificationCenterPort.swift, which
+// NotificationScheduler.swift's withdraw step asks).
 //
 // THE SHADE. A delivered notification is withdrawn when the day it is about
 // (its own dateStr, or the local day it was delivered on) no longer wants

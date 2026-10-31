@@ -745,6 +745,26 @@
         "sidebar": false,
         "letGo": false
       }
+    },
+    {
+      "name": "dated, not scheduled",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000028",
+        "title": "Loose end",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-10-13"
+      },
+      "milestoneIds": [],
+      "expected": {
+        "keep": true,
+        "tomorrow": true,
+        "reschedule": true,
+        "sidebar": true,
+        "letGo": true
+      }
     }
   ],
   "weekdays": [

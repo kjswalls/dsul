@@ -2363,6 +2363,10 @@ function buildGhostRows(): GhostRowsFixture {
     ['done', task(37, 'Done', { startDate: '2026-10-13', status: 'completed' }), []],
     ['let go already', task(38, 'Gone', { startDate: '2026-10-13', status: 'cancelled' }), []],
     ['a habit', habit(39, 'Meds'), []],
+    // Dated, but neither scheduled nor in a part of day: the braindump lists it
+    // and it ghosts, so Send to sidebar is offered and clears the date
+    // (Move to Braindump's own "already a braindump row" check is not asked).
+    ['dated, not scheduled', task(40, 'Loose end', { startDate: '2026-10-13', isScheduled: false }), []],
   ];
   const weekdayDates = ['2026-10-15', '2026-10-11', '2026-10-17', '2024-02-29', '2026-01-01', '2026-10-12T23:30:00.000Z'];
   return {

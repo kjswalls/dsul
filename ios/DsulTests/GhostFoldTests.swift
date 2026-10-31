@@ -68,6 +68,80 @@ import Testing
         #expect(planner.showsGhostsSorted)
     }
 
+    /// Keep all drops a stale clock time, as the web's `moveTasksToDate`
+    /// does: the 3 PM parcel lands today in its afternoon, untimed. On the
+    /// wire, the `move`, then the Time chip's write clearing the time. Keep
+    /// for today on one keeps the time (above).
+    @Test func keepAllDropsAStaleTime() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [parcelRow], goals: [])))
+        await server.on(itemRoute(parcel), .status(200, ok))
+        let planner = await loaded(server)
+        #expect(planner.ghostRows.map(\.id) == [parcel])
+        #expect(planner.ghostBulkEmptiesFold(.keep))
+
+        planner.settleAllGhosts(.keep)
+        let kept = try #require(planner.item(parcel))
+        #expect(kept.startDate == planner.today.description)
+        #expect(kept.timeBucket == "afternoon")
+        #expect(kept.startTime == nil)
+        #expect(planner.ghostRows.isEmpty)
+        #expect(planner.showsGhostsSorted)
+        await drain(planner)
+
+        let posts = await server.requests.filter { $0.route == itemRoute(parcel) }
+        var actions: [String] = []
+        for post in posts {
+            let body = try #require(post.body)
+            let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+            actions.append(try #require(json["action"] as? String))
+        }
+        #expect(actions == ["move", "time"])
+    }
+
+    /// A dated row that is neither scheduled nor in a part of day still
+    /// ghosts, and Send to sidebar takes it: its date cleared, the action
+    /// alone on the wire, as the web's `unscheduleTask`. Move to Braindump's
+    /// "already a braindump row" check is not the fold's.
+    @Test func sendingALooseLeftoverToTheSidebarClearsItsDate() async throws {
+        let loose = parcelRow
+            .replacingOccurrences(of: "\"timeBucket\":\"afternoon\",\"startTime\":\"15:00\",", with: "")
+            .replacingOccurrences(of: "\"isScheduled\":true", with: "\"isScheduled\":false")
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [loose], goals: [])))
+        await server.on(itemRoute(parcel), .status(200, ok))
+        let planner = await loaded(server)
+        let ghost = try #require(planner.ghostRows.first)
+        #expect(ghost.id == parcel)
+        #expect(ghost.isScheduled != true && ghost.timeBucket == nil)
+        #expect(planner.ghostOffers(.sidebar, ghost))
+        #expect(planner.ghostVerbEmptiesFold(.sidebar, parcel))
+
+        planner.settleGhost(parcel, .sidebar)
+        #expect(planner.item(parcel)?.startDate == nil)
+        #expect(planner.ghostRows.isEmpty)
+        #expect(planner.showsGhostsSorted)
+        await drain(planner)
+
+        let posts = await server.requests.filter { $0.route == itemRoute(parcel) }
+        #expect(posts.count == 1)
+        let body = try #require(posts.first?.body)
+        #expect(String(decoding: body, as: UTF8.self) == "{\"action\":\"unschedule\"}")
+    }
+
+    /// Only the verb that takes the last ghost empties the fold, which is
+    /// when the views send the change unanimated.
+    @Test func onlyTheLastGhostEmptiesTheFold() throws {
+        let planner = SamplePlanner(todayString: "2026-10-01", now: { PlannerJSON.noon })
+        let ghosts = planner.ghostRows
+        #expect(ghosts.count == 2)
+        #expect(!planner.ghostVerbEmptiesFold(.keep, ghosts[0].id))
+        #expect(planner.ghostBulkEmptiesFold(.keep))
+        planner.settleGhost(ghosts[0].id, .keep)
+        #expect(planner.ghostVerbEmptiesFold(.keep, ghosts[1].id))
+        #expect(!planner.ghostVerbEmptiesFold(.keep, ghosts[0].id))
+    }
+
     /// Off (`leftoversOnToday` false, the account's `morning_check_enabled`):
     /// no fold. On, or a server too old to say: the leftover.
     @Test func theSwitchHidesTheFold() async {

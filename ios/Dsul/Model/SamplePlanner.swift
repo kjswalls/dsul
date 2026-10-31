@@ -755,10 +755,19 @@ final class SamplePlanner {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
         let before = items[i]
         guard offers(.braindump, before, verbContext(for: before, on: day)) else { return }
+        writeUnscheduling(at: i)
+    }
+
+    /// The write itself, once the caller's own gate passed: the row at `i`
+    /// unscheduled (DsulCore `unscheduling`), then sent. A leftover's Send to
+    /// sidebar asks its own gate (`ghostOffers`), which takes a dated row the
+    /// braindump already lists, as the web's `unscheduleTask` does.
+    func writeUnscheduling(at i: Int) {
+        let before = items[i]
         let after = unscheduling(before)
         guard after != before else { return }
         items[i] = after
-        sync?.enqueue(.unschedule(id: id), snapshot: before)
+        sync?.enqueue(.unschedule(id: before.id), snapshot: before)
     }
 
     /// Pause, or Pause until `until` (the exclusive resume day, yyyy-MM-dd; nil

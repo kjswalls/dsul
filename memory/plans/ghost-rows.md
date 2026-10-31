@@ -196,7 +196,9 @@ the same once-a-day shape.
 - **Motion.** Arrive: opacity 0 and a 2.5pt blur to rest over 1.1s on the web's
   curve, staggered 120ms, once per planner (`ghostsHaveArrived`, so a layout
   switch draws the rows at rest). Breathe: the box alone, 1 to 0.6 and back
-  over 8s (4s each way, autoreversed), staggered. Both off under Reduce Motion.
+  over 8s (4s each way, autoreversed), staggered. Both off under Reduce Motion,
+  and a first sight under Reduce Motion sets `ghostsHaveArrived` at once, so
+  turning Reduce Motion off with the fold on screen never hides the rows.
 - **Gestures.** Swipe right is Keep for today, swipe left Move to tomorrow:
   List's own `swipeActions` (full swipe runs it), and a horizontal-only drag
   (`GhostSwipe`, 80pt) in Buckets and Schedule, which have no List row to hang
@@ -215,19 +217,27 @@ the same once-a-day shape.
   same gates the web's fold asks on the ghost's own day (DsulCore
   `ghostVerbAllowed`, checked against ghost-rows.json) plus `canWrite`: Keep,
   Move to tomorrow and Reschedule are `move` (`moveTaskToDate`), Send to
-  sidebar is `unschedule` (`unscheduleTask`). Let it go had no phone route, so
+  sidebar is `unschedule`'s write (`unscheduleTask`). Send to sidebar asks
+  `canSendToBraindump` alone, as the web's fold does, not Move to Braindump's
+  "not already a braindump row" (`isTaskScheduled`): a dated row with no
+  `isScheduled` and no bucket ghosts too, and the verb clears its date, so the
+  control never no-ops (ghost-rows.json "dated, not scheduled"). Let it go had no phone route, so
   POST /api/app/items/:id gained `letGo` (lib/item-intents.ts `applyLetGo`:
   `{status:'cancelled'}` behind `letGoItems`' filter, 409 `not_let_go`, 200 and
   no write for a row already cancelled) and the payload's `writes` lists it,
   so a server without it never shows the verb.
-- **Keep all differs from the web on one point.** The phone has no bulk item
-  route, so Keep all is one `move` per ghost, which keeps each item's clock
-  time, where the web's `moveTasksToDate` drops a stale one. Each lands on
-  today in its own bucket either way. A bulk route that drops the time is the
-  fix if it matters.
+- **Keep all lands as the web's does.** The phone has no bulk item route, so
+  Keep all is one `move` per ghost, then, for one that has a clock time, the
+  Time chip's own write clearing it (`edit(.time)`), so each lands on today in
+  its own bucket, untimed, as `moveTasksToDate` leaves it. Keep for today on
+  one keeps its time on both, as `moveTaskToDate` does. Two writes per timed
+  ghost instead of one; a bulk route is the fix if that ever matters.
 - **"All sorted, you got this"** with the one lime dot, at full strength and
   with no transition, for four seconds (`ghostsSortedAt`, stamped only when the
-  person's own verb or bulk verb took the fold from some to none). A fetch, a
+  person's own verb or bulk verb took the fold from some to none). The verb
+  that empties the fold is sent with no animation (`ghostVerbEmptiesFold`,
+  `ghostBulkEmptiesFold`), since in the List layout the line arrives as a new
+  row and List would fade it, lime dot included, through its own opacity. A fetch, a
   pause, or a change on another device that empties it goes quietly. The phone
   raises no `review.saved`: recipes and mods run on the web.
 

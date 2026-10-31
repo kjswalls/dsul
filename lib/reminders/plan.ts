@@ -92,7 +92,8 @@
  * review request an older build armed (`dsul-eod…`) is a dsul identifier this
  * plan never asks for, so the hosted scheduler's diff removes it, and the
  * scheduler takes one already in the shade back out itself
- * (NotificationScheduler.swift `retiredReviewIds`).
+ * (`NotificationKeys.isRetiredReview` in NotificationCenterPort.swift, which
+ * NotificationScheduler.swift's withdraw step asks).
  *
  * THE SHADE. A delivered notification is withdrawn when the day it is about
  * no longer wants doing: done, skipped or paused on any device since it rang;
