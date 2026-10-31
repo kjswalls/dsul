@@ -20,7 +20,7 @@ the IDs:
 | `data-dnd-bucket="{bucket}"` | bucket section container | that bucket's region |
 | `data-dnd-id="{id}"` | every droppable | its ID from the table below |
 | `data-dnd-over="true\|false"` | every droppable | dnd-kit reports the pointer over it |
-| `data-dnd-acts="true\|false"` | `sidebar`, `list:*` | the pointer is over it AND a drop would write something (these two light only then) |
+| `data-dnd-acts="true\|false"` | `sidebar`, `list:*`, `atlas:*` | the pointer is over it AND a drop would write something (these two light only then) |
 | `data-testid="item-card"` + `data-item-id` + `data-item-kind` | every draggable row | identity |
 | `data-bucket` / `data-start-time` | every draggable row | the row's resolved slot |
 
@@ -32,6 +32,14 @@ on it, and `dnd.spec.ts` asserts that no droppable is missing it.
 
 Raw item ids: `active.id === item.id`. Type is resolved by store lookup, not encoded in
 the id. **Both tasks and habits are drag sources** (`components/primitives/task-row.tsx`).
+
+One exception: a row on an Atlas card is `atlasrow:{kind}:{containerId}:{itemId}`
+(`lib/dnd/atlas-ids.ts`), because one item can show on four cards and in the braindump at
+once and dnd-kit keys its registry by id. The shell normalises it to the item id
+(`dragItemIdOf`) at all three entry points, `beginDrag`, `trackReorder` and `handleDragEnd`,
+so the drag store, the ghost and every rule above see the raw item id. `atlasSourceOf` gives
+the card it came from, which only an `atlas:` drop reads. All parts are UUIDs or a kind word,
+never a name, so the id splits on `:`.
 
 ## Droppable IDs
 
@@ -48,6 +56,7 @@ the id. **Both tasks and habits are drag sources** (`components/primitives/task-
 | `week:{yyyy-MM-dd}:anytime` | Week-schedule per-day Anytime strip | schedule on that day, `anytime` bucket, no time |
 | `projectblock:{date}:{projectName}` | Project block in day view and in each Week × Buckets column | `moveTaskToProjectBlock(id)` — only if `task.project === projectName`; habits ignored. The move is date-agnostic: `{date}` (the column's day, the selected day in Day view) only keeps the id unique when a recurring block renders in several columns at once (#214) |
 | `sidebar` | Braindump | a task from the canvas: `unscheduleTask(id)` only where the shared rule sends it back, which is Move to Braindump's gate (`canSendToBraindump`): a repeating, finished, let-go, in-block or milestone task stays where it is. A task already in the braindump: `unscheduleTask(id)`. A habit on the canvas: `setItemPaused(id, true)` (command `pause-item`), so it shows in the Paused section; a habit already in the braindump, or one that can't pause or already is, no-ops. A selection does both in one undo (`sidebarDropPlan`, lib/dnd/sidebar-drop.ts), asking the same rule of each canvas task; one whose canvas tasks the rule all keeps, with no habit to pause, writes nothing and falls through to the dragged row |
+| `atlas:{kind}:{id}` | An Atlas card (`kind` = `project` \| `routine` \| `season` \| `goal`, `id` its UUID). Its own untransformed element over the card, so its rect is the card's box on screen. Collision is containment only (`lib/dnd/collision.ts`): the card under the pointer, inside the Atlas viewport, the topmost if two overlap; on the board between cards there is no target and the drop springs back with a reason; outside the board the other rules run without any `atlas:` id | Command `file-into-container` (nothing when the item is already in it, via `DropContext.containerMembers`), written by `fileIntoContainer` (`lib/atlas-file.ts`) as one undo: a project `setItemsProject(ids, name)`, a routine or season `setItemsCollected(ids, kind, id, true)`, a goal `setItemsGoal(ids, id, true)`. From another card of the same kind it moves: a routine or season also `setItemsCollected(..., false)` on the source, a goal `updateGoal(source, { memberIds })` (a milestone or check-in refuses). From a card of another kind it adds. Which kinds a type may join is the registry's (`canBulkSetProject`, `canBulkCollect`); a refusal springs back with its reason. Group: `fileIntoContainer(selection, ...)` |
 | `list:{yyyy-MM-dd}` | Day × List body, or one Week × List day | Task from the braindump: `scheduleTask(id, 'anytime', undefined, date)`. Task from the canvas onto another day: `moveTaskToDate(id, date)`, keeping bucket and time. Nothing for: the day it is already on, a recurring canvas task (its date is the series anchor), any habit (`listDropCommand`). Group: `moveTasksToDate` over `listGroupMovers` |
 
 `{bucket}` ∈ `anytime | morning | afternoon | evening` (`TimeBucket`).
@@ -304,7 +313,8 @@ it, which is the reversal this design exists to avoid.
 `scheduleTask(id, bucket, time?, dateStr?, { landsOn? })` (no `dateStr` keeps the task's date;
 `landsOn` is only the receipt's day) ·
 `scheduleHabit(id, bucket, time?)` · `assignHabitToBucket(id, bucket)` · `unscheduleTask(id)` ·
-`moveTaskToProjectBlock(id)` (all `lib/planner-store.ts`).
+`moveTaskToProjectBlock(id)` · `setItemsProject` · `setItemsCollected` · `setItemsGoal` ·
+`updateGoal` (the last four through `lib/atlas-file.ts`) (all `lib/planner-store.ts`).
 
 ## Definition sites
 
@@ -314,10 +324,11 @@ and the gap box that is scheduled:*:before/after for a cursor and spine:* for a 
 `components/views/day-schedule.tsx` (`hour:*`, `unscheduled:anytime`),
 `components/views/week-schedule.tsx` (`weekhour:*`, `week:*:anytime`),
 `components/views/project-block.tsx` (`projectblock:*`), `components/sidebar/braindump.tsx`
-(`sidebar`).
+(`sidebar`), `components/views/atlas/atlas-card-drop.tsx` (`atlas:*`).
 
 `useDraggable`: `components/primitives/task-row.tsx` (rows),
-`components/views/day-schedule.tsx` (schedule blocks).
+`components/views/day-schedule.tsx` (schedule blocks), `components/views/atlas/atlas-row.tsx`
+(`atlasrow:*`, a card's rows; the focus sheet's rows are not draggable).
 
 ## Testing note: autoscroll
 

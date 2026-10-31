@@ -7,6 +7,7 @@ import {
   type DropCommand,
   type DropContext,
 } from '@/lib/dnd/handle-drag-end';
+import { atlasCardDropId, atlasRowDragId, atlasSourceOf, dragItemIdOf, parseAtlasCardDropId } from '@/lib/dnd/atlas-ids';
 import { scheduleHabitPatch, scheduleTaskPatch, UNSCHEDULE_TASK_PATCH } from '@/lib/item-edit';
 import type { Item } from '@/lib/planner-types';
 
@@ -437,6 +438,9 @@ describe('resolveDrop: block drops follow the shared drop rule (PR 11)', () => {
         return clean({ ...it, inProjectBlock: true });
       case 'pause-item':
         return clean({ ...it, paused: true });
+      case 'file-into-container':
+        // Membership only: the row itself keeps every scheduling field.
+        return clean(it);
     }
   };
   const row = (key: Key, over: Record<string, unknown> = {}) =>
@@ -550,5 +554,60 @@ describe('resolveDrop: block drops follow the shared drop rule (PR 11)', () => {
         expect(drop(key, 'sidebar')).toEqual(row(key));
       }
     );
+  });
+});
+
+describe('atlas:{kind}:{id}, an Atlas card (PR4)', () => {
+  const P = '11111111-1111-4111-8111-111111111111';
+  const R = '22222222-2222-4222-8222-222222222222';
+  const ITEM = '33333333-3333-4333-8333-333333333333';
+
+  it.each(['project', 'routine', 'season', 'goal'] as const)('a drop on a %s card files into it', (kind) => {
+    expect(resolveDrop(ITEM, atlasCardDropId(kind, P), ctx())).toEqual({
+      kind: 'file-into-container',
+      itemId: ITEM,
+      container: { kind, id: P },
+    });
+  });
+
+  it('a habit files the same way (the registry decides what may join, not the grammar)', () => {
+    expect(resolveDrop(ITEM, atlasCardDropId('routine', R), ctx({ itemType: 'habit' }))).toMatchObject({
+      kind: 'file-into-container',
+    });
+  });
+
+  it('an item already in the container resolves to nothing', () => {
+    const containerMembers = vi.fn(() => new Set([ITEM]));
+    expect(resolveDrop(ITEM, atlasCardDropId('routine', R), ctx({ containerMembers }))).toBeNull();
+    expect(containerMembers).toHaveBeenCalledWith({ kind: 'routine', id: R });
+  });
+
+  it('carries the card a row was picked up from', () => {
+    const active = atlasRowDragId('routine', R, ITEM);
+    expect(dragItemIdOf(active)).toBe(ITEM);
+    expect(atlasSourceOf(active)).toEqual({ kind: 'routine', id: R });
+    expect(
+      resolveDrop(dragItemIdOf(active), atlasCardDropId('routine', P), ctx({ atlasSource: atlasSourceOf(active) }))
+    ).toEqual({
+      kind: 'file-into-container',
+      itemId: ITEM,
+      container: { kind: 'routine', id: P },
+      source: { kind: 'routine', id: R },
+    });
+  });
+
+  it('parses only well-formed ids, and leaves every other id alone', () => {
+    expect(parseAtlasCardDropId(`atlas:project:${P}`)).toEqual({ kind: 'project', id: P });
+    expect(parseAtlasCardDropId('atlas:folder:x')).toBeNull();
+    expect(parseAtlasCardDropId('atlas:project:')).toBeNull();
+    expect(parseAtlasCardDropId(`atlas:project:${P}:extra`)).toBeNull();
+    expect(resolveDrop(ITEM, 'atlas:folder:x', ctx())).toBeNull();
+    expect(dragItemIdOf(ITEM)).toBe(ITEM);
+    expect(atlasSourceOf(ITEM)).toBeNull();
+    expect(dragItemIdOf('atlasrow:folder:a:b')).toBe('atlasrow:folder:a:b');
+  });
+
+  it('is withheld from no input', () => {
+    expect(resolveDrop(ITEM, atlasCardDropId('goal', P), ctx({ input: 'touch' }))).not.toBeNull();
   });
 });

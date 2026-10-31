@@ -45,6 +45,7 @@ const COMMAND_INTENT: Record<DropCommand['kind'], 'move' | 'reorder'> = {
   'move-task-to-project-block': 'move',
   'move-task-to-date': 'move',
   'pause-item': 'move',
+  'file-into-container': 'move',
 };
 
 function ctx(overrides: Partial<DropContext> = {}): DropContext {
@@ -89,6 +90,7 @@ const EVERY_DROP_TARGET = [
   ['projectblock:2026-07-06:Work', 'touch'],
   ['sidebar', 'touch'],
   ['list:2026-07-06', 'touch'],
+  ['atlas:project:11111111-1111-4111-8111-111111111111', 'pointer'],
 ] as const satisfies readonly (readonly [string, DropContext['input']])[];
 
 describe('no drop in the grammar reorders anything', () => {

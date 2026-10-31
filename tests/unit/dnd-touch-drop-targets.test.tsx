@@ -116,6 +116,7 @@ const EVERY_DROP_TARGET = [
   'projectblock:2026-07-06:Work',
   'sidebar',
   'list:2026-07-06',
+  'atlas:project:11111111-1111-4111-8111-111111111111',
 ] as const;
 
 /** The pair that swaps: one box in the gap, two ids, one per input type. */

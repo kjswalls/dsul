@@ -90,3 +90,55 @@ describe('plannerCollision — list days', () => {
     expect(run(rects, rect(300, 30, -250, 100), { x: -200, y: 310 })[0]).toBe('sidebar');
   });
 });
+
+describe('plannerCollision: Atlas cards (PR4)', () => {
+  // The board spans x 0 to 1000; the braindump sits to its left.
+  const A = 'atlas:project:11111111-1111-4111-8111-111111111111';
+  const B = 'atlas:routine:22222222-2222-4222-8222-222222222222';
+  const OFF = 'atlas:goal:33333333-3333-4333-8333-333333333333';
+  const rects = {
+    sidebar: rect(0, 800, -300, 280),
+    [A]: rect(100, 160, 100, 260),
+    [B]: rect(100, 160, 500, 260),
+    // Panned off the board's right edge.
+    [OFF]: rect(100, 160, 1100, 260),
+  };
+  const at = (x: number, y: number) => rect(y - 5, 10, x - 5, 10);
+
+  function board(r: ClientRect = rect(0, 800, 0, 1000)) {
+    const el = document.createElement('div');
+    el.setAttribute('data-atlas-root', '');
+    el.getBoundingClientRect = () => ({ ...r, x: r.left, y: r.top, toJSON: () => r }) as DOMRect;
+    document.body.appendChild(el);
+  }
+
+  it('the card under the pointer wins, however near another centre is', () => {
+    board();
+    // Inside A's right edge, nearer B's centre than A's.
+    expect(run(rects, at(355, 110), { x: 355, y: 110 })).toEqual([A]);
+  });
+
+  it('between cards on the board there is no target, never the nearest card or the braindump', () => {
+    board();
+    expect(run(rects, at(430, 180), { x: 430, y: 180 })).toEqual([]);
+  });
+
+  it('a card off the board is skipped', () => {
+    board();
+    // The pointer is past the board's edge, over the off-screen card's rect.
+    const ids = run(rects, at(1200, 180), { x: 1200, y: 180 });
+    expect(ids).not.toContain(OFF);
+  });
+
+  it('off the board the braindump still wins, and no card is offered by centre', () => {
+    board();
+    const ids = run(rects, at(-200, 180), { x: -200, y: 180 });
+    expect(ids[0]).toBe('sidebar');
+    expect(ids.some((id) => String(id).startsWith('atlas:'))).toBe(false);
+  });
+
+  it('with no Atlas on screen, atlas ids never answer by centre', () => {
+    const ids = run(rects, at(-200, 180), { x: -200, y: 180 });
+    expect(ids).toEqual(['sidebar']);
+  });
+});

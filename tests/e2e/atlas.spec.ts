@@ -1,7 +1,15 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { reloadApp, runCommand, setScope, waitForAppReady } from './helpers/app';
-import { cleanupByTitlePrefix, cleanupTestLabels, createTestTask, specScope } from './helpers/api';
+import {
+  cleanupByTitlePrefix,
+  cleanupTestCollections,
+  cleanupTestLabels,
+  createTestRoutine,
+  createTestTask,
+  specScope,
+} from './helpers/api';
+import { dragTo } from './helpers/dnd';
 
 /**
  * Atlas: the third scope, desktop only. A project shows as a card with its
@@ -14,7 +22,10 @@ import { cleanupByTitlePrefix, cleanupTestLabels, createTestTask, specScope } fr
  * touching an open item, and a card dragged into Momentum's Resting column
  * is pinned there across a reload. PR3: Ctrl+wheel past 50% swaps the cards
  * for the Relay grid canvas, panning the board off screen shows the minimap
- * and M pins it, and the Look pane has the Bloom or Dusk row.
+ * and M pins it, and the Look pane has the Bloom or Dusk row. PR4: a
+ * braindump row dropped on a card files it there (it stays in the braindump)
+ * and Undo takes it back; a row dragged from one routine's card to another's
+ * moves it, as one undo.
  *
  * Under its own prefix, swept by name like organize.spec.ts (projects are not
  * items, so the title sweep would miss them).
@@ -274,6 +285,70 @@ test.describe('atlas', () => {
     await page.goto('/');
     await waitForAppReady(page);
     await setScope(page, 'Day');
+  });
+
+  test('a braindump row dropped on a card files it there, and Undo takes it back', async ({ page }) => {
+    const name = scope.title('Filing');
+    const projectId = await createProject(page, name);
+    await createTestTask(page, { title: scope.title('Already in'), project: name });
+    const looseId = await createTestTask(page, { title: scope.title('Loose end') });
+    await reloadApp(page);
+
+    await setScope(page, 'Atlas');
+    const card = page.locator(`[data-atlas-card="project:${projectId}"]`);
+    await expect(card).toBeVisible();
+    await page.getByRole('button', { name: 'Fit every card on screen' }).click();
+    const count = card.getByTestId('atlas-count');
+    await expect(count).toHaveText('0 of 1');
+    // Every card is a droppable with the contract's markers (lib/dnd/CONTRACT.md).
+    await expect(card.locator(`[data-dnd-id="atlas:project:${projectId}"]`)).toHaveAttribute('data-dnd-over', 'false');
+    await expect(page.locator('[data-dnd-id]:not([data-dnd-over])')).toHaveCount(0);
+
+    const source = page.getByTestId('braindump').locator(`[data-testid="item-card"][data-item-id="${looseId}"]`);
+    await expect(source).toBeVisible();
+    await dragTo(page, source, card.getByTestId('atlas-card-drop'));
+
+    // Filed: the card counts it, and it is still in the braindump (no day yet).
+    await expect(count).toHaveText('0 of 2');
+    await expect(source).toBeVisible();
+
+    // One undo takes it back.
+    await page.getByTestId('atlas-view').focus();
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(count).toHaveText('0 of 1');
+    await setScope(page, 'Day');
+  });
+
+  test('a row dragged from one routine card to another moves it, as one undo', async ({ page }) => {
+    const stepId = await createTestTask(page, { title: scope.title('Stretch') });
+    const fromId = await createTestRoutine(page, { name: scope.title('Morning'), itemIds: [stepId] });
+    const toId = await createTestRoutine(page, { name: scope.title('Evening') });
+    try {
+      await reloadApp(page);
+      await setScope(page, 'Atlas');
+      const from = page.locator(`[data-atlas-card="routine:${fromId}"]`);
+      const to = page.locator(`[data-atlas-card="routine:${toId}"]`);
+      await expect(from).toBeVisible();
+      await expect(to).toBeVisible();
+      await page.getByRole('button', { name: 'Fit every card on screen' }).click();
+      await page.waitForTimeout(700);
+
+      const row = from.locator(`[data-testid="atlas-row"][data-item-id="${stepId}"]`);
+      await expect(row).toBeVisible();
+      await dragTo(page, row, to.getByTestId('atlas-card-drop'));
+
+      await expect(to.locator(`[data-testid="atlas-row"][data-item-id="${stepId}"]`)).toBeVisible();
+      await expect(from.locator(`[data-item-id="${stepId}"]`)).toHaveCount(0);
+
+      // Off one and onto the other is a single entry: one undo puts it back.
+      await page.getByTestId('atlas-view').focus();
+      await page.keyboard.press('ControlOrMeta+z');
+      await expect(from.locator(`[data-testid="atlas-row"][data-item-id="${stepId}"]`)).toBeVisible();
+      await expect(to.locator(`[data-item-id="${stepId}"]`)).toHaveCount(0);
+      await setScope(page, 'Day');
+    } finally {
+      await cleanupTestCollections(scope.prefix);
+    }
   });
 
   test('the phone shows no Atlas, even with Atlas left on this device', async ({ page }) => {

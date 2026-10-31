@@ -33,8 +33,58 @@ function listDayUnderPointer(args: Parameters<CollisionDetection>[0]) {
   return null;
 }
 
+const inside = (p: { x: number; y: number }, r: { left: number; top: number; width: number; height: number }) =>
+  p.x >= r.left && p.x <= r.left + r.width && p.y >= r.top && p.y <= r.top + r.height;
+
 /**
- * The list-day containment above, then `closestCenter`, minus the Week ×
+ * Atlas: the card the POINTER is inside wins, and nothing else on the board does.
+ *
+ * Cards are big and sit anywhere on a pannable board, so `closestCenter` would
+ * hand a drop in the gap between two cards to whichever centre was nearer, and
+ * a drop on empty board to the braindump (the only other droppable mounted
+ * while Atlas shows), which would send a row from a card back to the
+ * braindump. So:
+ *
+ * - A card counts only while the pointer is inside its box AND inside the Atlas
+ *   viewport (`[data-atlas-root]`, one at a time): a card panned under the
+ *   header or off the edge still has its full rect, and that part is not a
+ *   place anyone can see.
+ * - Two cards under the pointer (an expanded card over the one below) go to
+ *   the one painted on top, asked of the DOM; without `elementsFromPoint`
+ *   (jsdom), the last one mounted.
+ * - Inside the viewport but on no card (between cards, the far zoom, an open
+ *   focus sheet): no target. The drop springs back and the shell says why.
+ *   Outside the viewport: `null`, and the rules below run with every `atlas:`
+ *   id left out, so the braindump still takes its drops.
+ */
+function atlasCardUnderPointer(args: Parameters<CollisionDetection>[0]) {
+  const p = args.pointerCoordinates;
+  if (!p || typeof document === 'undefined') return null;
+  const root = document.querySelector('[data-atlas-root]');
+  if (!root || !inside(p, root.getBoundingClientRect())) return null;
+  const hits: (typeof args.droppableContainers)[number][] = [];
+  for (const container of args.droppableContainers) {
+    if (!String(container.id).startsWith('atlas:')) continue;
+    const r = args.droppableRects.get(container.id);
+    if (r && inside(p, r)) hits.push(container);
+  }
+  if (hits.length === 0) return [];
+  let pick = hits[hits.length - 1];
+  if (hits.length > 1 && typeof document.elementsFromPoint === 'function') {
+    for (const el of document.elementsFromPoint(p.x, p.y)) {
+      const card = el.closest('[data-atlas-card]');
+      const hit = card && hits.find((c) => card.contains(c.node?.current ?? null));
+      if (hit) {
+        pick = hit;
+        break;
+      }
+    }
+  }
+  return [{ id: pick.id, data: { droppableContainer: pick, value: 0 } }];
+}
+
+/**
+ * The Atlas card containment and the list-day containment above, then `closestCenter`, minus the Week ×
  * Schedule hour cells hidden under a pinned column head.
  *
  * The week columns pin their day header and Anytime strip while the hour grid
@@ -47,7 +97,13 @@ function listDayUnderPointer(args: Parameters<CollisionDetection>[0]) {
  * The heads are read from the DOM (`data-week-head`) because the pin moves with
  * every scroll; off the week view there are none and this is closestCenter.
  */
-export const plannerCollision: CollisionDetection = (args) => {
+export const plannerCollision: CollisionDetection = (input) => {
+  const atlas = atlasCardUnderPointer(input);
+  if (atlas) return atlas;
+  // Atlas cards answer by containment only, never by a nearest centre.
+  const args = input.droppableContainers.some((c) => String(c.id).startsWith('atlas:'))
+    ? { ...input, droppableContainers: input.droppableContainers.filter((c) => !String(c.id).startsWith('atlas:')) }
+    : input;
   const list = listDayUnderPointer(args);
   if (list) return list;
   if (typeof document === 'undefined') return closestCenter(args);

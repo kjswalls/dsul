@@ -215,10 +215,30 @@ export const ATLAS_COPY = {
   minimapContext: 'Atlas only, on the desktop.',
   minimapPinned: 'Minimap pinned',
   minimapUnpinned: 'Minimap hides at rest',
+
+  /* ── PR4: filing by drag (a braindump row, or a row from another card) ── */
+  /** The card's hint while a drag is over it and the drop would file. */
+  dropToFile: (name: string) => `Drop to file in ${name}`,
+  /** The card's hint while the dragged item is already in it (nothing writes). */
+  alreadyHere: 'Already here',
+  /** A drop that springs back: the type can't join this kind. */
+  cantFileIn: (name: string) => `Can't file that in ${name}`,
+  /** A drop that springs back: a subtask goes where its parent goes. */
+  subtaskStays: 'Subtasks go where their parent goes',
+  /** A drop that springs back: a goal's milestone or check-in, dragged to another goal. */
+  milestoneMoves: "Milestones and check-ins move from the goal's page",
+  /** A drop on the board between cards. */
+  dropOnCard: 'Drop it on a card to file it there',
+  /** The undo strip's sentences for a filing (ATLAS_UNDO_PREFIXES has 'Filed ' and 'Moved '). */
+  filed: (name: string) => `Filed in ${name}`,
+  filedFromBraindump: (name: string) => `Filed in ${name}. It stays in the braindump until it has a day.`,
+  filedMany: (n: number, name: string) => `Filed ${n} items in ${name}`,
+  movedRow: (title: string, to: string) => `Moved ${title} to ${to}`,
+  movedRows: (n: number, to: string) => `Moved ${n} items to ${to}`,
 } as const;
 
 /** The undo strip offers Undo for these (hooks/use-undo-toast.ts). */
-export const ATLAS_UNDO_PREFIXES = ['Linked ', 'Unlinked ', 'Moved ', 'Target for '] as const;
+export const ATLAS_UNDO_PREFIXES = ['Linked ', 'Unlinked ', 'Moved ', 'Target for ', 'Filed '] as const;
 
 /** Every string the copy holds, flattened, for the scanning test. */
 export function atlasCopyStrings(): string[] {

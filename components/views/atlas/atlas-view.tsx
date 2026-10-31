@@ -751,8 +751,9 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
       data-atlas-root=""
       data-testid="atlas-view"
       data-atlas-layout={layout}
-      // Whether a dnd-kit drag is in flight elsewhere (the braindump). Atlas
-      // takes no drop until PR4; the marker is for tests.
+      // Whether a dnd-kit drag is in flight (a braindump row, or a row from
+      // a card). Each card is its own drop target (atlas-card-drop.tsx); the
+      // marker is for tests.
       data-drag-active={activeId ? 'true' : undefined}
       role="region"
       aria-label={ATLAS_COPY.canvasLabel}
