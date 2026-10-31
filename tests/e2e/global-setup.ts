@@ -43,11 +43,12 @@ export default async function globalSetup() {
   // 2. Pin every auto-opening surface and view default OFF/deterministic.
   //
   // The old helper only set onboarding_completed, which left two other things
-  // free to appear over an unrelated spec: the morning check, which was on by
-  // default until migration 054 made rituals opt-in (a reused test account can
-  // still have it on), and the EOD review, which auto-opens past its configured
-  // time (its "already shown today" guard lives only in localStorage, so a fresh
-  // Playwright context after 21:00 pops it again). show_completed_tasks must be
+  // free to appear over an unrelated spec: the leftovers fold at the top of
+  // Today (morning_check_enabled), which a new account gets ON since migration
+  // 086, so it is pinned off here and the specs that want it turn it on; and
+  // the end of day review's switch, retired with the review (ghost rows phase
+  // 2) and still written off so a reused account holds nothing stale.
+  // show_completed_tasks must be
   // true or completion assertions can't see their own row; default_view must be
   // 'day' so nothing inherits a leaked Week. habit_reminders_enabled is off so
   // the tick serves nobody until reminders-tick.spec switches it on for itself:

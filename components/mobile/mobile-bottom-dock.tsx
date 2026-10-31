@@ -169,8 +169,8 @@ export function MobileBottomDock() {
       )}
 
       <div
-        // Focus handoff target for a self-dismissing notice — see
-        // useDismissWithFocus in components/ai/morning-check.tsx.
+        // Focus handoff target for a row that dismisses itself under the
+        // keyboard (lib/undo-strip-store.ts has the pattern).
         data-dock-surface
         className={cn('flex gap-2.5', chatBar ? 'items-end' : 'items-center')}
       >

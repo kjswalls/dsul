@@ -54,6 +54,7 @@ vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => mobile.on }));
 import { GhostFold, GHOST_DONE_MS } from '@/components/planner/ghost-fold';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
+import { __resetModEventsForTests, subscribeModEvents, type ModEvent } from '@/lib/mod-events';
 import { openEditFor } from '@/lib/ui-store';
 import * as db from '@/lib/db';
 import type { Item, TaskItem } from '@/lib/planner-types';
@@ -320,6 +321,65 @@ describe('“All sorted” is for the person’s own last verb', () => {
     expect(screen.queryByTestId('ghost-fold-done')).toBeNull();
     act(() => vi.advanceTimersByTime(GHOST_DONE_MS + 10));
     expect(rows()).toHaveLength(2);
+  });
+});
+
+/**
+ * The `review.saved` stand-in (ghost rows phase 2): the end of day review's
+ * event for recipes and mods, raised when the person's own verbs sort the last
+ * leftover, once a day, and never for a pile something else emptied.
+ */
+describe('sorting the last leftover raises review.saved', () => {
+  let heard: ModEvent[] = [];
+  let unsubscribe: () => void = () => {};
+  beforeEach(() => {
+    heard = [];
+    // An earlier test's dispatch can be left queued on a fake timer that
+    // useRealTimers discarded, which would hold the bus shut.
+    __resetModEventsForTests();
+    useMorningStore.setState({ leftoversClearedByUser: {} });
+    unsubscribe = subscribeModEvents((e) => {
+      if (e.kind === 'review.saved') heard.push(e);
+    });
+  });
+  afterEach(() => unsubscribe());
+
+  /** Run the bus's dispatch task (lib/mod-events.ts queues it on setTimeout 0). */
+  const dispatch = () => act(() => vi.advanceTimersByTime(1));
+
+  it('raises once, with today as its date, when the fold’s own verb clears it', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    fireEvent.click(screen.getByTestId('ghost-keep-all'));
+    dispatch();
+    expect(heard).toEqual([{ kind: 'review.saved', date: TODAY }]);
+    expect(useMorningStore.getState().leftoversClearedByUser).toEqual({ [USER]: TODAY });
+  });
+
+  it('raises nothing when the pile empties from outside the fold', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    act(() => store().unscheduleTasks(['thu', 'mon']));
+    dispatch();
+    expect(heard).toEqual([]);
+  });
+
+  it('raises nothing while ghosts remain', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    fireEvent.click(within(row('thu')).getByTestId('ghost-keep'));
+    dispatch();
+    expect(heard).toEqual([]);
+  });
+
+  it('is once a day: an undo and a second clearing say nothing more', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    fireEvent.click(screen.getByTestId('ghost-keep-all'));
+    dispatch();
+    act(() => store().undo());
+    expect(rows()).toHaveLength(2);
+    fireEvent.click(screen.getByTestId('ghost-keep-all'));
+    dispatch();
+    expect(heard).toEqual([{ kind: 'review.saved', date: TODAY }]);
+    // The line still says it, every time.
+    expect(screen.getByTestId('ghost-fold-done')).toBeInTheDocument();
   });
 });
 

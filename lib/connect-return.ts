@@ -14,8 +14,7 @@ import type { ModelConnectionView } from './ai-types';
  * An OpenRouter sign-in begun in the setup column comes back HOME, to
  * `/?connect=<result>` (the PKCE cookie's `r`, lib/ai-types.ts), and this is
  * the one step that turns that address into what the column says about it.
- * AppShell calls it once, on `/` only, as it does the `?eod=` link
- * (lib/eod-link.ts).
+ * AppShell calls it once, on `/` only.
  *
  * Client-safe (tests/unit/ai-server-boundary.test.ts).
  *

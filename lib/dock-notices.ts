@@ -84,7 +84,7 @@ export type DockNotice = {
    * The expanded body, if this notice has one. A function of the variant
    * because the two shells present it differently — a Popover growing upward
    * out of the dock on desktop, a Drawer on touch — and the bodies genuinely
-   * differ (see MorningTriageList's `variant`).
+   * differ (ai-work-notice.tsx's question round is one).
    */
   tray?: (variant: NoticeTrayVariant) => ReactNode;
   /** Drawer heading on touch. Required whenever `tray` is set. */

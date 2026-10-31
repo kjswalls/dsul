@@ -12,9 +12,8 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { usePlannerLoaded } from '@/lib/planner-ready';
 import { useNeedsYouStore } from '@/lib/needs-you-store';
 import { useConversationsStore } from '@/lib/conversations-store';
-import { useEODStore } from '@/lib/eod-store';
 import { buildChatOpeners, HOME_OPENERS, type ChatOpener } from '@/lib/ai-openers';
-import { activityRows, dayEndFromReview, dayLoad, loadLine, needsYou } from '@/lib/ask-home';
+import { activityRows, dayLoad, loadLine, needsYou } from '@/lib/ask-home';
 import { askNew } from '@/lib/open-chat';
 import { useAgentFreshness } from '@/hooks/use-agent-freshness';
 import { useOpenerContext } from '@/hooks/use-opener-context';
@@ -107,8 +106,6 @@ export function AskHome({ variant = 'rail' }: { variant?: 'rail' | 'mobile' }) {
   const items = usePlannerStore((s) => s.items);
   const summaries = useConversationsStore((s) => s.summaries);
   const list = useConversationsStore((s) => s.list);
-  const eodEnabled = useEODStore((s) => s.eodReviewEnabled);
-  const eodTime = useEODStore((s) => s.eodReviewTime);
   const awake = useContext(ComposerAwakeContext);
   useAgentFreshness(awake);
 
@@ -121,12 +118,11 @@ export function AskHome({ variant = 'rail' }: { variant?: 'rail' | 'mobile' }) {
     [ctx, minutesNow]
   );
 
+  // No day's end to count "free" against: it was the end of day review's
+  // hour, and the review is retired (ghost rows phase 2). dsul never invents one.
   const load = useMemo(
-    () =>
-      ctx && minutesNow !== null
-        ? loadLine(dayLoad(ctx, { minutesNow, dayEndMin: dayEndFromReview(eodEnabled, eodTime) }))
-        : null,
-    [ctx, minutesNow, eodEnabled, eodTime]
+    () => (ctx && minutesNow !== null ? loadLine(dayLoad(ctx, { minutesNow, dayEndMin: null })) : null),
+    [ctx, minutesNow]
   );
 
   // Answering is an act (a reply on the item's trail, then the re-queue), so

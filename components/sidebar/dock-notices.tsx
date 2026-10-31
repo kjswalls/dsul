@@ -11,12 +11,7 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useWaitingNotice } from '@/components/ai/morning-check';
-import {
-  useEodNotice,
-  useSweepNotice,
-  useSyncErrorNotice,
-} from '@/components/notices/notice-sources';
+import { useSweepNotice, useSyncErrorNotice } from '@/components/notices/notice-sources';
 import { useAINotice } from '@/components/notices/ai-notice';
 import { useAIWorkNotice } from '@/components/notices/ai-work-notice';
 import { useSidebarStore } from '@/lib/sidebar-store';
@@ -81,14 +76,10 @@ const MAX_ROWS = 1;
  * Order in this array is irrelevant — `rankNotices` sorts by what is pending,
  * not by which module raised it, which is the whole reason the rank exists.
  *
- * The three that can live somewhere better come from
- * components/notices/notice-sources.tsx, which the in-place slots also call. The
- * waiting notice stays here because `useWaitingNotice` closes its tray on
- * unmount, so it must be called from exactly one place in the tree.
+ * The sweep's receipt can live somewhere better, so it comes from
+ * components/notices/notice-sources.tsx, which the in-place slots also call.
  */
 function useDockNotices(): DockNotice[] {
-  const waiting = useWaitingNotice();
-  const eod = useEodNotice();
   const sweep = useSweepNotice();
   const syncError = useSyncErrorNotice();
   // The AI's key stopped working, or it moved to the user's own model. No
@@ -105,7 +96,7 @@ function useDockNotices(): DockNotice[] {
   // question with nowhere else to live, plus anything `blocked` (pinned) and
   // anything carrying a tray (which only the dock can open).
   return placeNotices(
-    [waiting, eod, sweep, syncError, ai, aiWork].filter((n): n is DockNotice => n !== null),
+    [sweep, syncError, ai, aiWork].filter((n): n is DockNotice => n !== null),
     live
   ).dock;
 }

@@ -29,7 +29,9 @@ export const TRIGGER_CHOICES: { value: TriggerChoice; label: string }[] = [
   { value: 'item.uncompleted', label: 'I untick an item' },
   { value: 'item.skipped', label: 'I skip an item' },
   { value: 'item.created', label: 'I add an item' },
-  { value: 'review.saved', label: "I save the day's review" },
+  // The retired end of day review's id, kept because stored recipes name it:
+  // it now fires when the leftovers fold is cleared (ghost rows phase 2).
+  { value: 'review.saved', label: 'I sort the last leftover on Today' },
   { value: 'day.opened', label: 'A new day starts' },
   { value: 'bucket.changed', label: 'Morning, afternoon or evening starts' },
   { value: 'time', label: 'At a time of day' },

@@ -1,18 +1,20 @@
 /**
  * scan.ts — the tick.
  *
- * Runs every few minutes, works out whose cue, last call or end-of-day review
- * is due in their own local minute, and hands each resolved nudge to
+ * Runs every few minutes, works out whose cue or last call is due in their
+ * own local minute, and hands each resolved nudge to
  * lib/reminders/deliver.ts. The route around it (app/api/cron/reminders) is
  * auth and a log line and nothing else, so this stays callable from a test
  * with a stubbed client and a fixed `now`.
  *
- * ONE SCAN, FOUR TIERS, per user and in this order: the EOD review (Tier 0),
- * the per-item cues (1), the streak-at-risk last call (2), the stakes
- * settlement (3). The review used to be a cron route of its own; it is a tier
- * because a second route was a second clock, a second copy of the window
- * arithmetic (it wrapped at midnight) and a second order of operations (it
- * delivered, then stamped). Something new that wants to reach a person on a
+ * ONE SCAN, THREE TIERS, per user and in this order: the per-item cues (1),
+ * the streak-at-risk last call (2), the stakes settlement (3). Tier 0 was the
+ * end of day review's invitation, retired with the review itself (ghost rows
+ * phase 2, memory/plans/ghost-rows.md): the leftovers on Today wait to be
+ * opened and ask nothing of the phone. It had been a cron route of its own
+ * before it was a tier, because a second route was a second clock, a second
+ * copy of the window arithmetic (it wrapped at midnight) and a second order of
+ * operations (it delivered, then stamped). Something new that wants to reach a person on a
  * schedule (#220's morning check) is a tier here too, never a route:
  * tests/unit/one-cron.test.ts holds app/api/cron to this one.
  *
@@ -37,20 +39,15 @@ import {
   type ReminderCandidate,
   type ScanRow,
 } from './due'
-// The review's own parser, under another name, because due.ts's is the one
-// this file means by `minutesOfDay`. The two are not interchangeable: see the
-// review's tier below.
-import { isEodOwed, minutesOfDay as eodMinutesOfDay } from '../eod'
 import type { TimeFormat } from './copy'
 import { deliverNudge, type DeliveryReport } from './deliver'
 import type { Nudge } from './nudge'
 import type { ActivationContext } from '../active'
-import { currentAway } from '../away'
 import type { Item } from '../planner-types'
 import { isMissingColumn, loadChannelState } from './extension-state'
 import { localClock, type LocalClock } from './clock'
 import { claimCue, claimSnooze } from './claim'
-import { cueNudge, eodNudge, lastCallNudge } from './build'
+import { cueNudge, lastCallNudge } from './build'
 import { closeCueLog, openCueLog, resultsOf } from './cue-log-write'
 import { readOpenCues, retryOpenCues } from './retry'
 
@@ -84,12 +81,12 @@ const LAST_TICK = MINUTES_PER_DAY - TICK_MINUTES
  *
  * Clamped, a window opening at 23:57 is [23:57, 24:00), and no tick falls in
  * it: the last one of the day ran at 23:55, and the next is tomorrow's 00:00,
- * by which time the date has rolled and nothing about today is owed. A review,
- * a last call or a cue set to 23:56 through 23:59 (each is a native time
+ * by which time the date has rolled and nothing about today is owed. A last
+ * call or a cue set to 23:56 through 23:59 (each is a native time
  * input, so any minute can be saved) would never be sent, with no note to say
  * so. Opened at 23:55 it goes a few minutes early instead, which is the better
- * of the two. All three windows open here: the review's and the last call's
- * below, the cues' through dueReminders' `latestOpening`. So does the stakes
+ * of the two. Both windows open here: the last call's below, the cues'
+ * through dueReminders' `latestOpening`. So does the stakes
  * settlement's threshold, which is no window but has the same gap.
  */
 export function windowOpensAt(minutes: number): number {
@@ -113,6 +110,11 @@ export function windowOpensAt(minutes: number): number {
  * 062 gave dsul_tick one more clause, deliberately NOT in this list: it also
  * wakes for any switched-on recipe with a timed trigger (user_mods), which is
  * the recipe tier's own read (lib/recipes/server/tick.ts), never this scan's.
+ *
+ * `eod_review_enabled` stays in the list although the review's tier is gone
+ * (ghost rows phase 2): dsul_tick (058) still names it, and the two must match
+ * until a migration redefines that gate. A user here for it alone is read and
+ * skipped (nothing set, nothing owed, nothing to retry), so it costs a row.
  */
 export const TICK_FLAGS = ['habit_reminders_enabled', 'stakes_enabled', 'eod_review_enabled'] as const
 
@@ -162,12 +164,6 @@ interface ReminderUserRow {
   stakes_enabled: boolean | null
   stakes_settle_time: string | null
   stakes_settled_date: string | null
-  eod_review_enabled: boolean | null
-  eod_review_time: string | null
-  /** yyyy-MM-dd the review was last invited: the review tier's claim. */
-  last_eod_notified_date: string | null
-  /** yyyy-MM-dd the review was last DONE, which retires tonight's invitation. */
-  last_eod_review_date: string | null
 }
 
 /**
@@ -227,12 +223,10 @@ export interface ScanSummary {
   cues: number
   /** Last calls delivered. */
   lastCalls: number
-  /** End-of-day review invitations delivered. */
-  eod: number
   /**
    * Nudges that reached nobody: every channel that took one had nowhere to
    * deliver it (push with no device) or declined it. Each is ALSO counted in
-   * `cues`, `lastCalls` or `eod`, because its claim was consumed all the same —
+   * `cues` or `lastCalls`, because its claim was consumed all the same —
    * see noteFailures.
    */
   unreached: number
@@ -284,7 +278,6 @@ export async function runReminderScan(
     users: 0,
     cues: 0,
     lastCalls: 0,
-    eod: 0,
     unreached: 0,
     retried: 0,
     daysSettled: 0,
@@ -301,23 +294,16 @@ export async function runReminderScan(
   // unconditionally means a database that has 029 but not 031 stops delivering
   // every reminder — Tier 1 and Tier 2 alike — until someone runs db:push by
   // hand. The stakes half is the part that should degrade, not all of it.
-  //
-  // The review's four columns ride with the reminders, not the stakes: they
-  // are older than 032 (002, 010 and 018), so any database the reminder half
-  // can read, they are on.
   const REMINDER_COLUMNS =
     'user_id, timezone, time_format, habit_reminders_enabled, habit_last_call_enabled, ' +
-    'habit_last_call_time, habit_last_call_date, ' +
-    'eod_review_enabled, eod_review_time, last_eod_notified_date, last_eod_review_date'
+    'habit_last_call_time, habit_last_call_date'
   const STAKES_COLUMNS = 'stakes_enabled, stakes_settle_time, stakes_settled_date'
 
   const readUsers = async (columns: string, stakesKnown: boolean) => {
     // ANY switch brings a user into the tick. They are genuinely separate
     // wants — someone may keep the accounting while turning off the nagging,
-    // or want the evening review and no reminders at all — and filtering on
-    // reminders alone would silently never settle their days or invite their
-    // review. Without the stakes columns there is no stakes flag to OR
-    // against; the review's is still there.
+    // — and filtering on reminders alone would silently never settle their
+    // days. Without the stakes columns there is no stakes flag to OR against.
     //
     // A flag added to TICK_FLAGS needs a new migration that redefines
     // dsul_tick's gate to match, or the tick never reaches the route for
@@ -406,7 +392,7 @@ export async function runReminderScan(
     try {
       const book = bookByUser.get(user.user_id) ?? new Map<string, BookkeepingRow>()
       // Both reminder kinds hang off the master switch. The query's .or() never
-      // implies it (a user is here for stakes or the review just as well), so
+      // implies it (a user is here for stakes just as well), so
       // it is asserted here rather than assumed — that is exactly the kind of
       // implication a later filter change breaks silently.
       const remindersOn = user.habit_reminders_enabled === true
@@ -433,67 +419,31 @@ export async function runReminderScan(
           ? daysToSettle(clock.dateStr, user.stakes_settled_date)
           : []
 
-      // Is tonight's review owed, and is this its window? Owed is lib/eod.ts's
-      // isEodOwed, the question the dock asks, so a review already DONE today
-      // is never invited — which the route this tier replaced never checked.
-      // That veto is only as good as the stamp it reads: last_eod_review_date
-      // is the day a review was FOR (the push's own date, via its link and
-      // lib/eod.ts's reviewedDay), so last night's review finished after
-      // midnight does not cancel tonight's invitation.
-      // Its hour is read by lib/eod.ts's parser, never due.ts's: the column has
-      // no CHECK (010) and the store saves what it is given, so '9:00' is a
-      // value a row can hold, and the strict HH:mm parser would read it as no
-      // time at all and the review as never due. The window is due.ts's,
-      // clamped at midnight like every other here: a 23:50 review gets ten
-      // minutes, and is never sent again at 00:05 as the next day's. It opens
-      // no later than the day's last tick (windowOpensAt), so a 23:57 review
-      // goes at 23:55 rather than never, and owed is then asked as of the
-      // review's own hour, or the veto below would undo that by asking at
-      // 23:55 whether 23:57 has come.
-      const eodMinutes = user.eod_review_time ? eodMinutesOfDay(user.eod_review_time) : null
-      const eodDue =
-        eodMinutes !== null &&
-        user.last_eod_notified_date !== clock.dateStr &&
-        isWithinWindow(windowOpensAt(eodMinutes), clock.nowMinutes, grace) &&
-        isEodOwed(
-          {
-            eodReviewEnabled: user.eod_review_enabled === true,
-            eodReviewTime: user.eod_review_time ?? '',
-            lastEodReviewDate: user.last_eod_review_date,
-          },
-          clock.dateStr,
-          Math.max(clock.nowMinutes, eodMinutes),
-        )
-
       // The item tiers' cheap question. A standing cue wants the master switch
       // AND a row with a reminder on it: rows left over from before the switch
-      // went off bring nobody in, now that the review alone can put a user in
+      // went off bring nobody in, since another switch alone can put a user in
       // the tick.
       const itemsWanted = (remindersOn && book.size > 0) || lastCallDue || pendingDays.length > 0
       const retries = open.byUser.get(user.user_id) ?? []
 
       // Nothing set, nothing owed and nothing to retry — do not pay for the reads below.
-      if (!eodDue && !itemsWanted && retries.length === 0) continue
+      if (!itemsWanted && retries.length === 0) continue
 
-      // The user's trips, read once and shared by the review's veto and the
-      // ActivationContext below. null is migration 071 not applied: no trips.
+      // The user's trips, for the ActivationContext below. null is migration
+      // 071 not applied: no trips.
       const away = (await fetchAwayPeriods(user.user_id, service)) ?? undefined
-      // No review is invited on a day away: there is no day to review. Asked
-      // before the claim, so the stamp is left free for the day you are back.
-      const reviewDue = eodDue && !currentAway(away, clock.dateStr)
-      if (!reviewDue && !itemsWanted && retries.length === 0) continue
 
       summary.users += 1
 
       const timeFormat: TimeFormat = user.time_format === '24h' ? '24h' : '12h'
-      // Read before any claim below, the review's included. A claim whose
+      // Read before any claim below. A claim whose
       // delivery then cannot even be attempted is a nudge spent on nothing.
       const channelState = await loadChannelState(service, user.user_id)
       const base = { userId: user.user_id, service, timeFormat, timezone }
 
       // The user's items and activation context, read at most once a tick, and
       // only by whatever needs them: the retry pass, the cues, the last call
-      // and the settlement. A user here for the review alone never pays.
+      // and the settlement.
       let worldRead: Promise<{ items: Item[]; ctx: ActivationContext }> | null = null
       const world = () =>
         (worldRead ??= (async () => {
@@ -545,48 +495,10 @@ export async function runReminderScan(
           timeFormat,
           remindersOn,
           lastCallOn: user.habit_last_call_enabled === true,
-          eod: {
-            enabled: user.eod_review_enabled === true,
-            time: user.eod_review_time,
-            lastReviewDate: user.last_eod_review_date,
-          },
           world,
         })
         summary.retried += retried.retried
         summary.notes.push(...retried.notes)
-      }
-
-      /* ── The end-of-day review (Tier 0) ────────────────────────────────── */
-
-      // First, and before the item fetch, so a user who only wants the review
-      // never pays for one. Delivered through deliverNudge like every other
-      // nudge, never by calling the push channel directly: the fan-out is what
-      // absorbs a channel that fails, so a push that could not read the
-      // devices costs this review and not the cues below; and it is what lets
-      // voice and SMS decline the kind (REMINDER_KINDS) rather than this tier
-      // knowing that push is the only channel that wants it.
-      if (reviewDue) {
-        // CLAIMED, then delivered: the cue path's rule, and the reverse of the
-        // route this replaced, which delivered and then stamped, so a stamp
-        // that failed after a push that landed left the next tick free to send
-        // it again. Conditional, so two overlapping ticks cannot both win it.
-        const { data: claimedEod, error: eodError } = await service
-          .from('user_settings')
-          .update({ last_eod_notified_date: clock.dateStr })
-          .eq('user_id', user.user_id)
-          .or(`last_eod_notified_date.is.null,last_eod_notified_date.neq.${clock.dateStr}`)
-          .select('user_id')
-
-        if (eodError) {
-          summary.notes.push(`${user.user_id}: eod claim failed — ${eodError.message}`)
-        } else if ((claimedEod ?? []).length === 0) {
-          // Another tick got there first. Nothing to do, and nothing wrong.
-        } else {
-          // Good until the user's own midnight and no further: the review is
-          // about today, and tomorrow's invitation is tomorrow's.
-          await deliverLogged(eodNudge(clock.dateStr, expiryAt(clock, MINUTES_PER_DAY)), 'eod')
-          summary.eod += 1
-        }
       }
 
       if (!itemsWanted) continue
@@ -632,8 +544,7 @@ export async function runReminderScan(
       }
 
       // latestOpening: this clock ticks every five minutes, so a cue's window
-      // opens no later than its last tick, as the review's and the last
-      // call's do. due.ts leaves it to the caller because a clock that ticks
+      // opens no later than its last tick, as the last call's does. due.ts leaves it to the caller because a clock that ticks
       // every minute should not ring a 23:58 cue at 23:55.
       const candidates = remindersOn
         ? dueReminders(scanRows, { ...clock, graceMinutes: grace, latestOpening: LAST_TICK }, ctx)
@@ -641,7 +552,7 @@ export async function runReminderScan(
 
       if (candidates.length > 0) {
         // CLAIM BEFORE DELIVERING, which is the opposite of what the review's
-        // old route (/api/cron/eod-notify, now the tier above) did, and a
+        // old route (/api/cron/eod-notify, since retired) did, and a
         // deliberate divergence.
         //
         // Deliver-first survives a failed write by re-sending, and for a push

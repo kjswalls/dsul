@@ -54,11 +54,12 @@ export const NUDGES: NudgeDef[] = [
   },
   {
     id: NUDGE_RITUALS_INTRO,
-    // Issue #86. Both rituals are opt-in for a new account (migration 054), so
-    // without this nobody learns they exist. The nudge only points at them:
-    // the CTA opens the Rituals pane and turns nothing on, and the body says so.
-    title: 'Two quiet rituals, if you want them',
-    body: 'A morning line when something is still waiting from an earlier day, and a short review before the day closes. Both stay off unless you turn them on.',
+    // Issue #86. Leftovers on Today is on for an account made after migration
+    // 086, so this reaches an older account that still has it off, and anyone
+    // who turned it off before landing here. The nudge only points at it: the
+    // CTA opens the Rituals pane and turns nothing on, and the body says so.
+    title: 'Leftovers on Today, if you want them',
+    body: "Things you didn't get to can show up faded at the top of today, until you decide what happens to each one. It stays off unless you turn it on.",
     icon: Sunrise,
     ctaLabel: 'Rituals settings',
     settingsFocusId: 'rituals.morningCheck',
@@ -67,10 +68,10 @@ export const NUDGES: NudgeDef[] = [
 
 /**
  * When the rituals nudge may fire (issue #86): once the account has something
- * planned, after the first-run tour has had its say, and only while BOTH
- * rituals are off. Settings must be this account's (settingsBelongToUser), or a
+ * planned, after the first-run tour has had its say, and only while the
+ * leftovers are off. Settings must be this account's (settingsBelongToUser), or a
  * shared browser's previous values could hide it, or show it to someone who
- * already turned a ritual on. The tour gate waits for the tour's ANSWER, not
+ * already turned them on. The tour gate waits for the tour's ANSWER, not
  * just its absence, so the toast never lands on top of a tour about to open.
  *
  * `setupOrUndoUp` holds it while the tour's last card has left something on
@@ -87,7 +88,6 @@ export function ritualsNudgeReady(s: {
   tourShowing: boolean;
   hasTasks: boolean;
   morningCheckEnabled: boolean;
-  eodReviewEnabled: boolean;
   setupOrUndoUp: boolean;
 }): boolean {
   return (
@@ -96,7 +96,6 @@ export function ritualsNudgeReady(s: {
     !s.tourShowing &&
     s.hasTasks &&
     !s.morningCheckEnabled &&
-    !s.eodReviewEnabled &&
     !s.setupOrUndoUp
   );
 }

@@ -329,7 +329,7 @@ describe.each(NO_CHAT)('with no chat (%s)', (_label, state, offered) => {
     const ids = matchCommands('', desktopCtx).map((r) => r.command.id);
     for (const id of CHAT_COMMANDS) expect(ids).not.toContain(id);
     expect(ids).toContain('rituals.catchUp');
-    expect(ids).toContain('rituals.eod');
+    expect(ids).toContain('view.scopeWeek');
     // Not reachable by name either, old or new.
     for (const q of ['ask', 'chat', 'beacon', 'plan my day']) {
       const hits = matchCommands(q, desktopCtx).map((r) => r.command.id);
@@ -1011,7 +1011,7 @@ describe('the doors into setup, with nothing connected', () => {
       usePlannerStore.setState({
         tasks: [{ id: 't1', type: 'task', title: '?dentist at three', status: 'pending', isScheduled: false, order: 0, completedDates: [] }] as never,
       });
-      useCommandUsageStore.getState().record('rituals.eod');
+      useCommandUsageStore.getState().record('view.scopeWeek');
       renderDock('?dentist');
       expect(rowValues('dock')).toEqual(['action-setup']);
       expect(screen.queryByTestId('omnibar-result')).toBeNull();
@@ -1129,10 +1129,10 @@ describe('the doors into setup, with nothing connected', () => {
 
     it('never shows twice, Recently used included', () => {
       useCommandUsageStore.getState().record('ai.setup');
-      useCommandUsageStore.getState().record('rituals.eod');
+      useCommandUsageStore.getState().record('view.scopeWeek');
       render(<Omnibar variant="launcher" />);
       expect(screen.getByText(RECENT_HEADING)).toBeInTheDocument();
-      expect(scopeFor('launcher').querySelector('[data-value="recent:rituals.eod"]')).not.toBeNull();
+      expect(scopeFor('launcher').querySelector('[data-value="recent:view.scopeWeek"]')).not.toBeNull();
       expect(scopeFor('launcher').querySelectorAll('[data-command-id="ai.setup"]')).toHaveLength(1);
       expect(setupRow('launcher')).not.toBeNull();
     });

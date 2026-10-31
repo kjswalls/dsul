@@ -17,7 +17,7 @@
  * the clock and the suppressed ids, the same way lib/proposal.ts and
  * lib/day-items.ts take them.
  *
- * COPY CONTRACT (shared with proposal-card.tsx, morning-check.tsx's `BarCopy`
+ * COPY CONTRACT (shared with proposal-card.tsx, the leftovers on Today
  * and the "Still waiting" heading in item-registry.ts): no opener may name a
  * failure, count a miss, or imply lateness. "What's been sitting?" is the
  * shape to keep — permission, phrased in the user's own voice, because they are

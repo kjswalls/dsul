@@ -12,11 +12,10 @@ import { toDateStr } from '@/lib/recurrence';
  * the ids set aside today (lib/active.ts `inactiveItemIdsOn`, resolved at TODAY,
  * plan decision 3, never at the navigable selectedDate).
  *
- * One hook so the waiting notice (components/ai/morning-check.tsx) and the ghost
- * rows on Today (components/planner/ghost-fold.tsx) can never disagree about
- * which day it is or what is paused. It used to live inline in morning-check's
- * usePastDue; it moved here unchanged when the ghost fold became its second
- * reader.
+ * The inputs the ghost rows on Today (components/planner/ghost-fold.tsx) read.
+ * It used to live inline in the waiting notice's usePastDue, and moved here
+ * unchanged when the ghost fold became its second reader; the waiting notice
+ * is gone since ghost rows phase 2.
  */
 export function useOverdueInputs() {
   const items = usePlannerStore((s) => s.items);

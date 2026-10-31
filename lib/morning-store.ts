@@ -2,9 +2,9 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { format } from 'date-fns';
 import { saveSettings } from './settings-service';
 import { usePlannerStore } from './planner-store';
+import { raiseModEvent } from './mod-events';
 
 /**
  * localStorage key for the persisted slice.
@@ -20,7 +20,6 @@ export const MORNING_STORE_PERSIST_KEY = 'dsul-morning-store';
 export interface MorningServerSettings {
   morningCheckEnabled: boolean;
   morningCheckTime: string;
-  morningCheckDismissedDate: string | null;
   morningAutoAgeEnabled: boolean;
   morningAutoAgeDays: number;
 }
@@ -34,27 +33,23 @@ export interface MorningServerSettings {
  * whole point: nothing here may ever be handed to the *next* account.
  */
 const USER_SCOPED_DEFAULTS = {
-  morningCheckDismissedDate: null as string | null,
-  // Off until the account says otherwise: rituals are opt-in (migration 054).
+  // Off until the account's settings say otherwise. A new account's column
+  // default is ON (migration 086, the leftovers on Today), but this is what a
+  // browser shows before those settings land, and a fold that flashed in for
+  // someone who turned it off would be the wrong way round.
   morningCheckEnabled: false,
+  // Read by no view since the waiting tray went (ghost rows phase 2); it
+  // persists like any setting nothing reads, and is left alone.
   morningCheckTime: '08:00',
   morningAutoAgeEnabled: false,
   morningAutoAgeDays: 30,
   settingsHydratedUserId: null as string | null,
-  isOpen: false,
 };
 
 interface MorningStore {
-  morningCheckDismissedDate: string | null; // yyyy-MM-dd
+  /** The leftovers on Today switch (`rituals.morningCheck`), the ghost fold's gate. */
   morningCheckEnabled: boolean;
   morningCheckTime: string; // HH:mm
-  /**
-   * Past-due tray open state. EPHEMERAL, per-session, per-tab UI state — it is
-   * deliberately absent from `partialize` and has no Supabase column. The bar
-   * itself is always 50px in flow; the tray is a portaled popover, so this flag
-   * costs the canvas zero layout pixels and must never survive a reload.
-   */
-  isOpen: boolean;
   /** Opt-in decay: unschedule items past due by more than morningAutoAgeDays. */
   morningAutoAgeEnabled: boolean;
   morningAutoAgeDays: number;
@@ -112,15 +107,15 @@ interface MorningStore {
    * expiry is free — a receipt for an earlier day can never be shown again.
    */
   morningAutoAgeReceiptByUser: Record<string, AutoAgeReceipt>;
-  dismiss: () => void;
-  /** Undo today's dismissal so the morning check renders again. */
-  resetDismissal: () => void;
-  isDismissedToday: () => boolean;
+  /**
+   * yyyy-MM-dd the person last cleared the leftovers fold with their own
+   * verbs, KEYED BY userId. LOCAL-ONLY, like the sweep's stamp: it is what
+   * keeps the `review.saved` stand-in (noteLeftoversCleared) to once a day on
+   * this device, and nothing else reads it.
+   */
+  leftoversClearedByUser: Record<string, string>;
   setMorningCheckEnabled: (enabled: boolean) => void;
   setMorningCheckTime: (time: string) => void;
-  open: () => void;
-  close: () => void;
-  toggle: () => void;
   setMorningAutoAgeEnabled: (enabled: boolean) => void;
   setMorningAutoAgeDays: (days: number) => void;
   /** Adopt server settings and record whose they are, in one set(). */
@@ -139,6 +134,15 @@ interface MorningStore {
   setAutoAgeReceipt: (userId: string, receipt: AutoAgeReceipt) => void;
   /** After "Put them back", or after the user waves the line away. */
   clearAutoAgeReceipt: (userId: string) => void;
+  /**
+   * The person just cleared the leftovers fold with their own verbs ("All
+   * sorted, you got this", components/planner/ghost-fold.tsx). Raises
+   * `review.saved` for recipes and mods, the end of day review's event, which
+   * this moment stands in for since the review retired (ghost rows phase 2).
+   * Once per account and day on this device: true when it raised, false when
+   * this day was already noted.
+   */
+  noteLeftoversCleared: (userId: string | null, date: string) => boolean;
 }
 
 /** One row as it stood immediately before the sweep unscheduled it. */
@@ -163,30 +167,7 @@ export const useMorningStore = create<MorningStore>()(
       ...USER_SCOPED_DEFAULTS,
       morningAutoAgeLastRunByUser: {},
       morningAutoAgeReceiptByUser: {},
-
-      dismiss: () => {
-        const today = format(new Date(), 'yyyy-MM-dd');
-        set({ morningCheckDismissedDate: today, isOpen: false });
-        const userId = usePlannerStore.getState().userId;
-        if (userId) saveSettings(userId, { morning_check_dismissed_date: today });
-      },
-
-      /**
-       * Clears BOTH the local date and the server-persisted one. Clearing only
-       * local state (which is what the dev button in desktop-shell used to do)
-       * shows the banner until the next reload, when settings hydrate from
-       * Supabase and re-dismiss it.
-       */
-      resetDismissal: () => {
-        set({ morningCheckDismissedDate: null });
-        const userId = usePlannerStore.getState().userId;
-        if (userId) saveSettings(userId, { morning_check_dismissed_date: null });
-      },
-
-      isDismissedToday: () => {
-        const today = format(new Date(), 'yyyy-MM-dd');
-        return get().morningCheckDismissedDate === today;
-      },
+      leftoversClearedByUser: {},
 
       setMorningCheckEnabled: (enabled) => {
         set({ morningCheckEnabled: enabled });
@@ -199,10 +180,6 @@ export const useMorningStore = create<MorningStore>()(
         const userId = usePlannerStore.getState().userId;
         if (userId) saveSettings(userId, { morning_check_time: time });
       },
-
-      open: () => set({ isOpen: true }),
-      close: () => set({ isOpen: false }),
-      toggle: () => set((state) => ({ isOpen: !state.isOpen })),
 
       setMorningAutoAgeEnabled: (enabled) => {
         set({ morningAutoAgeEnabled: enabled });
@@ -266,6 +243,11 @@ export const useMorningStore = create<MorningStore>()(
             morningAutoAgeReceiptByUser: {},
             morningAutoAgeLastRunByUser:
               incomingUserId && kept ? { [incomingUserId]: kept } : {},
+            // Pruned the same way, for the same reason: its keys are user ids.
+            leftoversClearedByUser:
+              incomingUserId && state.leftoversClearedByUser[incomingUserId]
+                ? { [incomingUserId]: state.leftoversClearedByUser[incomingUserId] }
+                : {},
           };
         }),
 
@@ -316,6 +298,25 @@ export const useMorningStore = create<MorningStore>()(
           delete next[userId];
           return { morningAutoAgeReceiptByUser: next };
         }),
+
+      noteLeftoversCleared: (userId, date) => {
+        const key = userId ?? '';
+        if (get().leftoversClearedByUser[key] === date) return false;
+        set((state) => ({
+          leftoversClearedByUser: {
+            // Self-pruning like the sweep's stamp: an earlier day's entry can
+            // never hold anything back again.
+            ...Object.fromEntries(
+              Object.entries(state.leftoversClearedByUser).filter(([, d]) => d === date)
+            ),
+            [key]: date,
+          },
+        }));
+        // The payload the review's Done raised: the day it was about. Here
+        // that is today, the only day the fold is drawn on.
+        raiseModEvent({ kind: 'review.saved', date });
+        return true;
+      },
     }),
     {
       name: MORNING_STORE_PERSIST_KEY,
@@ -330,7 +331,6 @@ export const useMorningStore = create<MorningStore>()(
         // unscheduled, so it returns before mutating or raising a toast).
         const state = (persisted ?? {}) as Record<string, unknown>;
         return {
-          morningCheckDismissedDate: (state.morningCheckDismissedDate as string | null) ?? null,
           morningCheckEnabled: (state.morningCheckEnabled as boolean) ?? false,
           morningCheckTime: (state.morningCheckTime as string) ?? '08:00',
           morningAutoAgeEnabled: (state.morningAutoAgeEnabled as boolean) ?? false,
@@ -339,6 +339,7 @@ export const useMorningStore = create<MorningStore>()(
           // Nothing to migrate — receipts did not exist before, and one is only
           // ever valid on the day it was written anyway.
           morningAutoAgeReceiptByUser: {},
+          leftoversClearedByUser: {},
         };
       },
       /**
@@ -353,23 +354,27 @@ export const useMorningStore = create<MorningStore>()(
        * (hooks/use-overdue-sweep.ts gate 2). A signal that a stored string can
        * forge is not a signal.
        *
-       * So the two ephemeral keys are stripped here unconditionally. `isOpen`
-       * rides along for the same class of reason: it is per-tab UI state, and a
-       * persisted `true` would open the tray by itself on load.
+       * So that ephemeral key is stripped here unconditionally. Two keys an
+       * older build persisted go too: the waiting tray's `isOpen` and
+       * `morningCheckDismissedDate`, both retired with the tray (ghost rows
+       * phase 2), so a blob that still holds them does not carry them back in.
        */
-      merge: (persisted, current) => ({
-        ...current,
-        ...(persisted as Partial<MorningStore>),
-        // Re-asserted AFTER the spread, so it does not matter what the blob
-        // claims: the live store's value always wins for these two. At creation
-        // that is the fail-closed initial state (null / false); on a manual
-        // rehydrate() it is whatever the session has legitimately established,
-        // which is the right answer in both cases.
-        settingsHydratedUserId: current.settingsHydratedUserId,
-        isOpen: current.isOpen,
-      }),
+      merge: (persisted, current) => {
+        const kept: Record<string, unknown> = { ...((persisted ?? {}) as Partial<MorningStore>) };
+        delete kept.isOpen;
+        delete kept.morningCheckDismissedDate;
+        return {
+          ...current,
+          ...(kept as Partial<MorningStore>),
+          // Re-asserted AFTER the spread, so it does not matter what the blob
+          // claims: the live store's value always wins. At creation that is the
+          // fail-closed initial state (null); on a manual rehydrate() it is
+          // whatever the session has legitimately established, which is the
+          // right answer in both cases.
+          settingsHydratedUserId: current.settingsHydratedUserId,
+        };
+      },
       partialize: (state) => ({
-        morningCheckDismissedDate: state.morningCheckDismissedDate,
         morningCheckEnabled: state.morningCheckEnabled,
         morningCheckTime: state.morningCheckTime,
         // Still persisted so the settings dialog opens on the right values
@@ -382,6 +387,7 @@ export const useMorningStore = create<MorningStore>()(
         // Persisted for the whole point of it: a receipt has to survive the
         // reload that the undo toast could not.
         morningAutoAgeReceiptByUser: state.morningAutoAgeReceiptByUser,
+        leftoversClearedByUser: state.leftoversClearedByUser,
       }),
     }
   )

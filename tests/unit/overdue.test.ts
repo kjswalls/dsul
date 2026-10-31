@@ -4,7 +4,6 @@ import {
   daysOverdue,
   selectOverdue,
   splitOverdueCohorts,
-  summarizeOverdue,
   toDateOnly,
 } from '@/lib/overdue';
 import { buildCustomTypeConfig } from '@/lib/item-registry';
@@ -87,10 +86,7 @@ const ids = (items: { id: string }[]) => items.map((i) => i.id);
 describe('selectOverdue', () => {
   it('returns nothing for an empty store', () => {
     expect(selectOverdue([], TODAY, NONE)).toEqual([]);
-    const summary = summarizeOverdue([], TODAY, NONE);
-    expect(summary.count).toBe(0);
-    expect(summary.recent).toEqual([]);
-    expect(summary.long).toEqual([]);
+    expect(splitOverdueCohorts([], TODAY)).toEqual({ recent: [], long: [] });
   });
 
   it('takes only dates strictly before today', () => {
@@ -205,7 +201,7 @@ describe('age cohorts', () => {
     const seven = task({ id: 'seven', startDate: D.d7 });
     const eight = task({ id: 'eight', startDate: D.d8 });
 
-    const { recent, long } = summarizeOverdue([seven, eight], TODAY, NONE);
+    const { recent, long } = splitOverdueCohorts(selectOverdue([seven, eight], TODAY, NONE), TODAY);
     expect(ids(recent)).toEqual(['seven']);
     expect(ids(long)).toEqual(['eight']);
   });
@@ -257,27 +253,6 @@ describe('age cohorts', () => {
   });
 });
 
-describe('the summary is deliberately count-only', () => {
-  /**
-   * There was an `oldestOverdueDate` here, and a `summary.oldestStartDate`, and
-   * this block used to assert them. Both are gone: their only consumer was the
-   * "· oldest Apr 9" tail of the bar copy, and an aggregate minimum age has
-   * exactly one reading — how far behind the user is — printed somewhere they
-   * cannot avoid it. The per-row date stamps carry all of the useful part.
-   *
-   * This test is the guard, not a relic: it fails if the field comes back.
-   */
-  it('exposes nothing about the pile beyond its size and its order', () => {
-    const summary = summarizeOverdue(
-      [task({ startDate: D.d1 }), task({ startDate: D.d100 })],
-      TODAY,
-      NONE
-    );
-    expect(Object.keys(summary).sort()).toEqual(['count', 'items', 'long', 'recent']);
-    expect(summary.count).toBe(2);
-  });
-});
-
 describe('toDateOnly', () => {
   it('passes yyyy-MM-dd through and truncates full ISO', () => {
     expect(toDateOnly('2026-07-15')).toBe('2026-07-15');
@@ -312,11 +287,6 @@ describe('selectOverdue + suppression', () => {
     const inactive = inactiveItemIdsOn([resumed, live], TODAY, { userTimezone: TZ });
     expect(inactive.size).toBe(0);
     expect(ids(selectOverdue([resumed, live], TODAY, inactive)).sort()).toEqual(['live', 'paused']);
-  });
-
-  it('does not count suppressed items in the bar summary', () => {
-    const inactive = inactiveItemIdsOn([paused, live], TODAY, { userTimezone: TZ });
-    expect(summarizeOverdue([paused, live], TODAY, inactive).count).toBe(1);
   });
 
   it('an empty set changes nothing (the pre-filtered-caller path)', () => {

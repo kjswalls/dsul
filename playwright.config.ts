@@ -113,7 +113,7 @@ export default defineConfig({
      *
      * The chain is total: chromium+mobile → dnd → habits. dnd depends on BOTH
      * front projects because mobile-tagged tests create fixtures too (pause,
-     * eod-review, recurring), and habits depends on dnd because both
+     * recurring), and habits depends on dnd because both
      * sweep the bare prefix and would otherwise delete each other — the exact
      * failure this whole arrangement exists to prevent, one level down.
      *

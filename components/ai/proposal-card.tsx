@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
  * The proposal card — the core interaction grammar of the whole product: the AI
  * suggests, you accept with one tap (memory/plans/ai-vision.md).
  *
- * Copy contract, same as BarCopy in morning-check.tsx and the "Still waiting"
+ * Copy contract, same as the leftovers on Today (memory/plans/ghost-rows.md) and the "Still waiting"
  * heading in item-registry.ts: nothing here tells the user what they failed to
  * do. Lines say where things land, the dismiss verb is "Not now" (a deferral,
  * not a refusal), and the empty state is good news rather than an absence.

@@ -44,7 +44,6 @@ describe('Rituals', () => {
   it('starts a group at every root, in manifest order', () => {
     expect(groups.map((g) => g.parent.id)).toEqual([
       'rituals.morningCheck',
-      'rituals.eod',
       'rituals.reminders',
       'rituals.stakes',
       'rituals.push',
@@ -68,9 +67,6 @@ describe('Rituals', () => {
   });
 
   it('draws a lone time and an action as single chips', () => {
-    const eod = groupOf(groups, 'rituals.eod') as Extract<PaneGroup, { mode: 'chips' }>;
-    expect(ids(eod.chips)).toEqual(['rituals.eodTime']);
-
     const stakes = groupOf(groups, 'rituals.stakes') as Extract<PaneGroup, { mode: 'chips' }>;
     expect(ids(stakes.chips)).toEqual(['rituals.stakesTime', 'rituals.ledger']);
   });
@@ -163,7 +159,7 @@ describe('lookups', () => {
   it('rootOf walks to the top of the chain', () => {
     expect(rootOf('rituals.autoAgeDays')).toBe('rituals.morningCheck');
     expect(rootOf('rituals.lastCallTime')).toBe('rituals.reminders');
-    expect(rootOf('rituals.eodTime')).toBe('rituals.eod');
+    expect(rootOf('rituals.stakesTime')).toBe('rituals.stakes');
     expect(rootOf('rituals.push')).toBe('rituals.push');
   });
 

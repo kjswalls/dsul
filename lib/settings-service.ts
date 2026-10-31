@@ -72,11 +72,12 @@ const DEFAULT_SETTINGS: UserSettingsRow = {
   compact_mode: false,
   chill_mode: false,
   show_time_indicator: true,
-  // Rituals are opt-in for a new account (migration 054 moved the column
-  // default the same way). This is the first-run seed AND the read-error
-  // fallback, so a failed read leaves the check off for that session: quiet is
-  // the right way for a ritual to fail.
-  morning_check_enabled: false,
+  // The leftovers on Today are on for a new account (migration 086 moved the
+  // column default the same way; Kirby, 2026-10-31). This is the first-run
+  // seed AND the read-error fallback, so a failed read draws the fold for that
+  // session: it is a view that writes nothing until a verb is picked, and the
+  // auto-age sweep keeps its own switch, off by default.
+  morning_check_enabled: true,
   left_sidebar_hover: false,
   right_sidebar_hover: false,
   morning_check_time: '08:00',

@@ -208,7 +208,7 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
         data-tour="dock"
         // The focus handoff target when a notice dismisses itself out from under
         // the keyboard: the capsule outlives every row in it and closes over the
-        // gap the row leaves. See useDismissWithFocus in components/ai/morning-check.tsx.
+        // gap the row leaves. lib/undo-strip-store.ts has the pattern.
         data-dock-surface
         data-dock-page={pageFoot ? capture : undefined}
         // No overflow-hidden here: the omnibar's suggestion panel grows upward

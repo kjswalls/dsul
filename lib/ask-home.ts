@@ -8,13 +8,13 @@
  * the client already holds, or from one narrow refetch
  * (hooks/use-agent-freshness.ts); nothing here asks the server anything.
  *
- * COPY CONTRACT (lib/ai-openers.ts, shared with proposal-card.tsx, morning-
- * check's `BarCopy` and agent-status.ts). The load line in particular never
+ * COPY CONTRACT (lib/ai-openers.ts, shared with proposal-card.tsx and
+ * agent-status.ts). The load line in particular never
  * names a miss, implies lateness, or counts what is undone against the user:
  * no "left", no "yet", no "still", no "more" without a time. It says what the
  * day holds, as a total, and what is done; the hours free are offered only
- * when the user has said when their day ends (the end-of-day review's time),
- * because a bedtime the app made up would be a judgement, not a fact.
+ * when the caller knows when the day ends (it was the end of day review's time,
+ * and nothing says so since that retired), because a bedtime the app made up would be a judgement, not a fact.
  */
 
 import { assigneeLabel } from './chat-utils'
@@ -94,8 +94,8 @@ function durationOf(item: Item): number {
  *
  * `plannedMin` needs at least half the open items to carry a duration: a sum
  * over the two of eight that have one would call an eight-thing day "About 1h
- * planned". `freeMin` needs `dayEndMin`, which is the end-of-day review's time
- * while the review is on (`dayEndFromReview`) and null otherwise.
+ * planned". `freeMin` needs `dayEndMin`, a day's end the caller knows; Ask
+ * home passes null since the end of day review (whose hour it was) retired.
  */
 export function dayLoad(
   ctx: OpenerContext,
@@ -151,21 +151,6 @@ export function loadLine(load: DayLoad): string | null {
   }
   if (load.done > 0) return `${load.done} done today.`
   return null
-}
-
-/**
- * Where the day ends, for "free": the end-of-day review's time, only while the
- * review is on (it is off by default). With it off there is no day's end, and
- * dsul never invents one.
- */
-export function dayEndFromReview(enabled: boolean, time: string | null | undefined): number | null {
-  if (!enabled || !time) return null
-  const m = /^(\d{1,2}):(\d{2})$/.exec(time.trim())
-  if (!m) return null
-  const hours = Number(m[1])
-  const minutes = Number(m[2])
-  if (hours > 23 || minutes > 59) return null
-  return hours * 60 + minutes
 }
 
 // ── Needs you ────────────────────────────────────────────────────────────────

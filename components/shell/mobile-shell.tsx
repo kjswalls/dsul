@@ -270,9 +270,9 @@ export const MobileShell = memo(function MobileShell() {
           It is a line in the bottom dock now
           (components/sidebar/dock-notices.tsx), which is mounted on every tab
           except Chat, so Braindump and Chat gained a voice they never had and
-          Today got its 38px of content back. morning-check.tsx still owns both
-          halves of the open-flag fix, because the desktop⇄mobile shell swap can
-          still strand a tray. */}
+          Today got its 38px of content back. The waiting line itself has since
+          gone (ghost rows phase 2): the leftovers fold at the top of Today
+          holds the pile. */}
 
       <div
         className="relative flex min-h-0 flex-1 flex-col overflow-hidden"

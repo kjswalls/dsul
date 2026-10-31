@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
-import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore, REMINDER_DEFAULTS } from '@/lib/reminder-store';
 import { loadSettings, saveSettings } from '@/lib/settings-service';
 import { usePaletteStore } from '@/lib/palette-store';
@@ -292,24 +291,23 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // unable to tell these values from the localStorage leftovers of whoever
       // used this browser last.
       useMorningStore.getState().applyServerSettings(userId, {
-        // Opt-in: a NULL (a row from before the column had a default, or no
-        // row at all) reads as off. Rituals are something a person turns on.
+        // A new account's row says true (migration 086's column default, and
+        // settings-service's first-run seed). A NULL is a value nobody chose
+        // and no default wrote, and reads as off, like the store before its
+        // settings land: an unknown never draws the fold.
         morningCheckEnabled: settings.morning_check_enabled ?? false,
         morningCheckTime: settings.morning_check_time ?? '08:00',
-        morningCheckDismissedDate: settings.morning_check_dismissed_date ?? null,
         morningAutoAgeEnabled: settings.morning_auto_age_enabled ?? false,
         morningAutoAgeDays: settings.morning_auto_age_days ?? 30,
         // The auto-age last-run stamp is deliberately local-only and per-user
         // (morningAutoAgeLastRunByUser) — not hydrated.
       });
 
-      useEODStore.setState({
-        eodReviewEnabled: settings.eod_review_enabled ?? false,
-        eodReviewTime: settings.eod_review_time ?? '21:00',
-      });
+      // The end of day review's two columns (eod_review_enabled, _time) are no
+      // longer hydrated: the review is retired (ghost rows phase 2) and nothing
+      // on the web reads them. The columns stay.
 
-      // Reminder settings (migration 032). setState rather than an action, like
-      // the EOD line above: the store holds no user-scoped derived state that a
+      // Reminder settings (migration 032). setState rather than an action: the store holds no user-scoped derived state that a
       // stamp would have to guard, because it is not persisted — see its note.
       useReminderStore.setState({
         remindersEnabled: settings.habit_reminders_enabled ?? REMINDER_DEFAULTS.remindersEnabled,

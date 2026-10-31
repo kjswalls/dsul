@@ -16,7 +16,7 @@ import type { Item } from '@/lib/planner-types';
  * The schema allows a few things that never run:
  *  - `bucket: 'anytime'` has no start, so it would never change;
  *  - item filters and "the item that started it" mean nothing when no item
- *    starts the recipe (a new day, a bucket, ⌘K, the review, a time);
+ *    starts the recipe (a new day, a bucket, ⌘K, the leftovers sorted, a time);
  *  - at a set time only the server runs a recipe, and it runs only
  *    SERVER_WRITE_STEPS.
  */

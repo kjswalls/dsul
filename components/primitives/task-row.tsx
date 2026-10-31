@@ -60,7 +60,7 @@ import { ItemTick, animateItemCheck } from '@/components/primitives/item-check';
  * Draggable id = item id per lib/dnd/CONTRACT.md; habits are not drag
  * sources (parity with the old timeline).
  *
- * TODO(debt): components/ai/morning-triage-list.tsx ships a THIRD row shape.
+ * (History: the waiting tray's triage list, deleted in ghost rows phase 2, shipped a THIRD row shape.)
  * It couldn't reuse this one — it needs a date/age column this rail doesn't
  * have, a fixed 30px height (this row's py-1.5 + line-clamp-2 is taller, and
  * height is the entire point of that feature), no useDraggable (it renders in a

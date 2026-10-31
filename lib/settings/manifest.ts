@@ -18,7 +18,6 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore, type TypeMode, type ScheduleMarkStyle, type BucketStyle } from '@/lib/view-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
-import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { getAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
@@ -427,7 +426,6 @@ const planner = () => usePlannerStore.getState();
 const view = () => useViewStore.getState();
 const sidebar = () => useSidebarStore.getState();
 const morning = () => useMorningStore.getState();
-const eod = () => useEODStore.getState();
 const reminders = () => useReminderStore.getState();
 const ai = () => useAISettingsStore.getState();
 const aiConn = () => useAIConnectionStore.getState();
@@ -1184,8 +1182,9 @@ export const SETTINGS: SettingRecord[] = [
     keywords: ['leftovers', 'ghost', 'ghost rows', 'from earlier', 'overdue', 'past due', 'waiting', 'yesterday', 'morning check', 'stale', 'backlog'],
     read: () => morning().morningCheckEnabled,
     write: (v) => morning().setMorningCheckEnabled(Boolean(v)),
-    // Rituals are opt-in for a new account (migration 054).
-    defaultValue: false,
+    // On for a new account since migration 086 (Kirby, 2026-10-31): the
+    // leftovers replaced both the morning line and the end of day review.
+    defaultValue: true,
   },
   {
     id: 'rituals.autoAge',
@@ -1221,33 +1220,6 @@ export const SETTINGS: SettingRecord[] = [
     read: () => String(morning().morningAutoAgeDays),
     write: (v) => morning().setMorningAutoAgeDays(Number(v)),
     defaultValue: '30',
-  },
-  {
-    id: 'rituals.eod',
-    pane: 'rituals',
-    label: 'End-of-day review',
-    description: 'Review what you got through before the day closes.',
-    control: 'switch',
-    dbColumn: 'eod_review_enabled',
-    // 'eod' is a KEYWORD, not an alias: the palette already claims /eod, and
-    // aliases are a single global namespace the moment these two surfaces are
-    // generated from one declaration. A keyword still finds it here.
-    keywords: ['evening', 'reflect', 'wrap up', 'review', 'night', 'shutdown', 'eod'],
-    read: () => eod().eodReviewEnabled,
-    write: (v) => eod().setEodReviewEnabled(Boolean(v)),
-    defaultValue: false,
-  },
-  {
-    id: 'rituals.eodTime',
-    pane: 'rituals',
-    label: 'Review at',
-    control: 'time',
-    dependsOn: 'rituals.eod',
-    dbColumn: 'eod_review_time',
-    keywords: ['when', 'hour', 'evening', 'schedule'],
-    read: () => eod().eodReviewTime,
-    write: (v) => eod().setEodReviewTime(String(v)),
-    defaultValue: '21:00',
   },
   {
     id: 'rituals.reminders',
@@ -1311,7 +1283,7 @@ export const SETTINGS: SettingRecord[] = [
     pane: 'rituals',
     label: 'Settle at',
     description:
-      'Settles the day before. Late enough that nothing is still in flight, since an end-of-day review can credit yesterday after midnight.',
+      'Settles the day before. Late enough that nothing is still in flight.',
     control: 'time',
     dependsOn: 'rituals.stakes',
     dbColumn: 'stakes_settle_time',

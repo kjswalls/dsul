@@ -43,7 +43,7 @@ import type { Goal, GroupBy } from './planner-types';
  *       here removes a LAYER OVER items, never an item.
  *     · nothing is written. `goals` and `goal_items` are untouched, so
  *       switching back on restores every goal, every role and every membership.
- *     · EIGHT READS ARE DELIBERATELY NOT GATED, across six files, and they are
+ *     · EIGHT READS ARE DELIBERATELY NOT GATED, across five files, and they are
  *       all the same read: `milestoneItemIds`. It is the set every bulk date
  *       verb SUBTRACTS, because a milestone's `startDate` is not stale
  *       scheduling residue — it is the TARGET date, and rewriting it is not
@@ -57,8 +57,8 @@ import type { Goal, GroupBy } from './planner-types';
  *         components/shell/app-shell.tsx:316    multi-drop `acted` accounting
  *         components/shell/bulk-action-bar.tsx:148  the bar's own affordances
  *         hooks/use-overdue-sweep.ts:336            the auto-age sweep
- *         components/ai/eod-review.tsx:115          the EOD move-all
- *         components/ai/morning-triage-list.tsx:236 the morning triage
+ *         components/planner/ghost-fold.tsx:59      the leftovers on Today
+ *         components/planner/ghost-fold.tsx:98      their bulk verbs
  *
  *       The three STORE ones are the actual enforcement — the last line before
  *       the write — and the five UI ones exist so a surface does not report

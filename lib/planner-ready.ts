@@ -2,8 +2,8 @@ import { usePlannerStore } from '@/lib/planner-store';
 
 /**
  * "Has the planner's load for this account LANDED?" — one definition, read by
- * the canvas routers' skeleton swap and `data-loaded` marker, the braindump,
- * the EOD deep link (lib/eod-link.ts) and the Display summary.
+ * the canvas routers' skeleton swap and `data-loaded` marker, the braindump and
+ * the Display summary.
  *
  * Hydration is not the same thing: initializeStore replaces `projects` /
  * `items` / the containers wholesale when it resolves, so a surface (or a

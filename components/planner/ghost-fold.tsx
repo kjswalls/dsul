@@ -116,11 +116,22 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
   // edit through catch-up, a paused project, an away period) goes quietly. A
   // day that never had a ghost says nothing at all, and an undo that brings a
   // ghost back takes the line down with it.
+  //
+  // The same moment is what recipes and mods hear as `review.saved`, the end of
+  // day review's event, since the review retired (ghost rows phase 2): once a
+  // day, through lib/morning-store.ts noteLeftoversCleared, and only for the
+  // person's own verbs, never for a pile something else emptied.
   const [done, setDone] = useState(false);
   // A ghost back (an undo inside the window) ends the line at once.
   if (done && count > 0) setDone(false);
   const prevCount = useRef(count);
   const acted = useRef(false);
+  // Read by the effect below without being one of its inputs: a day turning
+  // over inside the line's few seconds must not restart (or strand) its timer.
+  const today = useRef(todayStr);
+  useEffect(() => {
+    today.current = todayStr;
+  }, [todayStr]);
   const act = <A extends unknown[]>(fn: (...args: A) => void) => (...args: A) => {
     acted.current = true;
     fn(...args);
@@ -132,6 +143,7 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
     const byUs = acted.current;
     acted.current = false;
     if (!(was > 0 && count === 0 && byUs)) return;
+    useMorningStore.getState().noteLeftoversCleared(usePlannerStore.getState().userId, today.current);
     setDone(true);
     const t = window.setTimeout(() => setDone(false), GHOST_DONE_MS);
     return () => window.clearTimeout(t);

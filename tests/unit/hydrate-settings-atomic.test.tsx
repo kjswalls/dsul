@@ -10,11 +10,11 @@ import { act, render, cleanup, waitFor } from '@testing-library/react';
  *
  * The settings page renders as soon as `settingsHydratedUserId` names the
  * signed-in account. That stamp is set inside morning-store's
- * applyServerSettings, and the EOD and reminder values are applied AFTER it.
+ * applyServerSettings, and the reminder values are applied AFTER it.
  * They are safe only because nothing can run in between: there is exactly one
  * `await` in hydrateSettings (loadSettings), and it is before the stamp. Add a
  * second await anywhere after the stamp and the page can paint with the stamp
- * for user B standing over user A's persisted EOD and reminder values — which
+ * for user B standing over user A's reminder values — which
  * are live controls, so a click writes them into B's row.
  *
  * That is an ordering guarantee, not a value, and no assertion made after
@@ -25,13 +25,13 @@ import { act, render, cleanup, waitFor } from '@testing-library/react';
  *   · one synchronous read, inside the morning-store subscriber, for the values
  *     applied BEFORE the stamp (planner, sidebar);
  *   · one microtask, queued from that same subscriber, for the values applied
- *     AFTER it (eod, reminder).
+ *     AFTER it (reminder).
  *
  * The microtask is the whole test. A microtask queued during the stamp runs
  * before any continuation of an `await` that is reached later, and after all
- * code that merely runs to completion. So it sees the EOD values if and only if
+ * code that merely runs to completion. So it sees the reminder values if and only if
  * the block is unbroken. Verified by mutation: inserting `await
- * Promise.resolve()` between the stamp and `useEODStore.setState` in
+ * Promise.resolve()` between the stamp and `useReminderStore.setState` in
  * supabase-provider.tsx fails this file and nothing else in the suite.
  */
 
@@ -83,7 +83,6 @@ import { SupabaseProvider } from '@/components/providers/supabase-provider';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
-import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore } from '@/lib/reminder-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
@@ -110,7 +109,6 @@ describe('hydrateSettings applies every store in one uninterrupted block', () =>
     useSidebarStore.setState({ leftSidebarHoverEnabled: false });
     useMorningStore.setState({ settingsHydratedUserId: null });
     // The previous account's values, as localStorage would have left them.
-    useEODStore.setState({ eodReviewEnabled: false, eodReviewTime: '21:00' });
     useReminderStore.setState({
       remindersEnabled: false,
       lastCallEnabled: false,
@@ -181,11 +179,8 @@ describe('hydrateSettings applies every store in one uninterrupted block', () =>
       // Applied after it. This runs at the first opportunity any other code
       // gets — which, in an unbroken block, is after hydrateSettings is done.
       void Promise.resolve().then(() => {
-        const eod = useEODStore.getState();
         const rem = useReminderStore.getState();
         afterStamp = {
-          eodReviewEnabled: eod.eodReviewEnabled,
-          eodReviewTime: eod.eodReviewTime,
           remindersEnabled: rem.remindersEnabled,
           lastCallTime: rem.lastCallTime,
           stakesEnabled: rem.stakesEnabled,
@@ -215,12 +210,10 @@ describe('hydrateSettings applies every store in one uninterrupted block', () =>
     });
 
     // And the values that FOLLOW it are in place before anything else can run.
-    // This is the assertion an `await` between the stamp and useEODStore.setState
-    // breaks: the probe would land first and read '21:00' — the previous
-    // account's review time, on a settings page the gate has already opened.
+    // This is the assertion an `await` between the stamp and useReminderStore.setState
+    // breaks: the probe would land first and read '19:00' — the previous
+    // account's last call, on a settings page the gate has already opened.
     expect(afterStamp).toEqual({
-      eodReviewEnabled: true,
-      eodReviewTime: '19:15',
       remindersEnabled: true,
       lastCallTime: '20:30',
       stakesEnabled: true,
@@ -228,7 +221,7 @@ describe('hydrateSettings applies every store in one uninterrupted block', () =>
     });
 
     // Sanity: the settings under test really did come from the response.
-    expect(useEODStore.getState().eodReviewTime).toBe('19:15');
+    expect(useReminderStore.getState().lastCallTime).toBe('20:30');
     expect(setTheme).toHaveBeenCalledWith('dark');
   });
 });

@@ -80,7 +80,6 @@ import { revealDock } from '../look-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
 import { setupPageShown, useMobileNavStore } from '../mobile-nav-store';
 import { useMorningStore } from '../morning-store';
-import { useEODStore } from '../eod-store';
 import { useProposalStore } from '../proposal-store';
 import { getAICapabilities } from '../ai-connection-store';
 import { askNew, newChat, openHistory, openSetup, revealChat, toggleRail } from '../open-chat';
@@ -577,15 +576,19 @@ export const STATIC_COMMANDS: Command[] = [
     description: 'Goes to today, where anything left from an earlier day waits at the top',
     group: 'goto',
     // Sunrise, not AlertTriangle. The leftovers are deliberately not an alert
-    // (memory/plans/ghost-rows.md; the copy contract on BarCopy in
-    // components/ai/morning-check.tsx before them), and a warning triangle in
+    // (memory/plans/ghost-rows.md; the waiting tray's copy contract before
+    // them), and a warning triangle in
     // the palette undoes that before the day even opens. Same glyph as
     // settings.morningCheck below, so the two rows that touch this feature look
     // related. Every old search term is kept in `keywords`: the vocabulary
     // changed, the ways in didn't.
     icon: Sunrise,
-    keywords: 'overdue past due late missed behind morning check waiting carried leftovers ghost from earlier',
-    aliases: ['overdue', 'leftovers'],
+    // `eod` came over from rituals.eod, the end of day review's command, when
+    // the review retired (ghost rows phase 2): the leftovers are what it
+    // became, so /eod lands here. No shortcut id was involved.
+    keywords:
+      'overdue past due late missed behind morning check waiting carried leftovers ghost from earlier eod end of day evening review wrap up',
+    aliases: ['overdue', 'leftovers', 'eod'],
     // Greyed rather than a no-op: with nothing left from earlier there is no
     // fold to go to, and the command would land on an ordinary today. The
     // predicate is the fold's own (lib/ghost-rows.ts over lib/overdue.ts), so
@@ -1023,16 +1026,6 @@ export const STATIC_COMMANDS: Command[] = [
       else if (typeof window !== 'undefined') window.location.assign('/settings/make?write=mod');
     },
   },
-  {
-    id: 'rituals.eod',
-    label: 'Start end-of-day review',
-    group: 'rituals',
-    icon: Moon,
-    keywords: 'eod evening review reflect wrap up night',
-    aliases: ['eod', 'review'],
-    run: () => useEODStore.getState().open(),
-  },
-
   /* ── Workspace ──────────────────────────────────────────────────────── */
   {
     id: 'workspace.toggleChat',
@@ -1348,21 +1341,6 @@ export const STATIC_COMMANDS: Command[] = [
     },
   },
   {
-    id: 'settings.eodReview',
-    label: 'Toggle end-of-day review',
-    dynamicLabel: () =>
-      useEODStore.getState().eodReviewEnabled
-        ? 'Turn off end-of-day review'
-        : 'Turn on end-of-day review',
-    group: 'settings',
-    icon: Sunset,
-    keywords: 'eod evening review nightly ritual reminder',
-    run: () => {
-      const store = useEODStore.getState();
-      store.setEodReviewEnabled(!store.eodReviewEnabled);
-    },
-  },
-  {
     // mods.md, "Faults": the off switch for everything a person made that runs.
     // Same write as Settings → Make's make.allOff. No shortcut: ids are frozen.
     id: 'settings.modsOff',
@@ -1663,8 +1641,8 @@ const customTypeCommands: CommandProvider = () => {
     const config = getItemTypeConfig(def.name);
     const noun = config.label.toLowerCase();
     // An alias is a promise that typing it lands in exactly one place, and
-    // type names are user input — a type called "review" must not quietly
-    // steal /review from the end-of-day ritual.
+    // type names are user input — a type called "inbox" must not quietly
+    // steal /inbox from the braindump.
     const alias = taken.has(def.name) ? undefined : def.name;
     if (alias) taken.add(alias);
 

@@ -19,7 +19,7 @@ import type { Item } from './planner-types';
  * and a habit gets its own one ask instead of the task-shaped ones.
  *
  * COPY CONTRACT (lib/ai-openers.ts, shared with proposal-card.tsx and
- * morning-check.tsx): every prompt is phrased as the user, who is the one
+ * the leftovers on Today): every prompt is phrased as the user, who is the one
  * saying it; none names a failure, counts a miss or implies lateness. Those
  * sent into the item's conversation say "this", never the title: that
  * conversation already tells the model which item it is about

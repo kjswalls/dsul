@@ -35,7 +35,7 @@ import {
  *
  * What starts a run:
  *  - the user's own actions, through lib/mod-events.ts (ticked, unticked,
- *    skipped, added, the review saved);
+ *    skipped, added, the leftovers sorted);
  *  - ⌘K ("Run recipe: <name>", lib/commands/registry.ts);
  *  - one app-level clock (components/recipes/recipe-host.tsx): a new day, and
  *    a part of day starting. A clock run is claimed in mod_runs before any step

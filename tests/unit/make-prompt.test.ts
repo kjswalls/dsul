@@ -364,7 +364,7 @@ describe('the mod word tables (lib/mods/words.ts)', () => {
     expect(hooksInWords(['ui.resolve', 'atom.changed'])).toBe('');
     expect(hooksInWords([])).toBe('');
     expect(hooksInWords(['timer', 'review.saved', 'item.created'])).toBe(
-      "As written now, it runs when an item is added, when the day's review is saved and when one of its timers goes off."
+      "As written now, it runs when an item is added, when the last leftover on Today is sorted and when one of its timers goes off."
     );
   });
 

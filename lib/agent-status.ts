@@ -7,8 +7,8 @@
  * same agent three hours in has died somewhere and nobody would otherwise know
  * until they opened the item.
  *
- * COPY CONTRACT (shared with proposal-card.tsx, ai-openers.ts, morning-check's
- * `BarCopy`): nothing here names a failure of the USER's. `blocked` is the one
+ * COPY CONTRACT (shared with proposal-card.tsx, ai-openers.ts and the
+ * leftovers on Today): nothing here names a failure of the USER's. `blocked` is the one
  * state that wants something from them, and it says so as a request — "needs
  * you" — not as a reprimand for not having noticed.
  */

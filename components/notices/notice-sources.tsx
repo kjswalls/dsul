@@ -1,13 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { CloudOff, MoonStar, Sunset } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { CloudOff, MoonStar } from 'lucide-react';
 
 import { usePlannerStore } from '@/lib/planner-store';
 import { selectPlannerLoaded, selectPlannerSettled } from '@/lib/planner-ready';
 import { useMorningStore } from '@/lib/morning-store';
-import { useEODStore } from '@/lib/eod-store';
-import { minutesOfDay, nowMinutesIn, shouldShowEodNotice } from '@/lib/eod';
 import { toDateStr } from '@/lib/recurrence';
 import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
 
@@ -17,11 +15,11 @@ import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
  * Lifted out of components/sidebar/dock-notices.tsx by the "back to the object"
  * change so that a surface holding a notice IN PLACE (the braindump, the foot of
  * today's column) can raise it without importing the dock — and, more to the
- * point, without importing the waiting notice, whose hook closes its tray on
- * unmount and must therefore be called from exactly one place.
+ * point, without importing the dock's own sources.
  *
- * The waiting notice stays in components/ai/morning-check.tsx: it is dock-only,
- * for the reasons in memory/plans/notices-in-place.md.
+ * The waiting notice and the end of day line that used to sit beside these are
+ * gone (ghost rows phase 2, memory/plans/ghost-rows.md): the leftovers fold at
+ * the top of Today answers both.
  */
 
 /**
@@ -174,93 +172,6 @@ export function useSweepNotice(): DockNotice | null {
 }
 
 /**
- * "Today's review is waiting" — the review's first in-app entry point.
- *
- * Ranked `decision` alongside the waiting pile: the review is a thing only the
- * user can do, and it is the one surface in the app that was reachable ONLY
- * through a push notification. Deny the permission or swipe the notification
- * away and, before this line, nothing on screen ever mentioned it again.
- *
- * Deliberately not a modal that opens itself. The review is a ritual, not an
- * interruption, and the case for the line is precisely that it can wait there
- * instead of ambushing whatever the user was doing at 21:00.
- *
- * ANCHORED BESIDE THE DATE, in the canvas header row. The review's object is the
- * day, and a day's handle is its date — the same argument SeasonNotice makes
- * from the same address. The slot is live only on today, so arrowing to Thursday
- * puts the line back on the dock rather than beside a date it is not about.
- *
- * It was briefly at the FOOT of the day column, which is where direction E drew
- * it. That is wrong for a reason the drawing could not know: lib/use-fit-hour-px.ts
- * keeps 24px below the schedule grid and counts only the chrome above it, so a
- * row down there is invisible to the fit and makes a compressed day scroll.
- */
-export function useEodNotice(): DockNotice | null {
-  const eodReviewEnabled = useEODStore((s) => s.eodReviewEnabled);
-  const eodReviewTime = useEODStore((s) => s.eodReviewTime);
-  const lastEodReviewDate = useEODStore((s) => s.lastEodReviewDate);
-  const eodDeferredDate = useEODStore((s) => s.eodDeferredDate);
-  const hasHydrated = useEODStore((s) => s._hasHydrated);
-  const open = useEODStore((s) => s.open);
-  const deferToday = useEODStore((s) => s.deferToday);
-  // The review freezes its pending list the moment it opens: opened before the
-  // planner has loaded, it would review an empty or cached day. Start waits.
-  const phase = useLoadPhase();
-  const { todayStr, tz } = useToday();
-
-  const nowMinutes = nowMinutesIn(new Date(), tz);
-  const due = minutesOfDay(eodReviewTime);
-
-  /**
-   * Wake up ONCE, at the review hour.
-   *
-   * Everything else on this surface is driven by a store write, so it re-renders
-   * when its answer changes. This one is driven by a clock: sit with the app
-   * open from 20:00 and nothing at all happens at 21:00, so the line would only
-   * appear whenever some unrelated state next moved it. A single timeout for the
-   * exact crossing beats a minute-interval that re-renders the notice stack all
-   * day to catch one moment.
-   *
-   * Only the crossing. Midnight rollover is left alone deliberately — the
-   * waiting notice resolves `todayStr` at render for the same reason, and an app
-   * left open across midnight is a rarer case than an app left open all evening.
-   */
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (!hasHydrated || !eodReviewEnabled || due === null) return;
-    if (nowMinutes >= due) return;
-    const ms = (due - nowMinutes) * 60_000;
-    const timer = setTimeout(() => setTick((n) => n + 1), ms);
-    return () => clearTimeout(timer);
-  }, [hasHydrated, eodReviewEnabled, due, nowMinutes]);
-
-  // Pre-hydration the store holds its defaults, and `eodReviewEnabled` defaults
-  // false — so this is belt and braces rather than load-bearing. It costs one
-  // boolean and it means the line can never flash in on a rehydrate that is
-  // about to say "already reviewed".
-  if (!hasHydrated) return null;
-
-  const owed = shouldShowEodNotice(
-    { eodReviewEnabled, eodReviewTime, lastEodReviewDate, eodDeferredDate },
-    todayStr,
-    nowMinutes
-  );
-  if (!owed) return null;
-
-  return {
-    id: 'eod-review',
-    rank: NOTICE_RANK.decision,
-    anchor: 'day-header',
-    icon: Sunset,
-    iconClassName: 'text-sunrise-glyph',
-    label: <span className="font-semibold">Today’s review is waiting</span>,
-    ...gatedVerb(phase, 'Start', open),
-    onDismiss: () => deferToday(todayStr),
-    dismissLabel: 'Not tonight',
-  };
-}
-
-/**
  * Every notice that can render somewhere other than the dock.
  *
  * Safe to call from any surface, unlike the full dock set: none of these hooks
@@ -268,7 +179,6 @@ export function useEodNotice(): DockNotice | null {
  * subscription and nothing else.
  */
 export function useAnchorableNotices(): DockNotice[] {
-  const eod = useEodNotice();
   const sweep = useSweepNotice();
-  return [eod, sweep].filter((n): n is DockNotice => n !== null);
+  return [sweep].filter((n): n is DockNotice => n !== null);
 }

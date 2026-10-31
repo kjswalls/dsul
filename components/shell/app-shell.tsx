@@ -32,7 +32,6 @@ import { ContainerDialog } from '@/components/planner/container-dialog';
 import { BulkAddDialog } from '@/components/planner/bulk-add-dialog';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
-import { EODReview } from '@/components/ai/eod-review';
 import { MobileShell } from '@/components/shell/mobile-shell';
 import { ZenStage } from '@/components/zen/zen-stage';
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
@@ -49,7 +48,6 @@ import { setupPageShown, showMobileSurface, useMobileNavStore } from '@/lib/mobi
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useUndoStripStore } from '@/lib/undo-strip-store';
 import { useItWorksShown } from '@/components/ai/ask/it-works-card';
-import { openReviewFromLink } from '@/lib/eod-link';
 import { takeConnectReturn } from '@/lib/connect-return';
 import { watchKeptQuestion } from '@/lib/ask-pending';
 import { flushSettings } from '@/lib/settings-service';
@@ -60,7 +58,6 @@ import { useExtensionsStore } from '@/lib/extensions-store';
 import { NUDGE_RITUALS_INTRO, NUDGE_STREAKS_ON, ritualsNudgeReady } from '@/lib/nudges/registry';
 import { streakNudgeEnabled } from '@/lib/nudges/streak-gate';
 import { useMorningStore } from '@/lib/morning-store';
-import { useEODStore } from '@/lib/eod-store';
 import { settingsBelongToUser } from '@/lib/settings/hydration';
 import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
@@ -122,7 +119,6 @@ export function FirstRunNudges({
   const hasTasks = usePlannerStore((s) => s.tasks.length > 0);
   const settingsHydratedUserId = useMorningStore((s) => s.settingsHydratedUserId);
   const morningCheckEnabled = useMorningStore((s) => s.morningCheckEnabled);
-  const eodReviewEnabled = useEODStore((s) => s.eodReviewEnabled);
   // Setup is read per shell, as each shell shows it: the column's own mode on
   // the desktop, the Ask tab holding the setup page on the phone. A `chat` tab
   // left in the store says nothing about a desktop, so it never holds one.
@@ -151,7 +147,6 @@ export function FirstRunNudges({
     tourShowing,
     hasTasks,
     morningCheckEnabled,
-    eodReviewEnabled,
     setupOrUndoUp: setupShowing || itWorks || undoUp,
   });
   // One first-run toast at a time: while the streak nudge is up (or about to
@@ -271,8 +266,8 @@ export function trackReorder(event: DragMoveEvent) {
 }
 
 /**
- * App shell: owns the DndContext, global keyboard shortcuts, the EOD deep
- * link, the dialog mount point, and the desktop/mobile split.
+ * App shell: owns the DndContext, global keyboard shortcuts, the dialog
+ * mount point, and the desktop/mobile split.
  * Extracted from app/page.tsx (P2 of the redesign plan).
  */
 export function AppShell() {
@@ -365,7 +360,7 @@ export function AppShell() {
   // Onboarding status, once the planner load has settled. The account comes
   // off planner-store (identifyUser) rather than a getUser() round trip of its
   // own, and the read waits for the load so it stays out of the cold-start
-  // burst. Child effects run before the provider's (see the EOD effect below),
+  // burst. Child effects run before the provider's (SupabaseProvider is a parent),
   // so the first check sees no userId and the subscription catches the rest.
   // BOTH answers are applied: a "done" for a newly identified account clears
   // whatever an earlier account left up — see lib/onboarding-watch.ts.
@@ -389,18 +384,9 @@ export function AppShell() {
     []
   );
 
-  // EOD deep link: ?eod=<yyyy-MM-dd> opens the EOD review modal for the day the
-  // review's push invited, once the planner has loaded (lib/eod-link.ts, which
-  // says why "loaded" is not `!isLoading`). The bare ?eod=1 of older pushes
-  // still opens it, naming no day.
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    return openReviewFromLink(window.location.search, {
-      getState: usePlannerStore.getState,
-      subscribe: usePlannerStore.subscribe,
-      clearLink: () => window.history.replaceState({}, '', '/'),
-    });
-  }, []);
+  // No ?eod= deep link any more: the end of day review is retired (ghost rows
+  // phase 2, memory/plans/ghost-rows.md). A notification an older build sent
+  // still opens `/?eod=<day>`, which is home with a parameter nothing reads.
 
   // OpenRouter sign-in's home return: ?connect=<result> says how a sign-in
   // begun in the setup column ended, once the AI gate has answered, and opens
@@ -428,15 +414,6 @@ export function AppShell() {
     if (typeof window === 'undefined' || window.location.pathname !== '/') return;
     return watchKeptQuestion({ isPhone: () => window.innerWidth < 768 });
   }, []);
-
-  // There is deliberately NO in-app EOD auto-trigger here. There used to be
-  // one (open the review on load once the review time had passed), and it made
-  // every refresh after that time re-open the modal until "Done for today" was
-  // pressed — Esc/✕ don't count as reviewed. The review is reached on purpose
-  // instead: the rituals.eod palette command, or the nightly push notification
-  // (the reminder scan's EOD tier, lib/reminders/scan.ts, gated on the same
-  // eod_review_enabled/eod_review_time settings) whose tap lands on the
-  // ?eod=<day> deep link above.
 
   const sensors = useShellSensors();
 
@@ -893,11 +870,9 @@ export function AppShell() {
       )}
 
       {/* First-run orientation, each shown once: streaks are on and how to
-          quiet them, and the two rituals. Persistent toasts, dismissed forever
+          quiet them, and the leftovers. Persistent toasts, dismissed forever
           server-side. */}
       <FirstRunNudges tourAnsweredFor={tourAnsweredFor} tourShowing={showTour} />
-
-      <EODReview />
 
       <BugReportDialog
         open={activeDialog?.type === 'bug-report'}

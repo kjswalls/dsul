@@ -15,7 +15,6 @@ import { ASK_PENDING_KEY, clearKeptQuestionState, keepQuestion, readKept } from 
 import { useCommandUsageStore } from '@/lib/command-usage-store';
 import { useConversationsStore } from '@/lib/conversations-store';
 import { useRailStore } from '@/lib/rail-store';
-import { useEODStore } from '@/lib/eod-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { getSnapshotEpoch } from '@/lib/planner-snapshot';
@@ -59,7 +58,6 @@ const STORES: Record<string, AnyStore> = {
   'dsul-view': useViewStore as unknown as AnyStore,
   'dsul-ai-settings': useAISettingsStore as unknown as AnyStore,
   'dsul-morning-store': useMorningStore as unknown as AnyStore,
-  'dsul-eod-store': useEODStore as unknown as AnyStore,
   'dsul-sidebar-settings': useSidebarStore as unknown as AnyStore,
   'dsul-keyboard-shortcuts': useKeyboardShortcutsStore as unknown as AnyStore,
   'dsul-command-usage': useCommandUsageStore as unknown as AnyStore,
@@ -519,7 +517,7 @@ describe('an unstamped browser drops the disclosive and spares the inert', () =>
     });
     useCommandUsageStore.setState({ usage: { 'create.task': { count: 9, lastUsed: 1 } } });
     useMorningStore.setState({ morningCheckTime: '05:15' });
-    useEODStore.setState({ lastEodReviewDate: '2026-08-25' });
+    localStorage.setItem('dsul-eod-store', JSON.stringify({ state: { lastEodReviewDate: '2026-08-25' }, version: 0 }));
     localStorage.setItem(
       'dsul-chat-history',
       JSON.stringify({ messages: [{ role: 'user', content: 'private' }], savedAt: Date.now() })
@@ -533,7 +531,8 @@ describe('an unstamped browser drops the disclosive and spares the inert', () =>
     expect(useViewStore.getState().canvasFilters.containers).toEqual([]);
     expect(useCommandUsageStore.getState().usage).toEqual({});
     expect(useMorningStore.getState().morningCheckTime).toBe('08:00');
-    expect(useEODStore.getState().lastEodReviewDate).toBeNull();
+    // The retired review's blob, left by an older build, goes too.
+    expect(localStorage.getItem('dsul-eod-store')).toBeNull();
     expect(localStorage.getItem('dsul-chat-history')).toBeNull();
     expect(releasedOn('item-of-user-a')).toBeUndefined();
   });
@@ -741,7 +740,6 @@ describe('nothing persists per-user state outside the registry', () => {
   const PERSISTED_STORE_FILES: Record<string, string> = {
     'lib/ai-settings-store.ts': 'dsul-ai-settings',
     'lib/command-usage-store.ts': 'dsul-command-usage',
-    'lib/eod-store.ts': 'dsul-eod-store',
     'lib/keyboard-shortcuts-store.ts': 'dsul-keyboard-shortcuts',
     'lib/morning-store.ts': 'dsul-morning-store',
     'lib/planner-store.ts': 'planner-storage',

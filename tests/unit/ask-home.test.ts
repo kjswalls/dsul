@@ -3,7 +3,6 @@ import {
   ACTIVITY_WINDOW_MS,
   MAX_ACTIVITY_ROWS,
   activityRows,
-  dayEndFromReview,
   dayLoad,
   dayPart,
   formatLoadMinutes,
@@ -188,36 +187,6 @@ describe('dayLoad', () => {
 
   it('never offers free time without a plan to subtract', () => {
     expect(dayLoad(ctx([task('a')]), { minutesNow: 600, dayEndMin: 1260 }).freeMin).toBeNull();
-  });
-});
-
-describe('"6h free" only while the end-of-day review is on', () => {
-  const items = [task('a', { duration: 180 }), task('b', { duration: 120 })];
-  const line = (enabled: boolean) =>
-    loadLine(dayLoad(ctx(items), { minutesNow: 600, dayEndMin: dayEndFromReview(enabled, '21:00') }));
-
-  it('reads the plan and the hours free with the review on', () => {
-    expect(line(true)).toBe('About 5h planned, 6h free.');
-  });
-
-  it('reads the plan alone with it off, its default', () => {
-    expect(line(false)).toBe('About 5h planned.');
-  });
-});
-
-describe('dayEndFromReview', () => {
-  it.each([
-    [true, '21:00', 1260],
-    [true, '9:30', 570],
-    [true, ' 22:15 ', 1335],
-    [false, '21:00', null],
-    [true, '', null],
-    [true, null, null],
-    [true, '25:00', null],
-    [true, '21:60', null],
-    [true, 'nine', null],
-  ])('enabled %s at %j is %j', (enabled, time, expected) => {
-    expect(dayEndFromReview(enabled, time)).toBe(expected);
   });
 });
 

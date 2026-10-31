@@ -8,9 +8,9 @@ import { toDateStr } from '@/lib/recurrence';
 /**
  * Per-user reminder and stakes settings — everything the unattended tick reads.
  *
- * One store per concern, like every other ritual (morning-store, eod-store).
+ * One store per concern, like every other ritual (morning-store).
  *
- * NOT persist()ed, deliberately, and unlike its eod-store sibling. These three
+ * NOT persist()ed, deliberately, and unlike the retired eod-store was. These three
  * values are read by exactly one consumer that matters — the server-side
  * reminder scan — and by one surface that already waits for hydration (the
  * settings page gates its whole render on it). A localStorage mirror could
@@ -48,8 +48,8 @@ export const REMINDER_DEFAULTS = {
   lastCallEnabled: false,
   lastCallTime: '20:30',
   stakesEnabled: false,
-  // 03:00, not midnight: the end-of-day review can credit yesterday's habit
-  // after midnight, and a settlement that ran first would report a miss the app
+  // 03:00, not midnight: a habit ticked for yesterday just after midnight
+  // still counts, and a settlement that ran first would report a miss the app
   // itself does not believe in.
   stakesSettleTime: '03:00',
 } as const;

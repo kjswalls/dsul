@@ -65,7 +65,9 @@ export const MOD_HOOK_WORDS: Record<ModEventKind, string> = {
   'item.uncompleted': 'when an item is unticked, by hand or by undo',
   'item.skipped': 'when an item is skipped for today',
   'item.created': 'when an item is added',
-  'review.saved': "when the day's review is saved",
+  // The id is the retired end of day review's; the moment is the leftovers
+  // fold cleared (ghost rows phase 2). Stored mods name the id, so it stays.
+  'review.saved': 'when the last leftover on Today is sorted',
   command: 'when one of its commands is run',
   timer: 'when one of its timers goes off',
   'ui.resolve': 'when one of its panels is drawn',
