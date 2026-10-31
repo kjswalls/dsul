@@ -606,9 +606,11 @@ export const RailColumn = memo(function RailColumn({
   // again; ✕ closes the item and then the panel. With no mod beneath, Back
   // goes to Ask, and with no AI either the item keeps Done.
   //
-  // On Atlas the item was opened from a card, so Back names Atlas and only
-  // closes the item: the map is what is beneath it (Kirby, round 2). Ask, if
-  // it was open, is still there; ✕ still closes the whole rail.
+  // On Atlas, when nothing would show once the item closes (Ask neither open
+  // nor summoned), the map is what is beneath it: Back names Atlas and only
+  // closes the item (Kirby, round 2). With Ask showing beneath, Back names
+  // Ask's view and goes there, as on every other view, so "Atlas" never
+  // lands on a conversation. ✕ still closes the whole rail.
   const railChrome = useMemo(() => {
     if (modBackLabel) {
       return {
@@ -619,14 +621,15 @@ export const RailColumn = memo(function RailColumn({
     }
     if (!canChat) return undefined;
     const onCloseRail = () => useRailStore.getState().closeRail();
-    if (onAtlas) return { backLabel: ATLAS_COPY.railBack, onBack: undefined, onCloseRail };
+    const askBeneath = railMode({ itemOpen: false, askOpen, canChat, overlays, summoned }) === 'ask';
+    if (onAtlas && !askBeneath) return { backLabel: ATLAS_COPY.railBack, onBack: undefined, onCloseRail };
     return {
       backLabel: itemBack,
       // Back shows Ask, at an overlay too, where nothing else would.
       onBack: () => useRailStore.getState().summon(),
       onCloseRail,
     };
-  }, [canChat, itemBack, modBackLabel, onAtlas]);
+  }, [askOpen, canChat, itemBack, modBackLabel, onAtlas, overlays, summoned]);
 
   return (
     <div

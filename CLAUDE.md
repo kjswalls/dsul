@@ -406,7 +406,8 @@ rather than taking the flag.
   `closeDialog()` leaves the row selected and the save waiting out the unmount grace.
   Ctrl+J (⌘J) is the frozen `toggle_right_sidebar` id re-defaulted. With no AI the rail is
   exactly the old item panel, Done included; with AI the item's header is "‹ <view
-  beneath> … ✕" and has no Done. While the column is docked (Ask or an item) the
+  beneath> … ✕" and has no Done (on Atlas with nothing beneath, "‹ Atlas", whose Back only
+  closes the item). While the column is docked (Ask or an item) the
   braindump narrows (every layout but Console, whose braindump is the fixed 300px pane):
   `renderedSidebarWidth` takes the column's reserve off its ceiling so the canvas keeps
   `SIDEBAR_MIN_CANVAS`, and never writes that back. Below 1180px (`PANEL_OVERLAY_QUERY`,
