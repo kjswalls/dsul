@@ -641,6 +641,31 @@
 @keyframes typing { 0%, 6% { opacity: 0; } 10%, 24% { opacity: 1; } 28%, 100% { opacity: 0; } }
 @keyframes bob { 0%, 100% { transform: none; } 50% { transform: translateY(-0.25em); } }
 
+/* ── sounds ────────────────────────────────────────────────────────────── */
+/* Three arcs beside the ticked title. At rest they show faintly (the still
+   frame says "this makes a sound"); playing, they ring out as the tick lands. */
+.waves { display: inline-flex; align-items: center; gap: 0.12em; height: 1em; }
+.waves i {
+  width: 0.32em;
+  border: 0.12em solid var(--muted-foreground);
+  border-left-color: transparent;
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  border-radius: 50%;
+  opacity: 0.55;
+}
+.waves i:nth-child(1) { height: 0.45em; }
+.waves i:nth-child(2) { height: 0.75em; }
+.waves i:nth-child(3) { height: 1.05em; }
+.root[data-playing='true'] .waves i { opacity: 0; animation: wave var(--loop, 4.5s) infinite; }
+.root[data-playing='true'] .waves i:nth-child(2) { animation-delay: 0.08s; }
+.root[data-playing='true'] .waves i:nth-child(3) { animation-delay: 0.16s; }
+@keyframes wave {
+  0%, 27% { opacity: 0; transform: translateX(-0.2em); }
+  32% { opacity: 1; transform: none; }
+  50%, 100% { opacity: 0; transform: translateX(0.15em); }
+}
+
 /* ── backstop: both motion vetoes stop everything ──────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .root *,

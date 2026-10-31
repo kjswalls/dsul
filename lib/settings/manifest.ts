@@ -37,6 +37,7 @@ import { stampXEffectSince } from '@/lib/x-effect-since';
 import { useModsStore } from '@/lib/mods-store';
 import {
   EXT_COMPLETION_CONFETTI,
+  EXT_SOUNDS,
   EXT_GOALS,
   EXT_HABIT_HEATMAP,
   EXT_X_EFFECT,
@@ -1913,6 +1914,23 @@ export const SETTINGS: SettingRecord[] = [
     read: () => ext().isEnabled(EXT_COMPLETION_CONFETTI),
     write: (v, ctx) => {
       if (ctx.userId) ext().setEnabled(ctx.userId, EXT_COMPLETION_CONFETTI, Boolean(v));
+    },
+    defaultValue: false,
+  },
+  {
+    id: 'extensions.sounds',
+    pane: extensionPaneId(EXT_SOUNDS),
+    label: 'Sounds',
+    // The pack, the switches and the volume are the console under this row
+    // (components/settings/sounds-console.tsx), where each can be heard.
+    description: 'Small sounds when you tick, add, move things and when the AI answers. Pick a pack and try it below.',
+    control: 'switch',
+    keywords: ['sound', 'audio', 'sfx', 'click', 'chime', 'volume', 'pack', 'noise', 'mute'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => ext().isEnabled(EXT_SOUNDS),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setEnabled(ctx.userId, EXT_SOUNDS, Boolean(v));
     },
     defaultValue: false,
   },

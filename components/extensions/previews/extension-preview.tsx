@@ -8,6 +8,7 @@ import {
   EXT_ACCOUNTABILITY_PARTNER,
   EXT_BEEMINDER,
   EXT_COMPLETION_CONFETTI,
+  EXT_SOUNDS,
   EXT_DO_STUFF,
   EXT_GOALS,
   EXT_HABIT_HEATMAP,
@@ -115,6 +116,34 @@ const Confetti: Scene = () => (
             <i key={i} className={s.piece} style={style} />
           ))}
         </span>
+      </div>
+      <div className={s.row}>
+        <span className={s.box}>{CHECK}</span>
+        <span>Call the dentist</span>
+        <span className={s.time}>10:00</span>
+      </div>
+    </div>
+  </div>
+);
+
+// Sounds: the tick, and three arcs that ring out from it as it lands.
+const Sounds: Scene = () => (
+  <div className={s.stage}>
+    <div className={s.col}>
+      <div className={cn(s.row, s.dim)}>
+        <span className={cn(s.box, s.done)}>{CHECK}</span>
+        <span className={s.struck}>Inbox to zero</span>
+        <span className={s.time}>7:00</span>
+      </div>
+      <div className={s.row}>
+        <span className={cn(s.box, s.done, s.tick)}>{CHECK}</span>
+        <span className={s.strike}>Stretch 10 min</span>
+        <span className={s.waves}>
+          <i />
+          <i />
+          <i />
+        </span>
+        <span className={s.time}>7:30</span>
       </div>
       <div className={s.row}>
         <span className={s.box}>{CHECK}</span>
@@ -561,6 +590,7 @@ export const EXTENSION_PREVIEWS: Record<string, Scene> = {
   [EXT_HABIT_HEATMAP]: Heatmap,
   [EXT_X_EFFECT]: XEffect,
   [EXT_COMPLETION_CONFETTI]: Confetti,
+  [EXT_SOUNDS]: Sounds,
   [EXT_VOICE_ANNOUNCEMENTS]: Voice,
   [EXT_SMS_NUDGE]: Text,
   [EXT_PHONE_CALL]: Call,

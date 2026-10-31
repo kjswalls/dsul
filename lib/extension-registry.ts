@@ -1,4 +1,5 @@
 import {
+  AudioLines,
   CalendarRange,
   Flame,
   Grid3x3,
@@ -155,6 +156,14 @@ export const EXT_HABIT_HEATMAP = 'habit-heatmap';
  */
 export const EXT_X_EFFECT = 'x-effect';
 export const EXT_COMPLETION_CONFETTI = 'completion-confetti';
+/**
+ * Sounds (default OFF) — small sounds for ticks, adds, drags, timers and the
+ * AI, in a pack you pick (lib/sounds/, memory/plans/sounds.md). Off because a
+ * sound is the opposite of quiet until used, and the default-on rule's first
+ * half is exactly that. Pack and switches live in its config; volume is per
+ * device.
+ */
+export const EXT_SOUNDS = 'sounds';
 /**
  * Reminder delivery channels (Tier 2).
  *
@@ -321,6 +330,22 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
       'Nothing else changes, and it stays still when animations are off.',
     ],
     makerNote: 'Purely celebratory. Some days a tiny party is the whole reason to tick the box.',
+  },
+  {
+    slug: EXT_SOUNDS,
+    name: 'Sounds',
+    description: 'Small sounds when you tick, add, move things and when the AI answers, in a pack you pick.',
+    icon: AudioLines,
+    category: 'fun',
+    defaultEnabled: false,
+    tagline: 'A little click when you finish',
+    shelf: 'habits',
+    whatChanges: [
+      'Soft sounds for ticking off, adding, deleting, dragging, a sprint running out, the day done and the AI.',
+      'Seven packs to pick from and a switch for each kind of sound. Volume is set on each device.',
+    ],
+    makerNote:
+      'Every sound is made in your browser by a few lines of code, so there are no files to load. They are short and quiet on purpose.',
   },
   {
     slug: EXT_VOICE_ANNOUNCEMENTS,

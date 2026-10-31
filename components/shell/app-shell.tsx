@@ -93,6 +93,7 @@ import { isOnboardingComplete } from '@/lib/user-profile';
 import { watchOnboardingAfterLoad } from '@/lib/onboarding-watch';
 import type { MobileSurface } from '@/lib/mobile-nav-store';
 import { BOOT_SIDEBAR_VAR } from '@/lib/shell-prepaint';
+import { cueSound } from '@/lib/sounds/cue';
 
 /**
  * The first-run toasts, "Streaks are on" and the rituals intro, with their own
@@ -234,6 +235,7 @@ const SHELL_MEASURING = {
  */
 export function beginDrag(event: DragStartEvent) {
   useDragStore.getState().startDrag(event.active.id as string, dragInputOf(event.activatorEvent));
+  cueSound('pickup');
 }
 
 /**
@@ -425,9 +427,13 @@ export function AppShell() {
     useDragStore.getState().endDrag();
     if (reorder) {
       usePlannerStore.getState().reorderItems(reorder.sequence);
+      cueSound('drop');
       return;
     }
     if (!over) return;
+    // Landed on a target. A drop its target then declines still lands
+    // somewhere the hand let go, so it sounds the same; a cancel makes none.
+    cueSound('drop');
 
     // Event-time snapshot — the drop resolves against whatever the store holds
     // at release, and reading it here is what lets AppShell go without a

@@ -6,6 +6,7 @@ import { SupabaseProvider } from '@/components/providers/supabase-provider'
 import { ConsoleSlotGuard } from '@/components/providers/console-slot-guard'
 import { DesktopBridge } from '@/components/providers/desktop-bridge'
 import { FaviconSync } from '@/components/providers/favicon-sync'
+import { SoundCues } from '@/components/providers/sound-cues'
 import { RecipeHost } from '@/components/recipes/recipe-host'
 import { ModHost } from '@/components/mods/mod-host'
 import { ThemeInjector } from '@/components/providers/theme-injector'
@@ -180,6 +181,8 @@ export default function RootLayout({
             {/* The tab's icon: the picked one, or Lime once today is done.
                 See the component. */}
             <FaviconSync />
+            {/* The Sounds extension's ears; nothing while it is off. See the component. */}
+            <SoundCues />
             {/* Your recipes, once the planner has loaded on this route. Nothing
                 on a route that never loads it. See the component. */}
             <RecipeHost />
