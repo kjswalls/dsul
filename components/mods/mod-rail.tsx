@@ -9,6 +9,7 @@ import { railHeaderHeld, useRailStore, type ModPanelRef } from '@/lib/rail-store
 import { panelOf } from '@/lib/mods/ui/surface-state';
 import { cn } from '@/lib/utils';
 import { ModSurface } from './mod-surface';
+import { isPopperUp } from '@/lib/popper-up';
 
 /** A field that keeps its own Escape: anything typed into. */
 function ownsEscape(el: HTMLElement): boolean {
@@ -75,7 +76,7 @@ export function ModRail({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       // A mod's Select open inside the panel owns Escape while it is up.
-      if (document.querySelector('[data-radix-popper-content-wrapper]')) return;
+      if (isPopperUp()) return;
       const el = document.activeElement as HTMLElement | null;
       if (el && el !== document.body && (!el.closest('[data-rail]') || ownsEscape(el))) return;
       if (overlays) useRailStore.getState().parkOverlay(true);

@@ -18,6 +18,7 @@ import {
 import { resolveConversationId, useConversationsStore } from '@/lib/conversations-store';
 import { focusIsInRail, useRailStore, type AskView } from '@/lib/rail-store';
 import { cn } from '@/lib/utils';
+import { isPopperUp } from '@/lib/popper-up';
 
 /** One key per view, so the view host remounts (and slides) exactly when the top changes. */
 function viewKeyOf(view: AskView | undefined): string {
@@ -123,7 +124,7 @@ export function RightRail({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       // A popover or menu inside the rail owns Escape while it is up.
-      if (document.querySelector('[data-radix-popper-content-wrapper]')) return;
+      if (isPopperUp()) return;
       const el = document.activeElement as HTMLElement | null;
       if (el && el !== document.body && (!el.closest('[data-rail]') || ownsEscape(el))) return;
       const rail = useRailStore.getState();

@@ -23,6 +23,7 @@ import { toDateStr } from '@/lib/recurrence';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import type { Item, Task } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
+import { isPopperUp } from '@/lib/popper-up';
 
 /** The jot box grows with what is typed, from two lines to about six. */
 const JOT_ROWS_MIN = 2;
@@ -55,7 +56,7 @@ export function DoStuffDesk({ activeId }: { activeId: string | null }) {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       // Radix renders every popover and menu inside this wrapper; while one is
       // up it owns Escape (item-dialog.tsx has the same rule).
-      if (document.querySelector('[data-radix-popper-content-wrapper]')) return;
+      if (isPopperUp()) return;
       const t = e.target instanceof HTMLElement ? e.target : null;
       if (t?.closest('[role="dialog"], [role="alertdialog"], [role="menu"]')) return;
       if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) {
