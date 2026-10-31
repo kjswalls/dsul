@@ -167,7 +167,12 @@
   animation: lime-breathe 3.2s ease-in-out infinite;
 }
 
-/* 1 · classic: today's mark; the shimmer, and the dot pulses once. */
+/* 1 · classic: today's mark; the shimmer, and the dot pulses once. Its dot
+   is a tile, the relay's square with soft corners (Kirby, 2026-10-31), so the
+   breath reads as the relay's. The other flavors keep their own shapes. */
+.wordmark[data-flavor='classic'] .wordmark-dot {
+  border-radius: 18%;
+}
 .wordmark[data-flavor='classic'][data-open] .wordmark-dot {
   animation: wm-pulse 600ms 450ms var(--wm-ease);
 }

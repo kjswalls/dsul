@@ -165,7 +165,7 @@ function AgentGlyph({ state }: { state: AgentRowState }) {
     case 'working':
       return <Loader2 aria-hidden className="size-3.5 animate-spin text-ai motion-reduce:animate-none" />;
     case 'back':
-      return <span aria-hidden data-lime-dot="" className="size-2 rounded-full bg-primary" />;
+      return <span aria-hidden data-lime-dot="" className="size-2 bg-primary" />;
     default:
       return (
         <span
