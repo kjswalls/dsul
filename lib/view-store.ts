@@ -28,7 +28,25 @@ import {
  * mirrors and the legacy fields are deleted in P8.
  */
 
-export type ViewScope = 'day' | 'week';
+export type ViewScope = 'day' | 'week' | 'atlas';
+/**
+ * Atlas's own layouts (memory/plans: the Atlas design, D2). A separate field,
+ * never folded into `ViewLayout`: `layout` feeds both routers, the skeleton,
+ * the week scale, the Display menu, recipes and mods, and a trip to Atlas must
+ * leave the Day/Week layout exactly as it was. PR1 ships only `map`.
+ */
+export type AtlasLayout = 'map' | 'momentum' | 'goal' | 'timeline';
+
+const VIEW_SCOPES: readonly ViewScope[] = ['day', 'week', 'atlas'];
+const ATLAS_LAYOUTS: readonly AtlasLayout[] = ['map', 'momentum', 'goal', 'timeline'];
+
+export function isViewScope(v: unknown): v is ViewScope {
+  return typeof v === 'string' && (VIEW_SCOPES as readonly string[]).includes(v);
+}
+
+export function isAtlasLayout(v: unknown): v is AtlasLayout {
+  return typeof v === 'string' && (ATLAS_LAYOUTS as readonly string[]).includes(v);
+}
 export type ViewLayout = 'buckets' | 'schedule' | 'list';
 export type TypeFilter = 'all' | 'tasks' | 'habits';
 export type BraindumpGroupBy = 'none' | 'type' | 'project' | 'priority' | 'routine' | 'season' | 'goal';
@@ -118,6 +136,8 @@ export type PhoneDensity = 'comfortable' | 'compact';
 interface ViewStore {
   scope: ViewScope;
   layout: ViewLayout;
+  /** Atlas's layout (D2), remembered on this device like `layout`. */
+  atlasLayout: AtlasLayout;
   typeFilter: TypeFilter;
   canvasGroupBy: GroupBy;
   braindumpGroupBy: BraindumpGroupBy;
@@ -196,6 +216,7 @@ interface ViewStore {
 
   setScope: (scope: ViewScope) => void;
   setLayout: (layout: ViewLayout) => void;
+  setAtlasLayout: (layout: AtlasLayout) => void;
   setTypeFilter: (filter: TypeFilter) => void;
   setCanvasGroupBy: (groupBy: GroupBy) => void;
   setBraindumpGroupBy: (groupBy: BraindumpGroupBy) => void;
@@ -282,6 +303,7 @@ const DISCLOSIVE_DEFAULTS = {
 const INERT_DEFAULTS = {
   scope: 'day',
   layout: 'buckets',
+  atlasLayout: 'map',
   typeFilter: 'all',
   canvasGroupBy: 'none',
   braindumpGroupBy: 'none',
@@ -310,10 +332,25 @@ export const useViewStore = create<ViewStore>()(
 
       setScope: (scope) => {
         set({ scope });
+        // Atlas is NOT mirrored (D1): the mirror writes `default_view` to the
+        // server, every device reads it back (the phone too), and planner-store's
+        // ViewMode stays 'day' | 'week'. This device still reopens on Atlas,
+        // because `scope` persists in dsul-view.
+        //
+        // Atlas has no day of its own and its rows act on today, so the hidden
+        // selected day follows: the palette's item verbs, the status bar's
+        // counts and every other selectedDate reader then agree with the cards
+        // (design rule 4). Going back to Day lands on today, which is what a
+        // date command from Atlas already means.
+        if (scope === 'atlas') {
+          usePlannerStore.getState().setSelectedDate(new Date());
+          return;
+        }
         // Legacy mirror + user-settings sync (planner-store persists default_view)
         usePlannerStore.getState().setViewMode(scope);
       },
       setLayout: (layout) => set({ layout }),
+      setAtlasLayout: (atlasLayout) => set({ atlasLayout }),
       setTypeFilter: (typeFilter) => {
         set({ typeFilter });
         usePlannerStore.getState().setTimelineItemFilter(typeFilter);
@@ -420,6 +457,11 @@ export const useViewStore = create<ViewStore>()(
         return {
           ...current,
           ...p,
+          // Coerced since Atlas made scope a three-way value: a stale or
+          // hand-edited string would reach both routers' branches, and a
+          // blob that predates `atlasLayout` gets the default from the spread.
+          scope: isViewScope(p.scope) ? p.scope : 'day',
+          atlasLayout: isAtlasLayout(p.atlasLayout) ? p.atlasLayout : 'map',
           braindumpFilters: normalizeFilters(p.braindumpFilters),
           canvasFilters: normalizeFilters(p.canvasFilters),
           // Scalars, so the shallow spread already supplies the default for a
@@ -479,6 +521,21 @@ function zenSwitch(
  * `@utility canvas-container` exists to guarantee.
  */
 export function useCanvasWide(): boolean {
+  return useViewStore(
+    (s) => s.scope === 'atlas' || (s.scope === 'week' && isScalableLayout(s.layout))
+  );
+}
+
+/**
+ * Whether the week scale control is showing: the week COLUMN views only.
+ *
+ * Split off `useCanvasWide` when Atlas went wide too (design D7). The header
+ * row's far end used to key on "wide", because only the week columns were wide
+ * and WeekScale held the far end there; on Atlas the row is wide but WeekScale
+ * is gone, so the Ask button, the Needs-you badge and the mod key take the far
+ * end again by asking this instead.
+ */
+export function useWeekScaleShown(): boolean {
   return useViewStore((s) => s.scope === 'week' && isScalableLayout(s.layout));
 }
 

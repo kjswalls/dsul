@@ -1,6 +1,7 @@
 'use client';
 
 import { clearBrowserPairings } from './openclaw-browser/device-store';
+import { clearAtlasUiState } from './atlas-ui-store';
 import { useAISettingsStore } from './ai-settings-store';
 import { clearKeptQuestionState } from './ask-pending';
 import { useCommandUsageStore } from './command-usage-store';
@@ -110,7 +111,7 @@ import { useViewStore } from './view-store';
  *   dsul-view            canvasFilters / braindumpFilters DISCLOSIVE (they
  *                          hold `project:`/`group:` refs, tag names and goal ids
  *                          lifted from the account's own containers). The other
- *                          13 INERT. `adoptedLegacy` never cleared at all.
+ *                          14 INERT. `adoptedLegacy` never cleared at all.
  *   dsul-ai-settings     all DISCLOSIVE — systemPrompt and assistantName
  *                          are text the user wrote, chatTarget says whether
  *                          this person pairs an OpenClaw agent, and
@@ -218,6 +219,8 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
     inert: [
       'scope',
       'layout',
+      // Atlas's layout: a closed enum about the screen, like `layout`.
+      'atlasLayout',
       'typeFilter',
       'canvasGroupBy',
       'braindumpGroupBy',
@@ -308,6 +311,9 @@ function clearRetiredEodStore(): void {
  * the person's own agent, so it goes with the rest. Notes on an item's
  * timeline (lib/item-notes-store.ts) are a memory-only cache of the account's
  * own writing; their clear also bumps an epoch that drops a read in flight.
+ * Atlas's memory-only UI state (lib/atlas-ui-store.ts) is keyed by container
+ * ids and holds whether the map was fitted, so the next account's first Atlas
+ * fits to its own cards instead of opening where the last account left off.
  */
 const RAW_CLEARERS: readonly (() => void)[] = [
   clearRetiredEodStore,
@@ -319,6 +325,7 @@ const RAW_CLEARERS: readonly (() => void)[] = [
   forgetUserThemePicks,
   clearBrowserPairings,
   clearItemNotesState,
+  clearAtlasUiState,
 ];
 
 /** The account whose local state is on disk right now, or null for none. */

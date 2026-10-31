@@ -10,7 +10,7 @@ import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dial
 import { registerItemPanelClose, useUIStore } from '@/lib/ui-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { subscribeClickAway } from '@/lib/click-away';
-import { useCanvasWide, useViewStore } from '@/lib/view-store';
+import { useCanvasWide, useViewStore, useWeekScaleShown } from '@/lib/view-store';
 import { SectionBoundary } from '@/components/primitives/section-boundary';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useFocusOnlyScroll } from '@/hooks/use-focus-only-scroll';
@@ -82,6 +82,9 @@ export const DesktopShell = memo(function DesktopShell() {
   );
   const closeDialog = useUIStore((s) => s.closeDialog);
   const canvasWide = useCanvasWide();
+  // Who holds the header row's far end: WeekScale, in the week column views
+  // only. Atlas is wide too but has no scale, so the Ask button keeps it (D7).
+  const weekScaleShown = useWeekScaleShown();
   const needsYouShown = useNeedsYouShown();
   const layout = useLayoutDef();
   const { slots } = layout;
@@ -162,7 +165,7 @@ export const DesktopShell = memo(function DesktopShell() {
   // Each region fails on its own (#74, components/primitives/section-boundary.tsx):
   // a throw in the grid no longer takes the braindump and the rail with it.
   // Moving to another view clears the canvas's caught error.
-  const viewKey = useViewStore((s) => `${s.scope}:${s.layout}`);
+  const viewKey = useViewStore((s) => `${s.scope}:${s.scope === 'atlas' ? s.atlasLayout : s.layout}`);
   const sidebarLeft = slots.sidebar === 'left' && (
     <SectionBoundary label="braindump" className="w-[280px] flex-none">
       <Sidebar />
@@ -264,8 +267,8 @@ export const DesktopShell = memo(function DesktopShell() {
           {/* Needs you: agents' questions, the askers' avatars and "N to
               answer" (needs-you-badge.tsx). Only while something waits, and
               then it takes the row's far end ahead of the Ask button. */}
-          <NeedsYouBadge className={canvasWide ? undefined : 'ml-auto'} />
-          <AskOpener className={canvasWide || needsYouShown ? undefined : 'ml-auto'} />
+          <NeedsYouBadge className={weekScaleShown ? undefined : 'ml-auto'} />
+          <AskOpener className={weekScaleShown || needsYouShown ? undefined : 'ml-auto'} />
           {/* The key to a mod's panels, after the Ask button: it takes the
               row's far end itself only when the Ask button is not offered
               (mod-opener.tsx). */}

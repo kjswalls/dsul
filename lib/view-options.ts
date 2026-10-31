@@ -15,11 +15,13 @@ import {
   ArrowDownAZ,
   CalendarRange,
   Target,
+  Map as MapIcon,
   type LucideIcon,
 } from 'lucide-react';
+import { ATLAS_COPY } from './atlas-copy';
 import type { GroupBy } from './planner-types';
 import type { SortBy } from './sort-rows';
-import type { BraindumpGroupBy, TypeFilter, ViewLayout, ViewScope } from './view-store';
+import type { AtlasLayout, BraindumpGroupBy, TypeFilter, ViewLayout, ViewScope } from './view-store';
 
 /**
  * The canonical option lists for the canvas view controls, shared by the
@@ -48,6 +50,25 @@ export const LAYOUT_OPTIONS: ViewOption<ViewLayout>[] = [
 export const SCOPE_OPTIONS: ViewOption<ViewScope>[] = [
   { value: 'day', label: 'Day', icon: Sun },
   { value: 'week', label: 'Week', icon: CalendarDays },
+  // The label is exactly "Atlas": the e2e `setScope` helper finds the menu
+  // item by a name match that is not `exact`.
+  { value: 'atlas', label: ATLAS_COPY.name, icon: MapIcon },
+];
+
+/**
+ * The scope options a shell may offer. Atlas is desktop only (the phone's
+ * router never reads scope), so the phone never lists it.
+ */
+export function scopeOptionsFor(isMobile: boolean): ViewOption<ViewScope>[] {
+  return isMobile ? SCOPE_OPTIONS.filter((o) => o.value !== 'atlas') : SCOPE_OPTIONS;
+}
+
+/**
+ * Atlas's layouts (D2: a separate list, never mixed into LAYOUT_OPTIONS). PR1
+ * ships Your map alone; Momentum, By goal and Timeline land with PR2.
+ */
+export const ATLAS_LAYOUT_OPTIONS: ViewOption<AtlasLayout>[] = [
+  { value: 'map', label: ATLAS_COPY.layoutMap, icon: MapIcon },
 ];
 
 /**
@@ -101,6 +122,11 @@ export function groupBySupport(
   value: GroupBy
 ): GroupSupport {
   if (value === 'none') return FULL;
+
+  // Atlas draws containers as cards, not grouped rows: no grouping reaches it.
+  // The Display menu is hidden there anyway; this keeps the answer honest for
+  // any caller that asks.
+  if (scope === 'atlas') return { honoured: false, note: null };
 
   if (layout === 'buckets') {
     // The view IS the partition. Four cards of one bucket each, sectioned by

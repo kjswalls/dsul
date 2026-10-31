@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Link2, Maximize2, MessageSquare, PanelRight, Power, PowerOff, Split, Sprout } from 'lucide-react';
@@ -57,12 +57,18 @@ export function ContainerContextMenu({
   kind,
   id,
   inConsole,
+  extra,
   children,
 }: {
   kind: ContainerMenuKind;
   id: string;
   /** Inside the console already: no "Open in Organize" — the row's click is that. */
   inConsole?: boolean;
+  /**
+   * Rows the surface owns, after "Open as page" (Atlas's "Center here"). Built
+   * from `ItemMenuRow`, like every other row here.
+   */
+  extra?: ReactNode;
   children: ReactElement;
 }) {
   const isMobile = useIsMobile();
@@ -73,7 +79,7 @@ export function ContainerContextMenu({
         {children}
       </ContextMenuTrigger>
       <ContextMenuContent className={PANEL} data-testid="container-context-menu" data-container-kind={kind}>
-        <Body kind={kind} id={id} inConsole={inConsole} />
+        <Body kind={kind} id={id} inConsole={inConsole} extra={extra} />
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -86,7 +92,17 @@ const SECTION: Record<ContainerMenuKind, string> = {
   goal: 'goals',
 };
 
-function Body({ kind, id, inConsole }: { kind: ContainerMenuKind; id: string; inConsole?: boolean }) {
+function Body({
+  kind,
+  id,
+  inConsole,
+  extra,
+}: {
+  kind: ContainerMenuKind;
+  id: string;
+  inConsole?: boolean;
+  extra?: ReactNode;
+}) {
   const router = useRouter();
   const openConsole = useOpenConsole();
   const organizeOn = useOrganizeEnabled();
@@ -137,6 +153,7 @@ function Body({ kind, id, inConsole }: { kind: ContainerMenuKind; id: string; in
         testId="container-menu-open-page"
         onSelect={() => router.push(href)}
       />
+      {extra}
       <ContainerAskSection kind={kind} container={container} items={items} canChat={canChat} />
       {gateOn !== undefined && (
         <>

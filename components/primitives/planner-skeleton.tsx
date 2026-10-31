@@ -1,4 +1,5 @@
 import type { ViewScope } from '@/lib/view-store';
+import { ATLAS_COPY } from '@/lib/atlas-copy';
 import { cn } from '@/lib/utils';
 
 /**
@@ -26,11 +27,12 @@ import { cn } from '@/lib/utils';
  * the bars alone. Both motion vetoes are spelled out there.
  */
 
-export type SkeletonVariant = 'list' | 'buckets' | 'schedule' | 'braindump';
+export type SkeletonVariant = 'list' | 'buckets' | 'schedule' | 'braindump' | 'atlas';
 
-const DEFAULT_LABEL: Record<'day' | 'week' | 'braindump', string> = {
+const DEFAULT_LABEL: Record<ViewScope | 'braindump', string> = {
   day: 'Loading your day…',
   week: 'Loading your week…',
+  atlas: ATLAS_COPY.loading,
   braindump: 'Loading braindump…',
 };
 
@@ -42,6 +44,8 @@ const DEFAULT_LABEL: Record<'day' | 'week' | 'braindump', string> = {
  *  opacity at all. */
 function viewRhythm(variant: SkeletonVariant, scope: ViewScope): string {
   if (variant === 'braindump') return '';
+  // Atlas: card-shaped blocks scattered like a map, wrapping.
+  if (variant === 'atlas' || scope === 'atlas') return 'flex flex-wrap gap-6';
   if (scope === 'week') {
     if (variant === 'list') return 'space-y-6';
     return 'flex gap-7';
@@ -93,6 +97,7 @@ const WEEK_COLUMN_ROWS: string[][] = [
   ['68%'],
 ];
 const BRAINDUMP_ROWS = ['72%', '55%', '81%', '47%', '64%', '58%'];
+const ATLAS_CARDS = ['48%', '62%', '40%', '55%'];
 const HOUR_ROWS = 8;
 
 function Bars({ variant, scope }: { variant: SkeletonVariant; scope: ViewScope }) {
@@ -103,6 +108,22 @@ function Bars({ variant, scope }: { variant: SkeletonVariant; scope: ViewScope }
           <Row key={i} width={w} />
         ))}
       </div>
+    );
+  }
+
+  if (variant === 'atlas' || scope === 'atlas') {
+    // Four card-shaped blocks: a header bar, a tile strip, a row. Never lime,
+    // never data-week-col*.
+    return (
+      <>
+        {ATLAS_CARDS.map((w, i) => (
+          <div key={i} className="w-[260px] space-y-3 rounded-card border border-surface-3 px-4 py-3">
+            <Bar className="h-3.5" width={w} />
+            <Bar className="h-2" width="70%" />
+            <Row width="62%" />
+          </div>
+        ))}
+      </>
     );
   }
 
