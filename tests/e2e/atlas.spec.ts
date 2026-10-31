@@ -479,8 +479,12 @@ test.describe('atlas', () => {
     await expect(page.getByTestId('atlas-walk-veil')).toHaveAttribute('data-up', 'true');
 
     // Step with the arrow key until the walk stands on our card (the suite
-    // shares one account, so other tests' cards are on the map too).
-    for (let i = 0; i < 60 && (await walk.getAttribute('data-walk-card')) !== key; i++) {
+    // shares one account, so other tests' cards are on the map too). The walk
+    // says how many cards it holds ("1 of N"), so the loop is bounded by that,
+    // never by a guess at how full the account is.
+    const total = Number((await walk.getByTestId('atlas-walk-step').textContent())?.match(/of (\d+)/)?.[1] ?? '0');
+    expect(total).toBeGreaterThan(0);
+    for (let i = 0; i < total && (await walk.getAttribute('data-walk-card')) !== key; i++) {
       await page.keyboard.press('ArrowRight');
     }
     await expect(walk).toHaveAttribute('data-walk-card', key);

@@ -10,6 +10,7 @@ import {
   useState,
   type FocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
 } from 'react';
 import { toast } from 'sonner';
@@ -18,7 +19,9 @@ import { ATLAS_COPY } from '@/lib/atlas-copy';
 import { completeStep, putNextOnToday } from '@/lib/atlas-verbs';
 import {
   lerpRect,
+  reconcileWalkRoute,
   walkCamera,
+  walkHoleRect,
   walkFlightFlourishes,
   walkScrimPath,
   walkStopOf,
@@ -28,11 +31,13 @@ import { ATLAS_CARD_H, ATLAS_CARD_W } from '@/lib/atlas-seed';
 import { ATLAS_EASE_EXIT, ATLAS_EASE_OUT, ATLAS_MOTION, easeInOutCubic } from '@/lib/atlas-motion';
 import { useOpenConsole } from '@/lib/console-door';
 import { CONSOLE_SECTION } from '@/components/views/atlas/atlas-focus-sheet';
-import type { AtlasCamera, Point, Rect, Viewport } from '@/lib/atlas-camera';
+import { panBy, type AtlasCamera, type Point, type Rect, type Viewport } from '@/lib/atlas-camera';
 import type { AtlasCard } from '@/lib/atlas-model';
+import type { AtlasLayout } from '@/lib/view-store';
+import { atlasWheel } from '@/components/views/atlas/atlas-surface';
 import { cn } from '@/lib/utils';
 
-/** Screen pixels of room between a card's edge and the cut-out's. */
+/** Screen pixels of room between a card's edge and the cut-out's (and room above for its hover bar). */
 const HOLE_PAD = 10;
 /** The card's own corner radius, in world pixels (atlas-card.tsx). */
 const CARD_RADIUS = 16;
@@ -50,8 +55,15 @@ type FlyTo = (target: AtlasCamera, onLand?: () => void, flourish?: boolean) => v
 interface WalkProps {
   /** The cards drawn (filters applied), so a stop can name its card. */
   cards: readonly AtlasCard[];
-  /** The keys the walk visits, in the layout's reading order (lib/atlas-walk.ts). */
-  order: readonly string[];
+  layout: AtlasLayout;
+  /**
+   * The drawn cards in the layout's reading order as it is now
+   * (lib/atlas-walk.ts). The walk keeps its own route from it
+   * (reconcileWalkRoute), so a re-sort never skips or repeats a card.
+   */
+  liveOrder: readonly string[];
+  /** Holds the drawn layout after a walk verb, until the walk steps. */
+  onHold: () => void;
   positions: ReadonlyMap<string, Point>;
   viewport: Viewport;
   todayStr: string;
@@ -102,7 +114,9 @@ function WalkOn({
   walk,
   leaving,
   cards,
-  order,
+  layout,
+  liveOrder,
+  onHold,
   positions,
   viewport,
   todayStr,
@@ -122,6 +136,19 @@ function WalkOn({
   useLayoutEffect(() => {
     viewportRef.current = viewport;
   }, [viewport]);
+
+  // The walk's route: the reading order as it started, then kept (cards gone
+  // are dropped, new ones join at the end, a layout switch re-reads what is
+  // still to come). Never while leaving, when the view stops sorting.
+  const [route, setRoute] = useState(() => ({ order: liveOrder.slice() as readonly string[], live: liveOrder, layout }));
+  if (!leaving && (route.live !== liveOrder || route.layout !== layout)) {
+    setRoute({
+      order: reconcileWalkRoute(route.order, liveOrder, walk.key, route.layout !== layout),
+      live: liveOrder,
+      layout,
+    });
+  }
+  const order = route.order;
 
   // Where the walk stands. The card it was on wins (a layout switch or a
   // filter mid-walk keeps it there); else its step; past the last card, the
@@ -152,22 +179,27 @@ function WalkOn({
   // asks). From far out, the flight plays the handoff as the cards form. The
   // closing stop flies back to where the walk started.
   const hasViewport = viewport.w > 0 && viewport.h > 0;
+  const totalRef = useRef(total);
+  useLayoutEffect(() => {
+    totalRef.current = total;
+  }, [total]);
   const atX = at?.x;
   const atY = at?.y;
   useEffect(() => {
     if (leaving) return;
     const cam = useAtlasUiStore.getState().camera;
     if (finished) {
-      if (total > 0) flyTo(walk.returnTo);
+      if (totalRef.current > 0) flyTo(walk.returnTo);
       return;
     }
     if (!key || atX === undefined || atY === undefined) return;
     const el = rootRef.current?.querySelector<HTMLElement>(`[data-atlas-card="${key}"]`);
     const rect: Rect = { x: atX, y: atY, w: ATLAS_CARD_W, h: el?.offsetHeight || ATLAS_CARD_H };
     flyTo(walkCamera(rect, viewportRef.current, cam), undefined, walkFlightFlourishes(cam));
-    // walk.returnTo is fixed for a walk.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leaving, finished, key, atX, atY, hasViewport, flyTo, rootRef, total]);
+    // Not on the card count: a Realtime change or a filter mid-walk must not
+    // fly back over a pan the person made. returnTo moves only on a layout
+    // switch (the closing stop then flies to the new frame).
+  }, [leaving, finished, key, atX, atY, hasViewport, flyTo, rootRef, walk.returnTo]);
 
   const next = useCallback(() => {
     const ui = useAtlasUiStore.getState();
@@ -186,6 +218,8 @@ function WalkOn({
   const act = (a: WalkAction) => {
     if (previewing || !card) return;
     const n = card.next;
+    // The card stays put (a held layout) until the walk steps on.
+    if (a.id !== 'organize') onHold();
     if (a.id === 'today' && n) putNextOnToday(n.item.id, todayStr, milestoneIds);
     else if (a.id === 'complete' && n) completeStep(n.item.id, todayStr, milestoneIds, n.todayState);
     else if (a.id === 'organize') {
@@ -302,6 +336,14 @@ function WalkOn({
     : card && stop
       ? ATLAS_COPY.walkAnnounce(index + 1, total, card.name, card.kindLabel, question)
       : '';
+  // The live region mounts empty and takes each stop's words a frame later,
+  // so the first stop is announced too (a region born full often is not).
+  const [spoken, setSpoken] = useState('');
+  useEffect(() => {
+    if (typeof requestAnimationFrame === 'undefined') return;
+    const raf = requestAnimationFrame(() => setSpoken(leaving ? '' : announce));
+    return () => cancelAnimationFrame(raf);
+  }, [announce, leaving]);
   // While the focus sheet is up (a double-click on the card in the cut-out),
   // the walk waits under it, unseen, and comes back as the sheet closes.
   const hidden = sheetOpen;
@@ -460,7 +502,7 @@ function WalkOn({
           </div>
         </div>
         <p className="sr-only" aria-live="polite" aria-atomic="true" data-testid="atlas-walk-announce">
-          {leaving ? '' : announce}
+          {leaving ? '' : spoken}
         </p>
       </section>
     </>
@@ -523,14 +565,7 @@ function WalkVeil({
     }
     drawn.current = world;
     const cam = useAtlasUiStore.getState().camera;
-    const hole = world
-      ? {
-          x: world.x * cam.z + cam.x - HOLE_PAD,
-          y: world.y * cam.z + cam.y - HOLE_PAD,
-          w: world.w * cam.z + HOLE_PAD * 2,
-          h: world.h * cam.z + HOLE_PAD * 2,
-        }
-      : null;
+    const hole = world ? walkHoleRect(world, cam, HOLE_PAD) : null;
     path.setAttribute('d', walkScrimPath(hole, CARD_RADIUS * cam.z + HOLE_PAD));
   }, []);
 
@@ -569,8 +604,14 @@ function WalkVeil({
     raf.current = null;
     draw();
     if (!slide.current || typeof requestAnimationFrame === 'undefined') return;
+    // While the camera moves (the walk's own flight), its subscription below
+    // already draws each frame: the slide's frame draws only on a frame the
+    // camera stood still, so the path is written once a frame, not twice.
+    let camSeen = useAtlasUiStore.getState().camera;
     const step = () => {
-      draw();
+      const cam = useAtlasUiStore.getState().camera;
+      if (cam === camSeen) draw();
+      camSeen = cam;
       raf.current = slide.current ? requestAnimationFrame(step) : null;
     };
     raf.current = requestAnimationFrame(step);
@@ -592,6 +633,51 @@ function WalkVeil({
     [draw, watchCard, holeKey]
   );
 
+  // The veil sits beside the board's surface, not in it, so it takes the
+  // board's wheel itself (as the minimap's corner does): a wheel pans and a
+  // pinch or Ctrl+wheel zooms Atlas, never the page.
+  useEffect(() => {
+    const path = pathRef.current;
+    if (!path) return;
+    const onWheel = (e: WheelEvent) => {
+      const surface = rootRef.current?.querySelector<HTMLElement>('[data-testid="atlas-surface"]');
+      atlasWheel(e, surface ?? (path.ownerSVGElement as unknown as HTMLElement));
+    };
+    path.addEventListener('wheel', onWheel, { passive: false });
+    return () => path.removeEventListener('wheel', onWheel);
+  }, [rootRef]);
+
+  // A drag on the veil pans the board, as a drag on the bare board does. A
+  // press that does not move does nothing (and keeps focus where it is).
+  const pan = useRef<{ id: number; x: number; y: number } | null>(null);
+  const onPointerDown = (e: ReactPointerEvent<SVGPathElement>) => {
+    if (e.button !== 0 && e.button !== 1) return;
+    e.preventDefault();
+    pan.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Synthetic pointers can't always capture; panning still follows moves.
+    }
+  };
+  const onPointerMove = (e: ReactPointerEvent<SVGPathElement>) => {
+    const p = pan.current;
+    if (!p || p.id !== e.pointerId) return;
+    const dx = e.clientX - p.x;
+    const dy = e.clientY - p.y;
+    if (dx === 0 && dy === 0) return;
+    p.x = e.clientX;
+    p.y = e.clientY;
+    const ui = useAtlasUiStore.getState();
+    ui.setCamera(panBy(ui.camera, dx, dy));
+  };
+  const endPan = (e: ReactPointerEvent<SVGPathElement>) => {
+    if (pan.current?.id === e.pointerId) pan.current = null;
+  };
+
+  // z-[18]: over the board and its cards, under the walk's panel (z-[22])
+  // and, on purpose, under the minimap (z-20): the minimap is wayfinding, and
+  // panning with it mid-walk is as welcome as panning on the veil.
   return (
     <svg
       aria-hidden
@@ -606,9 +692,14 @@ function WalkVeil({
         data-up={up ? 'true' : undefined}
         fillRule="evenodd"
         onMouseDown={(e) => e.preventDefault()}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endPan}
+        onPointerCancel={endPan}
         style={{
           fill: up ? WALK_VEIL : 'transparent',
           pointerEvents: up ? 'auto' : 'none',
+          touchAction: 'none',
           transition: reduced ? 'none' : `fill ${ATLAS_MOTION.walkScrimMs}ms ${ATLAS_EASE_OUT}`,
         }}
       />

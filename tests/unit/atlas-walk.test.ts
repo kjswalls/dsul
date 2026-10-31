@@ -3,7 +3,10 @@ import {
   atlasReadingOrder,
   atlasWalkOrder,
   lerpRect,
+  reconcileWalkRoute,
   walkCamera,
+  walkHoleRect,
+  WALK_HOVERBAR_ROOM,
   walkFlightFlourishes,
   walkScrimPath,
   walkStopOf,
@@ -256,6 +259,61 @@ describe('the camera', () => {
   });
 });
 
+describe('the walk route', () => {
+  /** Walks `route` from its start, applying `change` after the first stop; the keys visited. */
+  const walkThrough = (route: readonly string[], change: (r: readonly string[], at: string) => readonly string[]) => {
+    const seen: string[] = [];
+    let r = route;
+    let i = 0;
+    while (i < r.length) {
+      const at = r[i];
+      seen.push(at);
+      if (seen.length === 1) {
+        r = change(r, at);
+        i = r.indexOf(at);
+      }
+      i += 1;
+    }
+    return seen;
+  };
+
+  it('starts as the reading order and hands itself back when nothing changed', () => {
+    expect(reconcileWalkRoute([], ['a', 'b'], null)).toEqual(['a', 'b']);
+    const r = ['a', 'b', 'c'];
+    expect(reconcileWalkRoute(r, ['c', 'a', 'b'], 'a')).toBe(r);
+  });
+
+  it('never skips or repeats a card when the reading order re-sorts under it', () => {
+    // Momentum: waking the first card moves it; Your map: dragging it far right.
+    const live = ['b', 'c', 'a'];
+    expect(walkThrough(['a', 'b', 'c'], (r, at) => reconcileWalkRoute(r, live, at))).toEqual(['a', 'b', 'c']);
+  });
+
+  it('drops a card that has gone and adds a new one at the end', () => {
+    expect(reconcileWalkRoute(['a', 'b', 'c'], ['d', 'a', 'c'], 'a')).toEqual(['a', 'c', 'd']);
+  });
+
+  it('on a layout switch, keeps what was seen in front and re-reads what is to come', () => {
+    expect(reconcileWalkRoute(['a', 'b', 'c', 'd'], ['d', 'c', 'b', 'a'], 'b', true)).toEqual(['a', 'b', 'd', 'c']);
+    // On the closing stop (no card), a switch changes nothing.
+    const r = ['a', 'b'];
+    expect(reconcileWalkRoute(r, ['b', 'a'], null, true)).toBe(r);
+  });
+});
+
+describe('the cut-out', () => {
+  it("leaves room above the card for its hover bar, so Focus and Open stay reachable", () => {
+    const cam = { x: 40, y: 30, z: 0.8 };
+    const card = { x: 100, y: 200, w: 300, h: 150 };
+    const hole = walkHoleRect(card, cam, 10);
+    // The hover bar is drawn 32 world pixels above the card (atlas-card.tsx: -top-8).
+    expect(hole.y).toBeLessThanOrEqual(card.y * cam.z + cam.y - 32 * cam.z);
+    expect(hole.y + hole.h).toBeCloseTo((card.y + card.h) * cam.z + cam.y + 10);
+    expect(hole.x).toBe(card.x * cam.z + cam.x - 10);
+    expect(WALK_HOVERBAR_ROOM).toBeGreaterThanOrEqual(32);
+  });
+});
+
 describe('the walk state', () => {
   it('starts from the camera as it is, closes the sheet, and Escape asks to go back there', () => {
     const ui = useAtlasUiStore.getState();
@@ -273,5 +331,17 @@ describe('the walk state', () => {
     useAtlasUiStore.getState().startWalk();
     useAtlasUiStore.getState().endWalk(false);
     expect(useAtlasUiStore.getState().walkHome).toBeNull();
+  });
+
+  it('takes a new return camera mid-walk (a layout switch) and goes back there', () => {
+    const ui = useAtlasUiStore.getState();
+    ui.setCamera({ x: 1, y: 1, z: 1 });
+    ui.startWalk();
+    useAtlasUiStore.getState().setWalkReturn({ x: 5, y: 6, z: 0.7 });
+    useAtlasUiStore.getState().endWalk(true);
+    expect(useAtlasUiStore.getState().walkHome).toEqual({ x: 5, y: 6, z: 0.7 });
+    // No walk on: nothing to set.
+    useAtlasUiStore.getState().setWalkReturn({ x: 9, y: 9, z: 1 });
+    expect(useAtlasUiStore.getState().walk).toBeNull();
   });
 });

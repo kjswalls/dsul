@@ -228,3 +228,60 @@ export function lerpRect(a: Rect, b: Rect, t: number): Rect {
   const k = Math.max(0, Math.min(1, t));
   return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k, w: a.w + (b.w - a.w) * k, h: a.h + (b.h - a.h) * k };
 }
+
+/**
+ * The walk's route, kept for the length of one walk (atlas-walk.tsx), so
+ * Next never skips or repeats a card when the board changes under it: a verb
+ * that re-sorts Momentum, a drag on Your map, a Realtime catch-up.
+ *
+ * - The first route is the reading order as the walk starts.
+ * - After that, a card that has gone is dropped where it stood, and a card
+ *   that shows up (a new one, a filter turned off) joins at the end, in the
+ *   reading order.
+ * - A layout switch (`relayout`) keeps the cards already seen in front, in the
+ *   order they were seen, then the card the walk stands on, then everything
+ *   still to come in the new layout's reading order, so the camera does not
+ *   zig-zag across the new arrangement and still visits each card once.
+ *
+ * Hands back `route` itself when nothing changed.
+ */
+export function reconcileWalkRoute(
+  route: readonly string[],
+  live: readonly string[],
+  current: string | null,
+  relayout = false
+): readonly string[] {
+  if (route.length === 0) return live.slice();
+  const liveSet = new Set(live);
+  const at = relayout && current !== null && liveSet.has(current) ? route.indexOf(current) : -1;
+  let next: string[];
+  if (at >= 0) {
+    const head = route.slice(0, at).filter((k) => liveSet.has(k));
+    head.push(current as string);
+    const headSet = new Set(head);
+    next = [...head, ...live.filter((k) => !headSet.has(k))];
+  } else {
+    const kept = route.filter((k) => liveSet.has(k));
+    const keptSet = new Set(kept);
+    next = [...kept, ...live.filter((k) => !keptSet.has(k))];
+  }
+  return next.length === route.length && next.every((k, i) => k === route[i]) ? route : next;
+}
+
+/** World pixels above a card that its hover bar (Focus, Open) takes (atlas-card.tsx: -top-8, plus its gap). */
+export const WALK_HOVERBAR_ROOM = 36;
+
+/**
+ * The cut-out on screen for a card's world rect: `pad` screen pixels all
+ * round, and room above for the card's hover bar, so Focus and Open stay
+ * bright and reachable during a walk.
+ */
+export function walkHoleRect(world: Rect, cam: AtlasCamera, pad: number, topRoom = WALK_HOVERBAR_ROOM): Rect {
+  const top = topRoom * cam.z;
+  return {
+    x: world.x * cam.z + cam.x - pad,
+    y: world.y * cam.z + cam.y - pad - top,
+    w: world.w * cam.z + pad * 2,
+    h: world.h * cam.z + pad * 2 + top,
+  };
+}

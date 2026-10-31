@@ -85,6 +85,8 @@ import { atlasReadingOrder, atlasWalkOrder } from '@/lib/atlas-walk';
  * new cards land.
  */
 const SEED_VIEWPORT: Viewport = { w: 1600, h: 900 };
+/** The walk's order while no walk is on: nothing sorted (stable, so no re-render). */
+const NO_WALK: readonly string[] = [];
 
 /** A click on a far cluster flies in over this long (instant under reduced motion). */
 const ATLAS_FLY_MS = ATLAS_MOTION.flyMs;
@@ -271,6 +273,29 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
       if (!overCard.current) setHold(null);
     }, ATLAS_TICK_HOLD_MS);
   }, []);
+  // A verb run from Walk Atlas holds the drawn layout until the walk steps
+  // (Next, Back, Done), not for a timer: the card stays where the camera and
+  // the cut-out are, and the walk's route never moves under it.
+  const walkHeld = useRef(false);
+  const holdForWalk = useCallback(() => {
+    const drawn = lastDrawn.current;
+    if (drawn.layout === 'map') return;
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+    holdTimeUp.current = false;
+    walkHeld.current = true;
+    setHold((h) => (h && h.layout === drawn.layout ? h : drawn));
+  }, []);
+  useEffect(
+    () =>
+      useAtlasUiStore.subscribe((s, prev) => {
+        if (!walkHeld.current || s.walk === prev.walk) return;
+        if (s.walk && prev.walk && s.walk.key === prev.walk.key) return;
+        walkHeld.current = false;
+        releaseHold();
+      }),
+    [releaseHold]
+  );
   const onPointerOver = (e: { target: EventTarget }) => {
     overCard.current = !!(e.target as Element).closest?.('[data-atlas-card]');
     if (!overCard.current && holdTimeUp.current && hold) setHold(null);
@@ -701,10 +726,15 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     if (!ui.fitted || viewportRef.current.w <= 0) return;
     lastLayout.current = layout;
     useAtlasUiStore.getState().setHotLane(null);
+    const fit = fitBounds(rects(visible), viewportRef.current, 48, ui.camera, ATLAS_FIT_FLOOR);
     // A walk keeps standing on its card: it flies there in the new layout
-    // (atlas-walk.tsx), and a fit here would cut that flight short.
-    if (ui.walk) return;
-    ui.setCamera(fitBounds(rects(visible), viewportRef.current, 48, ui.camera, ATLAS_FIT_FLOOR));
+    // (atlas-walk.tsx), and a fit here would cut that flight short. Done and
+    // Escape go back to this layout's frame, not the old one's.
+    if (ui.walk) {
+      ui.setWalkReturn(fit);
+      return;
+    }
+    ui.setCamera(fit);
   }, [layout, rects, visible, releaseHold]);
 
   // The toolbar's Fit.
@@ -809,7 +839,11 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // reading order. A walk that ended asking to go home flies the camera back
   // to where it started (it jumps under reduced motion). Leaving Atlas ends a
   // walk, as it closes the sheet.
-  const walkOrder = useMemo(() => (ready ? atlasWalkOrder(layout, visible, positions) : []), [ready, layout, visible, positions]);
+  const walking = useAtlasUiStore((s) => s.walk !== null);
+  const walkOrder = useMemo(
+    () => (ready && walking ? atlasWalkOrder(layout, visible, positions) : NO_WALK),
+    [ready, walking, layout, visible, positions]
+  );
   const walkHome = useAtlasUiStore((s) => s.walkHome);
   useEffect(() => {
     if (!walkHome) return;
@@ -818,9 +852,14 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   }, [walkHome, flyTo]);
   useEffect(
     () => () => {
+      // The camera is a module singleton: a walk left mid-way (or a flight
+      // home cut off by leaving) jumps it back to where the walk started,
+      // so the next visit opens where the person was, not on a walk stop.
       const ui = useAtlasUiStore.getState();
+      const home = ui.walk?.returnTo ?? ui.walkHome;
       ui.endWalk(false);
       ui.clearWalkHome();
+      if (home) ui.setCamera(home);
     },
     []
   );
@@ -1011,7 +1050,9 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
       </div>
       <AtlasWalk
         cards={visible}
-        order={walkOrder}
+        layout={layout}
+        liveOrder={walkOrder}
+        onHold={holdForWalk}
         positions={positions}
         viewport={viewport}
         todayStr={todayStr}

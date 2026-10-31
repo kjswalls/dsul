@@ -20,7 +20,8 @@ import type { AtlasKind } from './atlas-model';
  * Walk Atlas (atlas-walk.tsx): where the walk is, and the camera it started
  * from. `key` is the card it stands on, so a layout switch or a filter
  * mid-walk keeps it on that card; `step` is the fallback when the card has
- * gone (and equals the order's length on the closing stop).
+ * gone (and equals the order's length on the closing stop). `returnTo` is
+ * the camera as the walk started, re-framed if the layout switches mid-walk.
  */
 export interface AtlasWalk {
   step: number;
@@ -89,6 +90,8 @@ interface AtlasUiStore {
   /** Starts a walk from the camera as it is now (and closes the focus sheet). */
   startWalk: () => void;
   walkTo: (step: number, key: string | null) => void;
+  /** A layout switch mid-walk: Done and Escape go back to the new layout's frame. */
+  setWalkReturn: (camera: AtlasCamera) => void;
   /** Ends the walk; with `restore`, asks for the camera it started from. */
   endWalk: (restore: boolean) => void;
   clearWalkHome: () => void;
@@ -133,6 +136,7 @@ export const useAtlasUiStore = create<AtlasUiStore>()((set) => ({
   startWalk: () => set((s) => ({ walk: { step: 0, key: null, returnTo: s.camera }, walkHome: null, sheet: null })),
   walkTo: (step, key) =>
     set((s) => (!s.walk || (s.walk.step === step && s.walk.key === key) ? s : { walk: { ...s.walk, step, key } })),
+  setWalkReturn: (camera) => set((s) => (s.walk ? { walk: { ...s.walk, returnTo: camera } } : s)),
   endWalk: (restore) => set((s) => (s.walk ? { walk: null, walkHome: restore ? s.walk.returnTo : null } : s)),
   clearWalkHome: () => set((s) => (s.walkHome === null ? s : { walkHome: null })),
   reset: () => set({ ...INITIAL }),

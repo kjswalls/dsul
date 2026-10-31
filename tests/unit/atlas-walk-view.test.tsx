@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, onTestFinished } from 'vitest';
 import { act, render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 
 /**
@@ -129,6 +129,11 @@ afterEach(() => {
 const panel = () => screen.queryByTestId('atlas-walk');
 const stopKey = () => panel()?.getAttribute('data-walk-card');
 const start = () => act(() => useAtlasUiStore.getState().startWalk());
+/** A frame or two, for the live region's words (they land a frame after the stop). */
+const frame = () =>
+  act(async () => {
+    await new Promise((r) => setTimeout(r, 40));
+  });
 
 describe('Walk Atlas: the command', () => {
   it('is registered with no key, on Atlas only, off on the phone and under the sheet', () => {
@@ -167,7 +172,7 @@ describe('Walk Atlas: the command', () => {
 });
 
 describe('Walk Atlas: the walk', () => {
-  it('stands on each drawn card in order, asks one question, and announces each stop', () => {
+  it('stands on each drawn card in order, asks one question, and announces each stop', async () => {
     seed([task('a'), task('b', { project: 'Home' })]);
     render(<AtlasView />);
     start();
@@ -176,6 +181,10 @@ describe('Walk Atlas: the walk', () => {
     expect(['project:p1', 'project:p2']).toContain(first);
     expect(screen.getByTestId('atlas-walk-step').textContent).toBe('1 of 2');
     expect(screen.getByTestId('atlas-walk-question').textContent).toBe(ATLAS_COPY.walkNextQuestion);
+    // The live region mounts empty and takes the words a frame later, so the
+    // first stop is announced as a change.
+    expect(screen.getByTestId('atlas-walk-announce').textContent).toBe('');
+    await frame();
     expect(screen.getByTestId('atlas-walk-announce').textContent).toMatch(/^Card 1 of 2: (Work|Home), Project\. /);
     // Focus moves into the panel, onto Next.
     expect(document.activeElement).toBe(screen.getByTestId('atlas-walk-next'));
@@ -185,6 +194,7 @@ describe('Walk Atlas: the walk', () => {
     const second = stopKey()!;
     expect(second).not.toBe(first);
     expect(screen.getByTestId('atlas-walk-step').textContent).toBe('2 of 2');
+    await frame();
     expect(screen.getByTestId('atlas-walk-announce').textContent).toMatch(/^Card 2 of 2: /);
 
     // Past the last card: a closing stop, then Back returns to the last card.
@@ -282,8 +292,9 @@ describe('Walk Atlas: the walk', () => {
     expect(useAtlasUiStore.getState().camera).toEqual({ x: 1, y: 2, z: 1 });
 
     start();
+    // Inside Atlas, so only the text-field guard can keep the walk going.
     const input = document.createElement('input');
-    document.body.appendChild(input);
+    screen.getByTestId('atlas-view').appendChild(input);
     input.focus();
     fireEvent.keyDown(input, { key: 'Escape' });
     expect(useAtlasUiStore.getState().walk).not.toBeNull();
@@ -366,10 +377,91 @@ describe('Walk Atlas: the walk', () => {
   it('ends when Atlas unmounts, so it never springs back on the next visit', () => {
     seed([task('a')], [PROJECTS[0]]);
     const { unmount } = render(<AtlasView />);
+    act(() => useAtlasUiStore.getState().setCamera({ x: 7, y: 8, z: 0.9 }));
     start();
+    act(() => useAtlasUiStore.getState().setCamera({ x: 300, y: -200, z: 1.1 }));
     unmount();
     expect(useAtlasUiStore.getState().walk).toBeNull();
     expect(useAtlasUiStore.getState().walkHome).toBeNull();
+    // The camera goes back to where the walk started, not the last stop.
+    expect(useAtlasUiStore.getState().camera).toEqual({ x: 7, y: 8, z: 0.9 });
+  });
+
+  it('visits every card exactly once when a card moves under it (Your map)', () => {
+    seed([task('a'), task('b', { project: 'Home' }), task('c', { project: 'Errands' })], [
+      ...PROJECTS,
+      { id: 'p3', name: 'Errands', emoji: '' } as Project,
+    ]);
+    act(() =>
+      useAtlasStore.getState().placeMany([
+        { kind: 'project', id: 'p1', x: 0, y: 0 },
+        { kind: 'project', id: 'p2', x: 400, y: 0 },
+        { kind: 'project', id: 'p3', x: 800, y: 0 },
+      ] as never)
+    );
+    render(<AtlasView />);
+    start();
+    expect(stopKey()).toBe('project:p1');
+    // The card in the cut-out is dragged to the far right.
+    act(() => useAtlasStore.getState().place('project', 'p1', 2000, 0));
+    const seen = [stopKey()];
+    for (let i = 0; i < 5 && panel()!.getAttribute('data-walk-stop') !== 'finished'; i++) {
+      fireEvent.click(screen.getByTestId('atlas-walk-next'));
+      if (panel()!.getAttribute('data-walk-stop') !== 'finished') seen.push(stopKey());
+    }
+    expect(seen).toEqual(['project:p1', 'project:p2', 'project:p3']);
+  });
+
+  it("holds the card in place after a walk verb, until the walk steps on (Momentum)", () => {
+    seed([task('a'), task('b', { project: 'Home' })]);
+    useViewStore.setState({ atlasLayout: 'momentum' });
+    render(<AtlasView />);
+    start();
+    const on = stopKey()!;
+    const cardEl = () => document.querySelector<HTMLElement>(`[data-atlas-card="${on}"]`)!;
+    const before = cardEl().style.transform || cardEl().style.left + cardEl().style.top;
+    fireEvent.click(screen.getByTestId('atlas-walk-today'));
+    // Held: the card has not moved, and the walk still stands on it.
+    expect(cardEl().style.transform || cardEl().style.left + cardEl().style.top).toBe(before);
+    expect(stopKey()).toBe(on);
+    fireEvent.click(screen.getByTestId('atlas-walk-next'));
+    expect(stopKey()).not.toBe(on);
+  });
+
+  it('zooms Atlas, not the page, on Ctrl+wheel over the veil', () => {
+    seed([task('a'), task('b', { project: 'Home' })]);
+    render(<AtlasView />);
+    start();
+    const z0 = useAtlasUiStore.getState().camera.z;
+    const ev = new WheelEvent('wheel', { deltaY: -40, ctrlKey: true, bubbles: true, cancelable: true });
+    act(() => {
+      screen.getByTestId('atlas-walk-veil').dispatchEvent(ev);
+    });
+    expect(ev.defaultPrevented).toBe(true);
+    expect(useAtlasUiStore.getState().camera.z).toBeGreaterThan(z0);
+  });
+
+  it('after a layout switch mid-walk, Done goes back to the new layout\'s frame', () => {
+    // A measured board, so the layout switch frames the new arrangement.
+    const w = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200);
+    const h = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(800);
+    onTestFinished(() => {
+      w.mockRestore();
+      h.mockRestore();
+    });
+    seed([task('a'), task('b', { project: 'Home' })]);
+    useAtlasUiStore.getState().markFitted();
+    render(<AtlasView />);
+    act(() => useAtlasUiStore.getState().setCamera({ x: 1, y: 2, z: 1 }));
+    start();
+    const before = useAtlasUiStore.getState().walk!.returnTo;
+    act(() => useViewStore.getState().setAtlasLayout('momentum'));
+    const after = useAtlasUiStore.getState().walk!.returnTo;
+    expect(after).not.toBe(before);
+    fireEvent.click(screen.getByTestId('atlas-walk-next'));
+    fireEvent.click(screen.getByTestId('atlas-walk-next'));
+    fireEvent.click(screen.getByTestId('atlas-walk-done'));
+    expect(useAtlasUiStore.getState().camera).toEqual(after);
   });
 
   it('waits unseen under the focus sheet and comes back as it closes', () => {
