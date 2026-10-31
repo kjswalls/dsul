@@ -34,6 +34,7 @@ import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
 import { useNudgeStore } from '@/lib/nudge-store';
 import { useAwayStore } from '@/lib/away-store';
+import { useAtlasStore } from '@/lib/atlas-store';
 import { sessionUserFrom, useSessionUserStore } from '@/lib/session-user-store';
 import { isDataDialogArmed, useUIStore } from '@/lib/ui-store';
 import { adoptLocalState, clearUserScopedLocalState, localStateOwner } from '@/lib/local-state';
@@ -692,6 +693,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         useGatewayStore.getState().reset();
         useNudgeStore.getState().reset();
         useAwayStore.getState().reset();
+        // Atlas's places: memory only, loaded by AtlasView (never at sign-in);
+        // its per-device blob goes with the RAW_CLEARERS.
+        useAtlasStore.getState().reset();
         // The AI gate: not persisted, and an account switch already clears it
         // synchronously inside its hydrate. This covers the same gap as the
         // five above (a sign-out with no sign-in after it), and drops any

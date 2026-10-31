@@ -4,7 +4,9 @@ import { act, render, screen, cleanup, fireEvent, within } from '@testing-librar
 /**
  * Atlas's surface (components/views/atlas/), PR1a: card A, the row's click and
  * tick, the two right-click menus kept apart, the shift range kept to a card,
- * the session-only card drag, and the accent and canvas-container locks.
+ * the card drag, and the accent and canvas-container locks. PR1b: places load
+ * before cards draw, a seed is written once, a drag is one write, the table
+ * missing falls back to this device, and a preview reads and writes nothing.
  *
  * The focus sheet and its Escape/Enter keys land with PR1c and are tested there.
  */
@@ -24,12 +26,20 @@ vi.mock('@/lib/db', () => ({
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
+const io = vi.hoisted(() => ({ fetch: vi.fn(), upsert: vi.fn(), del: vi.fn() }));
+vi.mock('@/lib/atlas-positions', async (orig) => ({
+  ...(await orig<typeof import('@/lib/atlas-positions')>()),
+  fetchAtlasPlaces: io.fetch,
+  upsertAtlasPlaces: io.upsert,
+  deleteAtlasPlace: io.del,
+}));
 
 import { AtlasView } from '@/components/views/atlas/atlas-view';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
+import { useAtlasStore } from '@/lib/atlas-store';
 import type { Item, Project } from '@/lib/planner-types';
 
 const TODAY = '2026-07-16';
@@ -92,6 +102,12 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(asDate(TODAY));
   useAtlasUiStore.getState().reset();
+  useAtlasStore.getState().reset();
+  localStorage.clear();
+  usePlannerStore.setState({ userId: null });
+  io.fetch.mockReset().mockResolvedValue([]);
+  io.upsert.mockReset().mockResolvedValue('ok');
+  io.del.mockReset().mockResolvedValue('ok');
   useSelectionStore.getState().clear();
   useUIStore.setState({ activeDialog: null, confirmRequest: null });
 });
@@ -349,7 +365,7 @@ describe('the right-click menus', () => {
 });
 
 describe('the card drag', () => {
-  it('moves a card for the session on pointerup, past 5px only', () => {
+  it('places a card on pointerup, past 5px only', () => {
     seed([task('a')]);
     render(<AtlasView />);
     const c = card();
@@ -358,7 +374,7 @@ describe('the card drag', () => {
     fireEvent.pointerDown(c, { button: 0, pointerId: 1, clientX: 100, clientY: 100 });
     fireEvent.pointerMove(c, { pointerId: 1, clientX: 102, clientY: 101 });
     fireEvent.pointerUp(c, { pointerId: 1, clientX: 102, clientY: 101 });
-    expect(useAtlasUiStore.getState().moved).toEqual({});
+    expect(useAtlasStore.getState().places).toEqual({});
     expect(card().style.transform).toBe(start);
 
     fireEvent.pointerDown(c, { button: 0, pointerId: 2, clientX: 100, clientY: 100 });
@@ -366,9 +382,11 @@ describe('the card drag', () => {
     act(() => {
       fireEvent.pointerUp(c, { pointerId: 2, clientX: 160, clientY: 140 });
     });
-    const moved = useAtlasUiStore.getState().moved['project:p1'];
-    expect(moved).toBeTruthy();
+    const moved = useAtlasStore.getState().places['project:p1'];
+    expect(moved).toMatchObject({ kind: 'project', id: 'p1' });
     expect(card().style.transform).toBe(`translate(${moved.x}px, ${moved.y}px)`);
+    // No account in this test: nothing is written anywhere.
+    expect(io.upsert).not.toHaveBeenCalled();
   });
 
   it('never starts on a Ctrl+click (a Mac right-click)', () => {
@@ -378,7 +396,123 @@ describe('the card drag', () => {
     fireEvent.pointerDown(c, { button: 0, ctrlKey: true, pointerId: 1, clientX: 100, clientY: 100 });
     fireEvent.pointerMove(c, { pointerId: 1, clientX: 200, clientY: 200 });
     fireEvent.pointerUp(c, { pointerId: 1, clientX: 200, clientY: 200 });
-    expect(useAtlasUiStore.getState().moved).toEqual({});
+    expect(useAtlasStore.getState().places).toEqual({});
+  });
+});
+
+describe('positions (PR1b)', () => {
+  const signIn = (over: Record<string, unknown> = {}) =>
+    usePlannerStore.setState({ userId: 'u1', isLoading: false, isPreview: false, ...over } as never);
+  const flush = async () => {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  };
+
+  it('waits for the account’s places, then draws a card where it was put', async () => {
+    seed([task('a')]);
+    signIn();
+    let answer!: (v: unknown) => void;
+    io.fetch.mockReturnValueOnce(new Promise((res) => (answer = res)));
+    render(<AtlasView />);
+    expect(card()).toBeNull();
+    expect(io.fetch).toHaveBeenCalledTimes(1);
+    await act(async () => answer([{ kind: 'project', id: 'p1', x: 300, y: 120, band: null }]));
+    expect(card().style.transform).toBe('translate(300px, 120px)');
+    // A stored place is never re-seeded or re-written.
+    expect(io.upsert).not.toHaveBeenCalled();
+  });
+
+  it('seeds a card with no place and writes that seed once', async () => {
+    seed([task('a')]);
+    signIn();
+    render(<AtlasView />);
+    await flush();
+    expect(card()).toBeTruthy();
+    expect(io.upsert).toHaveBeenCalledTimes(1);
+    const [rows, , fields] = io.upsert.mock.calls[0];
+    expect(fields).toBe('xy');
+    expect(rows).toEqual([expect.objectContaining({ kind: 'project', id: 'p1' })]);
+    expect(card().style.transform).toBe(`translate(${rows[0].x}px, ${rows[0].y}px)`);
+    // A tick elsewhere re-derives the cards; nothing is written again.
+    act(() => seed([task('a'), task('b')]));
+    await flush();
+    expect(io.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('works with the table missing: seeds and drags go to this device', async () => {
+    seed([task('a')]);
+    signIn();
+    io.fetch.mockResolvedValue('unavailable');
+    render(<AtlasView />);
+    await flush();
+    expect(useAtlasStore.getState().mode).toBe('device');
+    expect(card()).toBeTruthy();
+    const blob = () => JSON.parse(localStorage.getItem('dsul-atlas-places')!);
+    expect(blob().userId).toBe('u1');
+    expect(blob().places).toHaveLength(1);
+
+    const c = card();
+    fireEvent.pointerDown(c, { button: 0, pointerId: 3, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(c, { pointerId: 3, clientX: 180, clientY: 100 });
+    act(() => {
+      fireEvent.pointerUp(c, { pointerId: 3, clientX: 180, clientY: 100 });
+    });
+    const after = useAtlasStore.getState().places['project:p1'];
+    expect(blob().places[0]).toMatchObject({ x: after.x, y: after.y });
+    expect(io.upsert).not.toHaveBeenCalled();
+  });
+
+  it('writes a drag at once, x and y only', async () => {
+    seed([task('a')]);
+    signIn();
+    io.fetch.mockResolvedValue([{ kind: 'project', id: 'p1', x: 0, y: 0, band: null }]);
+    render(<AtlasView />);
+    await flush();
+    const c = card();
+    fireEvent.pointerDown(c, { button: 0, pointerId: 4, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(c, { pointerId: 4, clientX: 140, clientY: 160 });
+    act(() => {
+      fireEvent.pointerUp(c, { pointerId: 4, clientX: 140, clientY: 160 });
+    });
+    expect(io.upsert).toHaveBeenCalledTimes(1);
+    const [rows, , fields] = io.upsert.mock.calls[0];
+    expect(fields).toBe('xy');
+    expect(rows[0]).toMatchObject({ kind: 'project', id: 'p1' });
+    expect(rows[0].x).toBeGreaterThan(0);
+  });
+
+  it('reads and writes nothing while a cached preview shows', async () => {
+    seed([task('a')]);
+    signIn({ isPreview: true });
+    render(<AtlasView />);
+    await flush();
+    expect(io.fetch).not.toHaveBeenCalled();
+    expect(io.upsert).not.toHaveBeenCalled();
+  });
+
+  it('after a read that throws, draws seeds without writing them, and retries on focus', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    seed([task('a')]);
+    signIn();
+    io.fetch.mockRejectedValueOnce(new Error('network'));
+    render(<AtlasView />);
+    await flush();
+    expect(useAtlasStore.getState()).toMatchObject({ failed: true, mode: 'unknown' });
+    expect(card()).toBeTruthy();
+    expect(io.upsert).not.toHaveBeenCalled();
+
+    io.fetch.mockResolvedValueOnce([]);
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await flush();
+    expect(io.fetch).toHaveBeenCalledTimes(2);
+    expect(useAtlasStore.getState()).toMatchObject({ failed: false, mode: 'account' });
+    // Now the drawn seed is written, once.
+    expect(io.upsert).toHaveBeenCalledTimes(1);
+    vi.mocked(console.error).mockRestore();
   });
 });
 

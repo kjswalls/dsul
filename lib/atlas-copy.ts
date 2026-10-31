@@ -74,6 +74,8 @@ export const ATLAS_COPY = {
   /** Accessible names. */
   cardLabel: (name: string, kind: string) => `${name}, ${kind}`,
   canvasLabel: 'Atlas map',
+  /** The positions table's 2,000-row cap (087), said once a session. */
+  placesFull: "Atlas can't remember more places",
 } as const;
 
 /** Every string the copy holds, flattened, for the scanning test. */

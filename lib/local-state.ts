@@ -2,6 +2,7 @@
 
 import { clearBrowserPairings } from './openclaw-browser/device-store';
 import { clearAtlasUiState } from './atlas-ui-store';
+import { clearAtlasLocalState } from './atlas-positions';
 import { useAISettingsStore } from './ai-settings-store';
 import { clearKeptQuestionState } from './ask-pending';
 import { useCommandUsageStore } from './command-usage-store';
@@ -137,6 +138,8 @@ import { useViewStore } from './view-store';
  *                          now (lib/conversations-store.ts), and the pre-2a
  *                          transcript keys are swept on the way out.
  *   sweep-grace            DISCLOSIVE — keyed by the previous account's row ids.
+ *   dsul-atlas-places      DISCLOSIVE — Atlas's per-device places, keyed by the
+ *                          account's container ids (clearAtlasLocalState).
  *
  * ── WHAT IS NEVER CLEARED, EVEN UNDER 'all' ─────────────────────────────────
  * The sidebar WIDTH and open/collapsed chrome (a property of the monitor you
@@ -314,6 +317,9 @@ function clearRetiredEodStore(): void {
  * Atlas's memory-only UI state (lib/atlas-ui-store.ts) is keyed by container
  * ids and holds whether the map was fitted, so the next account's first Atlas
  * fits to its own cards instead of opening where the last account left off.
+ * Atlas's per-device places (`dsul-atlas-places`, lib/atlas-positions.ts, the
+ * fallback until migration 087 is applied) are keyed by container ids, so they
+ * are disclosive and go too; a sign-out before 087 forgets that device's map.
  */
 const RAW_CLEARERS: readonly (() => void)[] = [
   clearRetiredEodStore,
@@ -326,6 +332,7 @@ const RAW_CLEARERS: readonly (() => void)[] = [
   clearBrowserPairings,
   clearItemNotesState,
   clearAtlasUiState,
+  clearAtlasLocalState,
 ];
 
 /** The account whose local state is on disk right now, or null for none. */

@@ -4,8 +4,7 @@ import type { AtlasKind } from './atlas-model';
 
 /**
  * Atlas's memory-only UI state (design D3): the camera, the focus sheet, which
- * cards are expanded, and, in PR1a, where cards have been dragged this
- * session. Not persisted: nothing here outlives the tab. It is still keyed by
+ * cards are expanded, and where cards were seeded this session. Not persisted: nothing here outlives the tab. It is still keyed by
  * container ids and remembers whether the map was fitted, so lib/local-state.ts
  * clears it with the account (a raw clearer, {@link clearAtlasUiState}).
  *
@@ -13,8 +12,8 @@ import type { AtlasKind } from './atlas-model';
  * one slot and the open item lives in it, so a sheet there would close the
  * item, and opening a row from the sheet would close the sheet.
  *
- * `moved` is PR1a's stand-in for the positions table (PR1b): a dragged card
- * keeps its place until the page reloads.
+ * Where a card was PUT lives in lib/atlas-store.ts (the positions table, or
+ * this device's blob until 087 is applied), not here.
  */
 
 export interface AtlasSheet {
@@ -40,12 +39,11 @@ interface AtlasUiStore {
   closeSheet: () => void;
   expanded: Record<string, true>;
   toggleExpanded: (key: string) => void;
-  /** Session-only card places (PR1a), by card key. */
-  moved: Record<string, Point>;
-  moveCard: (key: string, at: Point) => void;
   /**
    * Where each card was first seeded this session (lib/atlas-seed.ts). Kept,
    * so a card is seeded once and never jumps when another is dragged near it.
+   * With an account that has answered, each seed is also written once
+   * (atlas-store `placeMany`), and the stored place wins from then on.
    */
   seeded: Record<string, Point>;
   addSeeded: (places: Record<string, Point>) => void;
@@ -58,7 +56,6 @@ const INITIAL = {
   fitToken: 0,
   sheet: null,
   expanded: {},
-  moved: {},
   seeded: {},
 } satisfies Partial<AtlasUiStore>;
 
@@ -76,7 +73,6 @@ export const useAtlasUiStore = create<AtlasUiStore>()((set) => ({
       else next[key] = true;
       return { expanded: next };
     }),
-  moveCard: (key, at) => set((s) => ({ moved: { ...s.moved, [key]: at } })),
   addSeeded: (places) =>
     set((s) => (Object.keys(places).length === 0 ? s : { seeded: { ...s.seeded, ...places } })),
   reset: () => set({ ...INITIAL }),

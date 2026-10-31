@@ -5,6 +5,9 @@ import { AtlasSurface } from '@/components/views/atlas/atlas-surface';
 import { AtlasCard } from '@/components/views/atlas/atlas-card';
 import { useAtlasCards } from '@/components/views/atlas/use-atlas-cards';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
+import { useAtlasStore } from '@/lib/atlas-store';
+import type { AtlasPlace } from '@/lib/atlas-positions';
+import { usePlannerStore } from '@/lib/planner-store';
 import {
   ATLAS_FIT_FLOOR,
   centerOn,
@@ -30,9 +33,15 @@ const SEED_VIEWPORT: Viewport = { w: 1600, h: 900 };
  * Atlas: the user's projects, routines, seasons and goals as cards on a map
  * (design PR1a). The third ViewScope, desktop only.
  *
- * Positions come from `seedPlaces()` and live in memory: a card dragged this
- * session keeps its place until reload (lib/atlas-ui-store.ts `moved`). PR1b
- * gives them the positions table.
+ * Positions (PR1b) come from lib/atlas-store.ts: the account's rows in
+ * `atlas_positions`, or this device's blob until 087 is applied. The store
+ * loads on the first mount once the planner has settled and is not a cached
+ * preview, and the cards wait for its answer, so a stored place never jumps
+ * in over a seeded one. A card with no place is seeded (`seedPlaces()`) and
+ * that seed is written once, so "Your map is never overwritten" holds: a new
+ * container lands beside its goal or season the first time Atlas sees it.
+ * With no account (a test) or a read that threw, seeds stay in memory and
+ * nothing is written. Nothing is written while previewing or before settled.
  *
  * The root is focusable (`tabIndex={-1}`) and `overflow: clip`, not hidden:
  * a hidden box is a scroll container, and a focused off-screen card would
@@ -47,7 +56,12 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // A press inside the map focuses what it lands on; that focus must not pan
   // (the card would move out from under the press). Only keyboard focus pans.
   const pointerDown = useRef(false);
-  const moved = useAtlasUiStore((s) => s.moved);
+  const userId = usePlannerStore((s) => s.userId);
+  const atlasUser = useAtlasStore((s) => s.userId);
+  const atlasLoaded = useAtlasStore((s) => s.loaded);
+  const atlasFailed = useAtlasStore((s) => s.failed);
+  const atlasMode = useAtlasStore((s) => s.mode);
+  const stored = useAtlasStore((s) => s.places);
   const expanded = useAtlasUiStore((s) => s.expanded);
   const fitToken = useAtlasUiStore((s) => s.fitToken);
   const seeded = useAtlasUiStore((s) => s.seeded);
@@ -56,15 +70,60 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // (never during render), so a resize never re-renders a card.
   const viewportRef = useRef(viewport);
 
-  const places = useMemo(() => ({ ...seeded, ...moved }), [seeded, moved]);
+  // The cards wait for the store's first answer (with no account there is
+  // none to wait for), so a stored place never replaces a seeded one on screen.
+  const ready = !userId || (atlasUser === userId && atlasLoaded);
+  // Places may be written: an account whose places have answered, settled,
+  // not a preview, and not after a read that threw (a seed written then could
+  // land over a place the server has and this tab has not seen).
+  const writable =
+    !!userId && ready && settled && !previewing && !atlasFailed && (atlasMode === 'account' || atlasMode === 'device');
+
+  const storedXY = useMemo(() => {
+    const out: Record<string, Point> = {};
+    for (const [key, p] of Object.entries(stored)) {
+      if (p.x !== null && p.y !== null) out[key] = { x: p.x, y: p.y };
+    }
+    return out;
+  }, [stored]);
+  const places = useMemo(() => ({ ...seeded, ...storedXY }), [seeded, storedXY]);
+
+  // Load the account's places: on the first mount once settled and not a
+  // preview, memoised per account by the store.
+  useEffect(() => {
+    if (!userId || !settled || previewing) return;
+    void useAtlasStore.getState().load(userId);
+  }, [userId, settled, previewing]);
+
+  // Retry on focus, only after a read that threw. Device mode, once latched,
+  // holds for the session (a retry would only find the table missing again).
+  useEffect(() => {
+    if (!userId) return;
+    const onWindowFocus = () => {
+      const s = useAtlasStore.getState();
+      if (s.userId === userId && s.failed && s.mode !== 'device') void s.load(userId);
+    };
+    window.addEventListener('focus', onWindowFocus);
+    return () => window.removeEventListener('focus', onWindowFocus);
+  }, [userId]);
 
   // Seed the cards that have no place yet, once each, before paint: a card is
   // seeded the first time Atlas sees it, so ticking a row or dragging another
-  // card never moves it.
+  // card never moves it. Once places may be written, every card with no
+  // stored place is written once, at the place it is drawn.
   useLayoutEffect(() => {
+    if (!ready) return;
     const fresh = seedPlaces(cards, places, SEED_VIEWPORT);
     useAtlasUiStore.getState().addSeeded(fresh);
-  }, [cards, places]);
+    if (!writable) return;
+    const drawn = { ...places, ...fresh };
+    const missing: AtlasPlace[] = [];
+    for (const c of cards) {
+      const at = drawn[c.key];
+      if (!storedXY[c.key] && at) missing.push({ kind: c.kind, id: c.id, x: at.x, y: at.y, band: null });
+    }
+    if (missing.length > 0) useAtlasStore.getState().placeMany(missing);
+  }, [cards, places, storedXY, ready, writable]);
 
   const rects = useCallback(
     (list: readonly AtlasCardModel[]): Rect[] =>
@@ -99,11 +158,13 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // toolbar's Fit keeps the full range.
   useEffect(() => {
     const ui = useAtlasUiStore.getState();
-    if (!settled || previewing) return;
+    if (!settled || previewing || !ready) return;
     if (ui.fitted || viewport.w <= 0 || viewport.h <= 0 || cards.length === 0) return;
+    // Every card drawn first: a fit to half the map would mark it fitted.
+    if (cards.some((c) => !places[c.key])) return;
     ui.setCamera(fitBounds(rects(cards), viewport, 48, ui.camera, ATLAS_FIT_FLOOR));
     ui.markFitted();
-  }, [viewport, cards, rects, settled, previewing]);
+  }, [viewport, cards, rects, places, settled, previewing, ready]);
 
   // The toolbar's Fit.
   const lastFit = useRef(fitToken);
@@ -114,8 +175,17 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     ui.setCamera(fitBounds(rects(cards), viewportRef.current, 48, ui.camera));
   }, [fitToken, cards, rects]);
 
+  // A drop is one write, on pointerup. view-root is inert while previewing, so
+  // no drag starts then; the ref is the belt to that.
+  const previewingRef = useRef(previewing);
+  useEffect(() => {
+    previewingRef.current = previewing;
+  }, [previewing]);
   const onMove = useCallback((key: string, to: Point) => {
-    useAtlasUiStore.getState().moveCard(key, to);
+    if (previewingRef.current) return;
+    const at = key.indexOf(':');
+    if (at <= 0) return;
+    useAtlasStore.getState().place(key.slice(0, at) as AtlasPlace['kind'], key.slice(at + 1), to.x, to.y);
   }, []);
   const onToggleExpanded = useCallback((key: string) => {
     useAtlasUiStore.getState().toggleExpanded(key);
@@ -164,7 +234,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     >
       <AtlasSurface rootRef={rootRef}>
         {cards.map((card) => {
-          const at = places[card.key];
+          const at = ready ? places[card.key] : undefined;
           if (!at) return null;
           return (
             <AtlasCard
