@@ -20,6 +20,15 @@ interface Section {
 
 const sections = new Map<string, Section>();
 
+/**
+ * How far left of a section the pointer still counts as inside it. The row's
+ * grip (components/primitives/task-row.tsx) sits in the gutter left of the
+ * rows, so a drag started on the grip begins outside the section's box, and
+ * without this it could never land a reorder. Left only: on the right is the
+ * Ask rail, and a row dragged there is not being put in order.
+ */
+const GRIP_GUTTER_PX = 24;
+
 export function registerReorderSection(id: string, section: Section): () => void {
   sections.set(id, section);
   return () => {
@@ -52,7 +61,7 @@ export function reorderTargetAt(
     if (!list) continue;
     if (!moving.every((id) => list.includes(id))) return null;
     const box = el.getBoundingClientRect();
-    if (point.x < box.left || point.x > box.right || point.y < box.top || point.y > box.bottom) continue;
+    if (point.x < box.left - GRIP_GUTTER_PX || point.x > box.right || point.y < box.top || point.y > box.bottom) continue;
 
     // The moving rows are left out of the hit test: the one being dragged may
     // be riding the pointer, and its own midpoint means nothing.
