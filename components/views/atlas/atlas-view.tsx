@@ -18,6 +18,8 @@ import { useAtlasActivity } from '@/components/views/atlas/use-atlas-activity';
 import { AtlasFocusSheet } from '@/components/views/atlas/atlas-focus-sheet';
 import { AtlasFarCanvas, type FarCluster, type FarScene } from '@/components/views/atlas/atlas-far-canvas';
 import { AtlasMinimap } from '@/components/views/atlas/atlas-minimap';
+import { AtlasStrands } from '@/components/views/atlas/atlas-strands';
+import { strandPolicy, type AtlasFrameSpec, type AtlasStrandLink } from '@/lib/atlas-strands';
 import { AtlasDropRemeasure } from '@/components/views/atlas/atlas-card-drop';
 import { useAtlasColors, useAtlasLightContext } from '@/components/views/atlas/use-atlas-colors';
 import { useLookStore } from '@/lib/look-store';
@@ -349,25 +351,57 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     }
     return out;
   }, [visible, positions]);
-  const farScene = useMemo((): FarScene => {
+  // What feeds what, computed ONCE for both zooms: each drawn card to the
+  // goal holding most of its items (laneFor), and each season to its drawn
+  // routines. The far canvas draws them as threads and rings, the card layer
+  // as strands and frames (atlas-strands.tsx), so the two never disagree.
+  const links = useMemo(() => {
     const shown = new Set(clusters.map((c) => c.key));
-    const threads: [string, string][] = [];
+    const threads: AtlasStrandLink[] = [];
     if (goals.length > 0) {
       for (const c of visible) {
         if (c.kind === 'goal' || !shown.has(c.key)) continue;
         const g = laneFor(c, goals);
-        if (g && shown.has(`goal:${g}`)) threads.push([`goal:${g}`, c.key]);
+        if (g && shown.has(`goal:${g}`)) threads.push({ from: `goal:${g}`, to: c.key });
       }
     }
-    const seasonRings = visible
+    const seasonGroups = visible
       .filter((c) => c.kind === 'season' && shown.has(c.key) && (c.routineIds?.length ?? 0) > 0)
       .map((c) => ({
-        key: c.key,
-        label: ATLAS_COPY.farSeason(c.name, c.kindLabel),
+        card: c,
         members: [c.key, ...(c.routineIds ?? []).map((id) => `routine:${id}`).filter((k) => shown.has(k))],
       }));
-    return { clusters, threads, seasons: seasonRings };
+    return { threads, seasonGroups };
   }, [clusters, visible, goals]);
+  const farScene = useMemo(
+    (): FarScene => ({
+      clusters,
+      threads: links.threads.map((t): [string, string] => [t.from, t.to]),
+      seasons: links.seasonGroups.map(({ card, members }) => ({
+        key: card.key,
+        label: ATLAS_COPY.farSeason(card.name, card.kindLabel),
+        members,
+      })),
+    }),
+    [clusters, links]
+  );
+  const policy = strandPolicy(layout);
+  const strandLinks = useMemo(() => (policy.strands ? links.threads : []), [policy.strands, links]);
+  const frames = useMemo((): AtlasFrameSpec[] => {
+    if (!policy.frames) return [];
+    const byId = new Map(seasons.map((x) => [x.id, x]));
+    return links.seasonGroups
+      // A season with none of its routines drawn has nothing to frame.
+      .filter(({ members }) => members.length > 1)
+      .map(({ card, members }) => {
+        const s0 = byId.get(card.id);
+        const from = s0?.startsOn ? formatDay(s0.startsOn) : null;
+        const to = s0?.endsOn ? formatDay(s0.endsOn) : null;
+        const dates =
+          from && to ? ATLAS_COPY.seasonRange(from, to) : from ? ATLAS_COPY.seasonFrom(from) : to ? ATLAS_COPY.seasonUntil(to) : null;
+        return { key: card.key, color: card.color, kind: card.kindLabel, name: card.name, dates, members };
+      });
+  }, [policy.frames, links, seasons]);
   const colors = useAtlasColors(
     islandRef,
     useMemo(() => visible.map((c) => c.color), [visible]),
@@ -814,6 +848,17 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
           }
         >
           {layout !== 'map' && <AtlasLanes lanes={result.lanes} timeline={result.timeline} />}
+          {/* Strands and season frames, under the cards. Off from the handoff
+              band down, where the far canvas draws the same links. */}
+          {ready && !inBand && (strandLinks.length > 0 || frames.length > 0) && (
+            <AtlasStrands
+              links={strandLinks}
+              frames={frames}
+              positions={positions}
+              expanded={expanded}
+              reduced={reduced}
+            />
+          )}
           {!far && orderedCards.map((card) => {
             const drawn = ready ? positions.get(card.key) : undefined;
             const gone = !drawn && ready ? leaving[card.key] : undefined;

@@ -204,6 +204,8 @@ export const ATLAS_COPY = {
   farZoomIn: 'Zoom in here',
   /** A season's dashed outline around what it holds. */
   farSeason: (name: string, kind: string) => `${name} · ${kind}`,
+  /** A season frame's tab on Your map, after its kind in bold: "Spring term · Sep 30 to Nov 4". */
+  frameTab: (name: string, dates: string | null) => (dates ? `${name} · ${dates}` : name),
   /** The Look setting (look.atlasFar). */
   farSettingLabel: 'Atlas zoomed out, light mode',
   farSettingDescription:
