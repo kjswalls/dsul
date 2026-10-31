@@ -485,7 +485,8 @@ test.describe('atlas', () => {
   test('Walk Atlas stands on one card at a time, puts a step on Today, and Escape takes the camera back', async ({ page }) => {
     const name = scope.title('Walk');
     const projectId = await createProject(page, name);
-    const taskId = await createTestTask(page, { title: scope.title('Walk step'), project: name });
+    const stepTitle = scope.title('Walk step');
+    const taskId = await createTestTask(page, { title: stepTitle, project: name });
     await reloadApp(page);
 
     await setScope(page, 'Atlas');
@@ -513,7 +514,7 @@ test.describe('atlas', () => {
     }
     await expect(walk).toHaveAttribute('data-walk-card', key);
     await expect(walk.getByTestId('atlas-walk-question')).toHaveText('Still the right next step?');
-    await expect(walk.getByTestId('atlas-walk-detail')).toContainText(scope.title('Walk step'));
+    await expect(walk.getByTestId('atlas-walk-detail')).toContainText(stepTitle);
     // The card in the cut-out is live and never dimmed: it is on top at its centre.
     const card = page.locator(`[data-atlas-card="${key}"]`);
     const onTop = await card.evaluate((el) => {
