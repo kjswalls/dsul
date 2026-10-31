@@ -641,14 +641,19 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
         onKeyDown={movable ? handleReorderKey : undefined}
         data-movable={movable ? 'true' : undefined}
       >
-        {/* The reorder grip, in the gutter left of the row. Visual only — the
-            whole row is the drag handle — and pointer-only: a phone has no
-            hover, and reorders through the ⋯ sheet. */}
+        {/* The reorder grip, in the gutter left of the row, and pointer-only: a
+            phone has no hover, and reorders through the ⋯ sheet. It takes the
+            pointer and spans the row's height flush to its edge, so it is part
+            of the row's hover area: moving onto it keeps the row hovered and the
+            grip shown, and a press on it bubbles to the row's drag listeners.
+            A click that never became a drag stops here rather than opening the
+            item. */}
         {movable && !isMobile && (
           <span
             aria-hidden
             data-testid="reorder-grip"
-            className="pointer-events-none absolute -left-3.5 top-1/2 flex h-5 w-3 -translate-y-1/2 items-center justify-center text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100"
+            onClick={(e) => e.stopPropagation()}
+            className="absolute inset-y-0 -left-3.5 flex w-3.5 cursor-grab items-center justify-center pr-0.5 text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100"
           >
             <svg viewBox="0 0 6 10" className="h-2.5 w-1.5" fill="currentColor">
               <circle cx="1" cy="1" r="1" /><circle cx="5" cy="1" r="1" />
