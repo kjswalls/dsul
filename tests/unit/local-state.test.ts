@@ -828,6 +828,10 @@ describe('nothing persists per-user state outside the registry', () => {
       // sidebar width: it says nothing about who is signed in, and the
       // registry's token rule, not this id, decides whose device it is.
       'lib/devices/web-client.ts',
+      // `dsul.sounds.volume`: the Sounds extension's level on this device, one
+      // number from 0 to 100. Per device on purpose (the pack and switches are
+      // the account's), and it says nothing about anyone.
+      'lib/sounds/volume.ts',
     ].sort());
   });
 

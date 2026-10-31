@@ -96,6 +96,7 @@ import {
   type AgentStateRow,
 } from './db';
 import { celebrateCompletion } from './completion-confetti';
+import { cueSound } from './sounds/cue';
 // Already reached through completion-confetti, so this adds no cycle.
 import { useExtensionsStore } from './extensions-store';
 import { expectPreview, markPreviewPending, readPlannerSnapshot, type PlannerSnapshotData } from './planner-snapshot';
@@ -3666,6 +3667,7 @@ export const usePlannerStore = create<PlannerStore>()(
 
         dbDeleteItem(id, dbTypeOf(found)).catch(console.error);
         children.forEach((c) => dbDeleteItem(c.id, dbTypeOf(c)).catch(console.error));
+        cueSound('remove');
       },
 
       toggleTaskStatus: (id, status?, date?) => {
@@ -4290,6 +4292,7 @@ export const usePlannerStore = create<PlannerStore>()(
         [...targets, ...children].forEach((item) =>
           dbDeleteItem(item.id, dbTypeOf(item)).catch(console.error)
         );
+        cueSound('remove');
       },
 
       /**
@@ -4994,6 +4997,7 @@ export const usePlannerStore = create<PlannerStore>()(
         set((state) => projectItems(state.items.filter((i) => !(i.id === id && i.type === 'habit'))));
 
         dbDeleteItem(id, 'habit').catch(console.error);
+        cueSound('remove');
       },
 
       toggleHabitStatus: (id, status, count, date) => {
@@ -5721,7 +5725,11 @@ export const usePlannerStore = create<PlannerStore>()(
       canRedo: false,
 
       undo: () => {
-        if (historyIndex <= 0) return;
+        // Nothing left to take back: the one refusal Sounds answers ("nope").
+        if (historyIndex <= 0) {
+          cueSound('nope');
+          return;
+        }
 
         const currentState = get();
         const userId = currentState.userId;
@@ -5747,6 +5755,7 @@ export const usePlannerStore = create<PlannerStore>()(
         }, userId, set);
 
         isUndoRedoAction = false;
+        cueSound('undo');
 
         // Redo raises nothing. A suppressed undo (none today) raises nothing either.
         if (!isModEventsSuppressed()) {

@@ -37,11 +37,13 @@ import {
 import { ExtensionRailList } from './extension-rail-list';
 import { SettingsLink, showSettings } from './settings-link';
 import { ExtensionHero } from './extension-hero';
+import { EXT_SOUNDS } from '@/lib/extension-registry';
 import { ExtensionBrowse } from '@/components/extensions/extension-browse';
 import { DevicesList } from './devices-list';
 import { ShortcutsPanel } from './shortcuts-panel';
 import { AIPane, AIPaneMark, UseAIRow } from './ai-pane';
 import { MakePane } from './make-pane';
+import { SoundsConsole } from './sounds-console';
 import { SETTINGS_PAGE_WIDTH } from './page-width';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { revealChat } from '@/lib/open-chat';
@@ -914,6 +916,10 @@ export function SettingsShell({
               {/* Rituals ends with the devices those rituals reach, and which
                   reminders each one takes (lib/devices, migration 065). */}
               {pane === 'rituals' && <DevicesList />}
+
+              {/* Sounds ends with its console: the packs, the volume and the
+                  switches, each one playable (components/settings/sounds-console.tsx). */}
+              {extensionSlugFromPane(pane) === EXT_SOUNDS && <SoundsConsole ctx={ctx} />}
 
               {advanced.length > 0 && (
                 <>
