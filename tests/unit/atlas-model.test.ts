@@ -440,6 +440,16 @@ describe('the focus sheet (PR1c)', () => {
     expect(s.milestones.map((m) => m.item.id)).toEqual(['m1', 'm2']);
   });
 
+  it("keeps an achieved goal's open feeders, in Later (no next step)", () => {
+    const items = [task({ id: 'f1' }), task({ id: 'f2', status: 'completed' })];
+    const goals = [goal('g', { state: 'achieved', memberIds: ['f1', 'f2'] })];
+    const card = cardOf(buildAtlasCards(input({ items, goals })), 'goal:g');
+    const s = atlasSheetSections(card);
+    expect(s.next).toBeNull();
+    expect(s.later.map((m) => m.item.id)).toEqual(['f1']);
+    expect(s.done.map((m) => m.item.id)).toEqual(['f2']);
+  });
+
   it('carries subtasks under their parent, never as tiles', () => {
     const items = [
       task({ id: 'p', project: 'Work' }),

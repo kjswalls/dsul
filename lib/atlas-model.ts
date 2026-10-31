@@ -577,7 +577,10 @@ export function createAtlasCardSharer(): (built: AtlasCard[]) => AtlasCard[] {
 export interface AtlasSheetSections {
   /** The card's next step, the same one the card offers. */
   next: AtlasMember | null;
-  /** Every other open member in the card's order, then the quiet ones (not on today). */
+  /**
+   * Every other open member in the card's order, then the quiet ones (not on
+   * today), then any member the card offers no step from (an ended goal's).
+   */
   later: AtlasMember[];
   /** Members done today (lit). */
   done: AtlasMember[];
@@ -608,6 +611,14 @@ export function atlasSheetSections(card: AtlasCard): AtlasSheetSections {
     later.push(m);
   }
   const done = card.members.filter((m) => m.state === 'lit' && !isMs(m));
+  // Whatever is left: an ended goal's or a paused container's open members,
+  // which offer no next step and so are in no openRows. The sheet promises
+  // every member, so they wait in Later.
+  for (const m of card.members) {
+    if (m.state === 'lit' || seen.has(m.item.id) || isMs(m)) continue;
+    seen.add(m.item.id);
+    later.push(m);
+  }
   const byId = new Map(card.members.map((m) => [m.item.id, m]));
   const milestones =
     card.kind === 'goal'

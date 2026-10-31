@@ -379,7 +379,10 @@ export function OrganizeConsole({
  */
 function OpenAtlasDoor() {
   const isMobile = useIsMobile();
-  if (isMobile) return null;
+  // Opened from Atlas itself (the sheet's Open in Organize, ⌘K): the door
+  // could only close the console, which its label doesn't promise.
+  const onAtlas = useViewStore((s) => s.scope === 'atlas');
+  if (isMobile || onAtlas) return null;
   return (
     <button
       type="button"

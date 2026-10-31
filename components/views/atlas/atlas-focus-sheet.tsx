@@ -1,6 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+  type MouseEvent,
+  type RefObject,
+} from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { CalendarCheck, ExternalLink, LayoutGrid } from 'lucide-react';
@@ -14,7 +25,6 @@ import { formatDay } from '@/lib/active';
 import { formatCueTime } from '@/lib/reminders/copy';
 import { usePlannerStore } from '@/lib/planner-store';
 import { ITEM_VERBS, type VerbContext } from '@/lib/item-verbs';
-import { toDateStr } from '@/lib/recurrence';
 import { toDateOnly } from '@/lib/overdue';
 import { useOpenConsole } from '@/lib/console-door';
 import { prefersReducedMotion } from '@/lib/zen-transition';
@@ -79,13 +89,15 @@ export function AtlasFocusSheet({
   rootRef: RefObject<HTMLDivElement | null>;
 }) {
   const sheet = useAtlasUiStore((s) => s.sheet);
-  const [view, setView] = useState<{ sheet: AtlasSheet; phase: Phase } | null>(null);
+  // `seq` counts opens, so a sheet reopened during the shrink starts fresh
+  // (its Done collapsed, no hold) instead of reusing the leaving body.
+  const [view, setView] = useState<{ sheet: AtlasSheet; phase: Phase; seq: number } | null>(null);
   const reduce = prefersReducedMotion();
 
   // Follow the store during render (React's "adjust state when a prop
   // changes"), so the first frame already sits on the card's rect.
   if (sheet && view?.sheet !== sheet) {
-    setView({ sheet, phase: reduce ? 'open' : 'from' });
+    setView({ sheet, phase: reduce ? 'open' : 'from', seq: (view?.seq ?? 0) + 1 });
   } else if (!sheet && view && view.phase !== 'leaving') {
     setView(reduce ? null : { ...view, phase: 'leaving' });
   }
@@ -119,12 +131,15 @@ export function AtlasFocusSheet({
     if (!prev || sheet) return;
     const active = document.activeElement;
     const inSheet = !!active?.closest('[data-testid="atlas-focus-sheet"]');
-    if (!inSheet && active && active !== document.body) return;
+    // A press on the scrim leaves focus on the root (the nearest focusable
+    // ancestor), which counts as nowhere too.
+    if (!inSheet && active && active !== document.body && active !== rootRef.current) return;
     const cardEl = rootRef.current?.querySelector<HTMLElement>(`[data-atlas-card="${prev.kind}:${prev.id}"]`);
     (cardEl ?? rootRef.current)?.focus({ preventScroll: true });
   }, [sheet, rootRef]);
 
   const card = useMemo(() => (key ? (cards.find((c) => c.key === key) ?? null) : null), [cards, key]);
+  const titleId = useId();
 
   // The card went away (trashed elsewhere, its extension switched off): so does the sheet.
   useEffect(() => {
@@ -138,6 +153,69 @@ export function AtlasFocusSheet({
     if (!sheetId) return;
     sheetRef.current?.focus({ preventScroll: true });
   }, [sheetId]);
+
+  // Focus stays in the sheet while it is open. Its content moves under the
+  // focused element (Put next step on Today hides itself, a ticked row
+  // changes group when its hold ends, Show n more goes), and a removed
+  // element drops focus to <body>, where the root's Escape never hears it
+  // and Tab starts over at the top of the page. So: remember the row focus
+  // was on, and when focus has fallen to nowhere, put it back on that row
+  // (its box, if the box had it), or on the sheet.
+  const focusInside = useRef(false);
+  const lastRow = useRef<{ id: string; check: boolean } | null>(null);
+  const keepFocus = useCallback(() => {
+    const el = sheetRef.current;
+    const active = document.activeElement;
+    if (!focusInside.current || !el || (active && active !== document.body)) return;
+    if (!useAtlasUiStore.getState().sheet) return;
+    const r = lastRow.current;
+    const row = r
+      ? Array.from(el.querySelectorAll<HTMLElement>('[data-item-id]')).find((n) => n.dataset.itemId === r.id)
+      : undefined;
+    const check = r?.check ? row?.querySelector<HTMLElement>('[data-testid="atlas-row-check"]') : null;
+    (check ?? row ?? el).focus({ preventScroll: true });
+  }, []);
+  const onSheetFocus = (e: FocusEvent<HTMLElement>) => {
+    focusInside.current = true;
+    const t = e.target as HTMLElement;
+    const row = t.closest<HTMLElement>('[data-item-id]');
+    lastRow.current = row?.dataset.itemId
+      ? { id: row.dataset.itemId, check: !!t.closest('[data-testid="atlas-row-check"]') }
+      : null;
+  };
+  const onSheetBlur = (e: FocusEvent<HTMLElement>) => {
+    const to = e.relatedTarget as Node | null;
+    if (to) {
+      focusInside.current = !!sheetRef.current?.contains(to);
+      return;
+    }
+    // Nowhere: a click on something unfocusable outside (focus has left), or
+    // a browser that blurs an element as it is removed (it has not).
+    const from = e.target as HTMLElement;
+    queueMicrotask(() => {
+      if (from.isConnected) focusInside.current = false;
+      else keepFocus();
+    });
+  };
+
+  // When focus is on <body> anyway (the item opened as an overlay made the
+  // page inert), Escape still closes the sheet, and claims the key so the
+  // item panel's window listener leaves the item alone (D3). Capture phase,
+  // so it runs before that listener whichever registered first. Focus inside
+  // the root is the root's own handler (atlas-view.tsx).
+  useEffect(() => {
+    if (!sheet) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey) return;
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
+      if (document.querySelector('[data-radix-popper-content-wrapper]')) return;
+      e.preventDefault();
+      useAtlasUiStore.getState().closeSheet();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [sheet]);
 
   if (!view || !card) return null;
 
@@ -154,7 +232,14 @@ export function AtlasFocusSheet({
         data-testid="atlas-sheet-scrim"
         // A press on the scrim closes the sheet and only the sheet.
         data-click-away-ignore=""
-        onClick={() => useAtlasUiStore.getState().closeSheet()}
+        // Keep focus where it is until the close hands it back to the card.
+        onMouseDown={(e) => e.preventDefault()}
+        // The second click of a double-click on Focus lands here once the
+        // sheet is up; it must not shut what the first one opened.
+        onClick={(e) => {
+          if (e.detail > 1) return;
+          useAtlasUiStore.getState().closeSheet();
+        }}
         className={cn('absolute inset-0 z-20', open && 'backdrop-blur-[2px]')}
         style={{
           background: open ? 'var(--scrim)' : 'transparent',
@@ -166,8 +251,10 @@ export function AtlasFocusSheet({
         ref={sheetRef}
         role="dialog"
         aria-modal="false"
-        aria-label={ATLAS_COPY.sheetLabel(card.name)}
+        aria-labelledby={titleId}
         tabIndex={-1}
+        onFocus={onSheetFocus}
+        onBlur={onSheetBlur}
         data-testid="atlas-focus-sheet"
         data-atlas-sheet={card.key}
         data-phase={view.phase}
@@ -175,7 +262,14 @@ export function AtlasFocusSheet({
         className="absolute z-[21] flex flex-col overflow-hidden rounded-[20px] border border-border bg-card text-card-foreground shadow-[var(--shadow-elev-panel)] outline-none"
         style={{ left: box.x, top: box.y, width: box.width, height: box.height, transition }}
       >
-        <SheetBody card={card} todayStr={todayStr} milestoneIds={milestoneIds} />
+        <SheetBody
+          key={view.seq}
+          card={card}
+          todayStr={todayStr}
+          milestoneIds={milestoneIds}
+          titleId={titleId}
+          keepFocus={keepFocus}
+        />
       </section>
     </>
   );
@@ -185,16 +279,24 @@ function SheetBody({
   card,
   todayStr,
   milestoneIds,
+  titleId,
+  keepFocus,
 }: {
   card: AtlasCard;
   todayStr: string;
   milestoneIds: ReadonlySet<string>;
+  titleId: string;
+  keepFocus: () => void;
 }) {
   const timeFormat = usePlannerStore((s) => s.timeFormat);
   const openConsole = useOpenConsole();
   const [allDone, setAllDone] = useState(false);
   const held = useSheetHold();
   const close = useCallback(() => useAtlasUiStore.getState().closeSheet(), []);
+  // After every commit: if what had focus is gone, put focus back (see keepFocus).
+  useLayoutEffect(() => {
+    keepFocus();
+  });
 
   const sections = useMemo(() => held.apply(atlasSheetSections(card), card), [card, held]);
   const doneShown = allDone ? sections.done : sections.done.slice(0, DONE_CAP);
@@ -276,7 +378,7 @@ function SheetBody({
               : { background: card.color }
           }
         />
-        <h2 className="m-0 min-w-0 flex-1 truncate text-[19px] font-semibold tracking-[-0.01em]">{card.name}</h2>
+        <h2 id={titleId} className="m-0 min-w-0 flex-1 truncate text-[19px] font-semibold tracking-[-0.01em]">{card.name}</h2>
       </div>
 
       {chips.length > 0 && (
@@ -291,15 +393,19 @@ function SheetBody({
 
       {card.kind !== 'goal' && <AtlasTileStrip card={card} />}
 
-      <SheetGroup title={ATLAS_COPY.nextUp} testId="atlas-sheet-next">
-        {next ? (
-          rows([next], 'next')
-        ) : (
-          <p className="px-[7px] py-1 text-xs text-muted-foreground">
-            {card.allDone ? ATLAS_COPY.allDone : card.members.length === 0 ? ATLAS_COPY.noMembers : null}
-          </p>
-        )}
-      </SheetGroup>
+      {/* No next step and nothing to say about it (an ended goal, a paused
+          gate): no Next up at all; its members are in Later. */}
+      {(next || card.allDone || card.members.length === 0) && (
+        <SheetGroup title={ATLAS_COPY.nextUp} testId="atlas-sheet-next">
+          {next ? (
+            rows([next], 'next')
+          ) : (
+            <p className="px-[7px] py-1 text-xs text-muted-foreground">
+              {card.allDone ? ATLAS_COPY.allDone : ATLAS_COPY.noMembers}
+            </p>
+          )}
+        </SheetGroup>
+      )}
 
       {sections.later.length > 0 && (
         <SheetGroup title={ATLAS_COPY.later} testId="atlas-sheet-later">
@@ -333,7 +439,7 @@ function SheetBody({
         {offerToday && next && (
           <SheetButton
             testId="atlas-sheet-today"
-            onClick={() => putNextOnToday(next.item.id, milestoneIds)}
+            onClick={() => putNextOnToday(next.item.id, todayStr, milestoneIds)}
             icon={<CalendarCheck className="size-3.5" aria-hidden />}
           >
             {ATLAS_COPY.putOnToday}
@@ -363,10 +469,11 @@ function SheetBody({
           type="button"
           data-testid="atlas-sheet-done-button"
           onClick={close}
+          aria-keyshortcuts="Escape"
           className="ml-auto inline-flex items-center gap-1.5 rounded-[9px] bg-foreground px-3 py-1.5 text-xs font-medium text-background hover:bg-foreground/90"
         >
           {ATLAS_COPY.closeSheet}
-          <kbd className="rounded-[5px] border border-background/30 px-1 font-mono text-[10px] font-semibold">
+          <kbd aria-hidden className="rounded-[5px] border border-background/30 px-1 font-mono text-[10px] font-semibold">
             {ATLAS_COPY.escKey}
           </kbd>
         </button>
@@ -400,20 +507,22 @@ function SheetButton({
 function SheetGroup({ title, testId, children }: { title: string; testId: string; children: React.ReactNode }) {
   return (
     <section data-testid={testId} className="flex flex-col">
-      <h5 className="mb-0.5 mt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+      <h3 className="mb-0.5 mt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
         {title}
-      </h5>
+      </h3>
       <div className="-mx-[7px] flex flex-col">{children}</div>
     </section>
   );
 }
 
-/** The verb context for today, built at click time (a sheet left open past midnight). */
-function todayContext(milestoneIds: ReadonlySet<string>): VerbContext {
+/**
+ * The verb context for today, where today is `useToday()`'s day (rule 4),
+ * the same one the gate and the click both use. The Date is the instant the
+ * store resolves the write against, read when this is built.
+ */
+function todayContext(todayStr: string, milestoneIds: ReadonlySet<string>): VerbContext {
   const tz = usePlannerStore.getState().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const date = new Date();
-  const todayStr = toDateStr(date, tz);
-  return { dateStr: todayStr, date, todayStr, tz, milestoneIds, occurrence: 'absent' };
+  return { dateStr: todayStr, date: new Date(), todayStr, tz, milestoneIds, occurrence: 'absent' };
 }
 
 /**
@@ -425,20 +534,19 @@ function canPutOnToday(next: AtlasMember, todayStr: string, milestoneIds: Readon
   if (milestoneIds.has(next.item.id)) return false;
   const start = 'startDate' in next.item && next.item.startDate ? toDateOnly(next.item.startDate) : undefined;
   if (start === todayStr) return false;
-  const ctx = { ...todayContext(milestoneIds), dateStr: todayStr, todayStr };
-  return ITEM_VERBS.reschedule.eligible(next.item, ctx);
+  return ITEM_VERBS.reschedule.eligible(next.item, todayContext(todayStr, milestoneIds));
 }
 
 /**
  * `ITEM_VERBS.reschedule.run(item, ctx, today)`, re-read and re-checked at
  * click time: the row may have been painted from a snapshot.
  */
-function putNextOnToday(itemId: string, milestoneIds: ReadonlySet<string>): void {
+function putNextOnToday(itemId: string, todayStr: string, milestoneIds: ReadonlySet<string>): void {
   const item = usePlannerStore.getState().items.find((i) => i.id === itemId);
   if (!item || milestoneIds.has(item.id)) return;
-  const ctx = todayContext(milestoneIds);
+  const ctx = todayContext(todayStr, milestoneIds);
   if (!ITEM_VERBS.reschedule.eligible(item, ctx)) return;
-  ITEM_VERBS.reschedule.run(item, ctx, ctx.todayStr);
+  ITEM_VERBS.reschedule.run(item, ctx, todayStr);
   toast(ATLAS_COPY.putOnTodayDone(item.title));
 }
 

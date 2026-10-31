@@ -263,6 +263,14 @@ describe('the Open Atlas door', () => {
     useViewStore.getState().setScope('day');
   });
 
+  it('is not offered while Atlas is already the scope', async () => {
+    const { useViewStore } = await import('@/lib/view-store');
+    useViewStore.getState().setScope('atlas');
+    render(<OrganizeConsole open onOpenChange={() => {}} section="projects" />);
+    expect(screen.queryByTestId('organize-open-atlas')).toBeNull();
+    useViewStore.getState().setScope('day');
+  });
+
   it('is not offered on the phone', () => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 });
     render(<OrganizeConsole open onOpenChange={() => {}} />);

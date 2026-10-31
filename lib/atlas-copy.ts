@@ -89,7 +89,6 @@ export const ATLAS_COPY = {
   putOnTodayDone: (title: string) => `"${title}" is on Today`,
   openInOrganize: 'Open in Organize',
   showMoreDone: (n: number) => `Show ${n} more`,
-  sheetLabel: (name: string) => `${name}, focused`,
   /** The Organize console's door (desktop only). */
   openAtlas: 'Open Atlas',
   openAtlasLabel: 'Close Organize and open Atlas',
