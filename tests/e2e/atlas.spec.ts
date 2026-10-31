@@ -202,26 +202,20 @@ test.describe('atlas', () => {
     await page.keyboard.press('2');
     await expect(view).toHaveAttribute('data-atlas-layout', 'momentum');
 
-    // Let the glide settle, then drag the card by its footer into Resting.
-    await page.getByRole('button', { name: 'Fit every card on screen' }).click();
-    await page.waitForTimeout(700);
+    // Pin it to Resting from the card's menu. The pointer drag that pins is
+    // covered by the view tests: here the shared test account can hold enough
+    // cards that a Fit lands in the far zoom (below 50%), where cards give way
+    // to the Relay grid, so a drag by the footer can't be relied on.
     const resting = page.locator('[data-atlas-lane="resting"]');
-    const col = (await resting.boundingBox())!;
-    const footer = (await card.getByTestId('atlas-card-footer').boundingBox())!;
-    const cardBox = (await card.boundingBox())!;
-    const from = { x: footer.x + 8, y: footer.y + footer.height / 2 };
-    const dx = col.x + col.width / 2 - (cardBox.x + cardBox.width / 2);
+    await expect(resting).toHaveCount(1);
     const pinned = page.waitForResponse(
       (r) =>
         r.url().includes('/rest/v1/atlas_positions') &&
         r.request().method() === 'POST' &&
         (r.request().postData() ?? '').includes('"pinned_band":"resting"')
     );
-    await page.mouse.move(from.x, from.y);
-    await page.mouse.down();
-    for (let i = 1; i <= 10; i++) await page.mouse.move(from.x + (dx * i) / 10, from.y + 4 * i);
-    await expect(resting).toHaveAttribute('data-hot', 'true');
-    await page.mouse.up();
+    await card.getByTestId('atlas-card-header').dispatchEvent('contextmenu', { button: 2, clientX: 240, clientY: 240 });
+    await page.getByTestId('container-menu-pin-resting').click();
     expect((await pinned).ok()).toBe(true);
     await expect(card).toHaveAttribute('data-pinned', 'true');
     await expect(card.getByTestId('atlas-unpin')).toBeVisible();
