@@ -84,6 +84,8 @@ export const ATLAS_COPY = {
   focusLabel: (name: string) => `Focus on ${name}`,
   back: '‹ Atlas',
   backLabel: 'Back to Atlas',
+  /** The item rail's back control on Atlas ("‹ Atlas"): Back closes the item onto the map. */
+  railBack: 'Atlas',
   nextUp: 'Next up',
   later: 'Later',
   done: 'Done',
@@ -202,10 +204,14 @@ export const ATLAS_COPY = {
   farZoomIn: 'Zoom in here',
   /** A season's dashed outline around what it holds. */
   farSeason: (name: string, kind: string) => `${name} · ${kind}`,
+  /** A season frame's tab on Your map, after its kind in bold: "Spring term · Sep 30 to Nov 4". */
+  frameTab: (name: string, dates: string | null) => (dates ? `${name} · ${dates}` : name),
   /** The Look setting (look.atlasFar). */
   farSettingLabel: 'Atlas zoomed out, light mode',
   farSettingDescription:
-    'How Atlas looks on this computer when you zoom far out on a light theme. Bloom keeps the paper. Dusk turns it to slate so the tiles glow.',
+    'How Atlas looks on this computer when you zoom out past half size on a light theme. Bloom keeps the paper. Dusk turns it to slate so the tiles glow.',
+  /** Under the row while a dark theme is showing, when neither pick changes anything yet. */
+  farSettingDarkNote: 'You are on a dark theme, where Atlas always glows. This takes effect on a light theme.',
   farBloom: 'Bloom',
   farDusk: 'Dusk',
   /** The minimap and its command (shortcut id toggle_atlas_minimap). */
@@ -237,6 +243,55 @@ export const ATLAS_COPY = {
   filedMany: (n: number, name: string) => `Filed ${n} items in ${name}`,
   movedRow: (title: string, to: string) => `Moved ${title} to ${to}`,
   movedRows: (n: number, to: string) => `Moved ${n} items to ${to}`,
+
+  /* ── Walk Atlas: a calm look at one card at a time (atlas-walk.tsx) ── */
+  /** The command's row (atlas.walk) and the walk's accessible name. */
+  walk: 'Walk Atlas',
+  walkDescription: 'A calm look at each card, one at a time. Nothing is graded.',
+  walkKeywords: 'atlas walk review tour look over cards weekly calm',
+  /** The toolbar button, and its name while a walk is on. */
+  walkButton: 'Walk',
+  walkButtonLabel: 'Walk Atlas, one card at a time',
+  walkStopLabel: 'Stop walking Atlas',
+  /** The panel's top line. */
+  walkStep: (n: number, total: number) => `${n} of ${total}`,
+  walkCalm: 'one card at a time, nothing here is due',
+  /** A card with an open next step. */
+  walkNextQuestion: 'Still the right next step?',
+  walkNextDetail: (step: string) => `Next up: ${step}`,
+  /** A goal with a target day and nothing resting. */
+  walkGoalQuestion: (day: string) => `Still aiming for ${day}?`,
+  walkGoalDetail: (step: string) => `Next on the way: ${step}`,
+  /** Nothing open: everything done, or nothing in it yet. */
+  walkEmptyQuestion: "What's the next step?",
+  walkEmptyAllDone: 'Everything in it is done. A next step, or a rest, both work.',
+  walkEmptyNothing: 'Nothing in it yet. Add a step when one comes to mind.',
+  /** Resting: a known old touch or a pause, never a tally (rule 13). */
+  walkRestingQuestion: 'Still want this?',
+  walkRestingSince: (day: string) => `Resting since ${day}. Letting it rest is fine too.`,
+  walkPausedTill: (day: string) => `Paused till ${day}. Letting it rest is fine too.`,
+  walkPaused: 'Paused. Letting it rest is fine too.',
+  /** Finished as a container: an achieved goal, a season past its days. */
+  walkEndedQuestion: 'All wrapped up.',
+  walkEndedDetail: 'Nothing needs you here.',
+  /** After the last card. */
+  walkFinishedQuestion: "That's every card.",
+  walkFinishedDetail: 'Thanks for taking a look. Nothing here is graded.',
+  /** The buttons: existing verbs, and the walk's own Back, Next and Done. */
+  walkPutOnToday: 'Put next step on Today',
+  walkWake: 'Wake it: next step on Today',
+  walkComplete: 'Mark the step done',
+  walkCompleteToday: 'Done for today',
+  walkBack: 'Back',
+  walkNext: 'Next',
+  walkDone: 'Done',
+  walkEnterKey: '↵',
+  /** What a screen reader hears at each stop. */
+  walkAnnounce: (n: number, total: number, name: string, kind: string, question: string) =>
+    `Card ${n} of ${total}: ${name}, ${kind}. ${question}`,
+  walkAnnounceFinished: "That's every card. Done takes you back to where you were.",
+  /** Started with no card drawn (an empty map, or every card filtered away). */
+  walkNothing: 'Nothing on the map to walk yet',
 } as const;
 
 /** The undo strip offers Undo for these (hooks/use-undo-toast.ts). */

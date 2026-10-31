@@ -442,6 +442,40 @@ describe('an item in the rail, with AI', () => {
     expect(useRailStore.getState().stacks.desktop).toEqual([{ kind: 'conversation', id: 'c1' }]);
   });
 
+  it('names Atlas on Atlas only when nothing is beneath the item, and Back closes only the item onto the map', () => {
+    act(() => useViewStore.setState({ scope: 'atlas' }));
+    try {
+      push({ kind: 'conversation', id: 'c1' });
+      nameConversation('c1', 'Trip plans');
+      renderShell();
+
+      // Ask open beneath: Back names the conversation and goes there, never "Atlas".
+      openRow();
+      let back = within(dialog()).getByTestId('rail-back');
+      expect(back).toHaveTextContent(/Trip plans/);
+      expect(back).not.toHaveTextContent(/^Atlas$/);
+      fireEvent.click(back);
+      expect(itemOpen()).toBe(false);
+      expect(askView()).toBeVisible();
+      expect(useRailStore.getState().stacks.desktop).toEqual([{ kind: 'conversation', id: 'c1' }]);
+
+      // Ask closed: the map is beneath, so Back names Atlas and leaves nothing over it.
+      act(() => useSidebarStore.setState({ askOpen: false }));
+      act(() => useRailStore.setState({ summoned: false }));
+      openRow();
+      back = within(dialog()).getByTestId('rail-back');
+      expect(back).toHaveTextContent(/^Atlas$/);
+      expect(back).toHaveAccessibleName('Back to Atlas');
+      fireEvent.click(back);
+      expect(itemOpen()).toBe(false);
+      expect(useRailStore.getState().summoned).toBe(false);
+      expect(useSidebarStore.getState().askOpen).not.toBe(true);
+      expect(column()).toHaveClass('w-0');
+    } finally {
+      act(() => useViewStore.setState({ scope: 'day' }));
+    }
+  });
+
   it('keeps the item open for an IME commit in its box, and sends on a real Enter', async () => {
     renderShell();
     openRow();

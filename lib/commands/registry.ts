@@ -59,6 +59,7 @@ import {
   Puzzle,
   Map as MapIcon,
   Map as MinimapIcon,
+  Footprints,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
@@ -881,6 +882,24 @@ export const STATIC_COMMANDS: Command[] = [
       const ui = useAtlasUiStore.getState();
       ui.toggleMinimapPinned();
       toast(useAtlasUiStore.getState().minimapPinned ? ATLAS_COPY.minimapPinned : ATLAS_COPY.minimapUnpinned);
+    },
+  },
+  // Walk Atlas: a calm look at one card at a time (atlas-walk.tsx). No
+  // default key and no shortcut id (design 4.1). Running it during a walk
+  // ends the walk and takes the camera back, as the toolbar's Walk does.
+  {
+    id: 'atlas.walk',
+    label: ATLAS_COPY.walk,
+    description: ATLAS_COPY.walkDescription,
+    group: 'view',
+    icon: Footprints,
+    keywords: ATLAS_COPY.walkKeywords,
+    availableWhen: (ctx) => !ctx.isMobile && onAtlas() && !atlasSheetOpen(),
+    hidden: (ctx) => ctx.isMobile,
+    run: () => {
+      const ui = useAtlasUiStore.getState();
+      if (ui.walk) ui.endWalk(true);
+      else ui.startWalk();
     },
   },
   {

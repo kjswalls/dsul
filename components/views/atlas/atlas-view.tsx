@@ -17,11 +17,22 @@ import { AtlasLanes } from '@/components/views/atlas/atlas-lanes';
 import { useAtlasActivity } from '@/components/views/atlas/use-atlas-activity';
 import { AtlasFocusSheet } from '@/components/views/atlas/atlas-focus-sheet';
 import { AtlasFarCanvas, type FarCluster, type FarScene } from '@/components/views/atlas/atlas-far-canvas';
+import { AtlasHandoffCanvas } from '@/components/views/atlas/atlas-handoff-canvas';
 import { AtlasMinimap } from '@/components/views/atlas/atlas-minimap';
+import { AtlasStrands } from '@/components/views/atlas/atlas-strands';
+import { strandPolicy, type AtlasFrameSpec, type AtlasStrandLink } from '@/lib/atlas-strands';
 import { AtlasDropRemeasure } from '@/components/views/atlas/atlas-card-drop';
 import { useAtlasColors, useAtlasLightContext } from '@/components/views/atlas/use-atlas-colors';
 import { useLookStore } from '@/lib/look-store';
-import { liveness } from '@/lib/atlas-relay-grid';
+import { ATLAS_GRID_PITCH, buildRelayGrid, liveness } from '@/lib/atlas-relay-grid';
+import {
+  ATLAS_FLY_TOTAL_MS,
+  ATLAS_MOTION,
+  armPinSettle,
+  easeInOutCubic,
+  flourishAt,
+  glideDelay,
+} from '@/lib/atlas-motion';
 import { ATLAS_DUSK_GROUND } from '@/lib/atlas-tones';
 import { cn } from '@/lib/utils';
 import { useAtlasCards } from '@/components/views/atlas/use-atlas-cards';
@@ -35,6 +46,7 @@ import {
   ATLAS_FLY_ZOOM,
   ATLAS_HANDOFF_ZOOM,
   centerOn,
+  handoffProgress,
   centerOnPoint,
   ensureVisible,
   fitBounds,
@@ -64,6 +76,8 @@ import { timelinePlace } from '@/lib/atlas-timeline';
 import { dropCard, goalDayAtClamped } from '@/lib/atlas-drop';
 import { formatDay } from '@/lib/active';
 import { useAtlasReducedMotion } from '@/components/views/atlas/use-atlas-reduced-motion';
+import { AtlasWalk } from '@/components/views/atlas/atlas-walk';
+import { atlasReadingOrder, atlasWalkOrder } from '@/lib/atlas-walk';
 
 /**
  * The viewport seeding lays a grid out against. Fixed rather than measured, so
@@ -71,9 +85,11 @@ import { useAtlasReducedMotion } from '@/components/views/atlas/use-atlas-reduce
  * new cards land.
  */
 const SEED_VIEWPORT: Viewport = { w: 1600, h: 900 };
+/** The walk's order while no walk is on: nothing sorted (stable, so no re-render). */
+const NO_WALK: readonly string[] = [];
 
 /** A click on a far cluster flies in over this long (instant under reduced motion). */
-const ATLAS_FLY_MS = 450;
+const ATLAS_FLY_MS = ATLAS_MOTION.flyMs;
 
 /** The ground's paper-to-slate change under Dusk. */
 const ATLAS_GROUND_MS = 400;
@@ -124,7 +140,18 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // The far zoom (PR3): below 0.5 the cards give way to the canvas; from 0.6
   // down to 0.5 both are drawn and the cards shrink toward their clusters.
   const far = useAtlasUiStore((s) => s.camera.z < ATLAS_FAR_ZOOM);
-  const inBand = useAtlasUiStore((s) => s.camera.z < ATLAS_HANDOFF_ZOOM);
+  // The zoom's own band (Dusk's latch reads only this), and the handoff
+  // drawn: the band, or a fly-in's flourish playing past it.
+  const zoomBand = useAtlasUiStore((s) => s.camera.z < ATLAS_HANDOFF_ZOOM);
+  const inBand = useAtlasUiStore((s) => s.camera.z < ATLAS_HANDOFF_ZOOM || s.flourish !== null);
+  const flourishing = useAtlasUiStore((s) => s.flourish !== null);
+  // The overlay of tiles in flight is drawn only where the handoff can be
+  // strictly between its ends: the band itself, or a fly-in's flourish. At
+  // the far zoom (0.5 and down) every tile is the constellation canvas's, so
+  // a pan there clears no full-screen canvas.
+  const handoffLive = useAtlasUiStore(
+    (s) => s.flourish !== null || (s.camera.z < ATLAS_HANDOFF_ZOOM && s.camera.z > ATLAS_FAR_ZOOM)
+  );
   const farPaper = useLookStore((s) => s.atlasFarPaper);
   const islandRef = useRef<HTMLDivElement>(null);
   // Read from the root, outside the island, so Dusk's own `.dark` never
@@ -134,7 +161,10 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // pinch that hovers at 0.5 doesn't flip the board back and forth. The cards
   // in the band on the way back in sit on the slate, inside `.dark`.
   const [duskZoom, setDuskZoom] = useState(far);
-  const nextDuskZoom = far ? true : inBand ? duskZoom : false;
+  // A fly-in leaves the band in about 30ms while its flourish is still
+  // assembling the cards, so the latch holds through the flourish too:
+  // nothing recolours mid-flourish.
+  const nextDuskZoom = far ? true : zoomBand || flourishing ? duskZoom : false;
   if (nextDuskZoom !== duskZoom) setDuskZoom(nextDuskZoom);
   const dusk = nextDuskZoom && lightContext && farPaper === 'dusk';
   // The ground fades to slate over ATLAS_GROUND_MS; the island takes `.dark`
@@ -210,6 +240,11 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   const [hold, setHold] = useState<{ layout: string; result: AtlasLayoutResult } | null>(null);
   const result = hold && hold.layout === layout && layout !== 'map' ? hold.result : computed;
   const positions = result.positions;
+  // Where the cards rest, for the world's fold (it writes only to cards in view).
+  const positionsRef = useRef(positions);
+  useLayoutEffect(() => {
+    positionsRef.current = positions;
+  }, [positions]);
   const lastDrawn = useRef<{ layout: string; result: AtlasLayoutResult }>({ layout, result });
   useLayoutEffect(() => {
     lastDrawn.current = { layout, result };
@@ -238,6 +273,29 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
       if (!overCard.current) setHold(null);
     }, ATLAS_TICK_HOLD_MS);
   }, []);
+  // A verb run from Walk Atlas holds the drawn layout until the walk steps
+  // (Next, Back, Done), not for a timer: the card stays where the camera and
+  // the cut-out are, and the walk's route never moves under it.
+  const walkHeld = useRef(false);
+  const holdForWalk = useCallback(() => {
+    const drawn = lastDrawn.current;
+    if (drawn.layout === 'map') return;
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+    holdTimeUp.current = false;
+    walkHeld.current = true;
+    setHold((h) => (h && h.layout === drawn.layout ? h : drawn));
+  }, []);
+  useEffect(
+    () =>
+      useAtlasUiStore.subscribe((s, prev) => {
+        if (!walkHeld.current || s.walk === prev.walk) return;
+        if (s.walk && prev.walk && s.walk.key === prev.walk.key) return;
+        walkHeld.current = false;
+        releaseHold();
+      }),
+    [releaseHold]
+  );
   const onPointerOver = (e: { target: EventTarget }) => {
     overCard.current = !!(e.target as Element).closest?.('[data-atlas-card]');
     if (!overCard.current && holdTimeUp.current && hold) setHold(null);
@@ -251,22 +309,14 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // (Momentum column by column, the others row by row). The DOM is reordered
   // only once a glide has finished, since moving a node mid-transition would
   // cut its glide short.
-  const readingOrder = useMemo(() => {
-    if (layout === 'map') return cards.map((c) => c.key).join('\n');
-    const byCols = layout === 'momentum';
-    return [...cards]
-      .map((c) => ({ key: c.key, p: positions.get(c.key) }))
-      .sort((a, b) => {
-        if (!a.p || !b.p) return a.p ? -1 : b.p ? 1 : 0;
-        return byCols ? a.p.x - b.p.x || a.p.y - b.p.y : a.p.y - b.p.y || a.p.x - b.p.x;
-      })
-      .map((c) => c.key)
-      .join('\n');
-  }, [layout, cards, positions]);
+  const readingOrder = useMemo(() => atlasReadingOrder(layout, cards, positions).join('\n'), [layout, cards, positions]);
   const [domOrder, setDomOrder] = useState(readingOrder);
   useEffect(() => {
     if (domOrder === readingOrder) return;
-    const t = setTimeout(() => setDomOrder(readingOrder), reduced ? 0 : ATLAS_GLIDE_MS + 50);
+    const t = setTimeout(
+      () => setDomOrder(readingOrder),
+      reduced ? 0 : ATLAS_GLIDE_MS + ATLAS_MOTION.glideStaggerMs + 50
+    );
     return () => clearTimeout(t);
   }, [domOrder, readingOrder, reduced]);
   const orderedCards = useMemo(() => {
@@ -274,6 +324,34 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     const at = (k: string) => rank.get(k) ?? Number.MAX_SAFE_INTEGER;
     return [...cards].sort((a, b) => at(a.key) - at(b.key));
   }, [cards, domOrder]);
+
+  // A layout switch cascades: each card's glide starts a little later the
+  // further right it lands (lib/atlas-motion.ts glideDelay), so columns and
+  // months arrive in reading order. Only the switch's own glide: the delays
+  // are dropped once it has played, so a drop's spring back never waits.
+  const [cascade, setCascade] = useState<string | null>(null);
+  const [cascadeFrom, setCascadeFrom] = useState(layout);
+  if (cascadeFrom !== layout) {
+    setCascadeFrom(layout);
+    if (!reduced) setCascade(layout);
+  }
+  useEffect(() => {
+    if (cascade === null) return;
+    const t = setTimeout(() => setCascade(null), ATLAS_GLIDE_MS + ATLAS_MOTION.glideStaggerMs + 50);
+    return () => clearTimeout(t);
+  }, [cascade]);
+  const delays = useMemo(() => {
+    const out = new Map<string, number>();
+    if (cascade === null || cascade !== layout) return out;
+    let minX = Infinity;
+    let maxX = -Infinity;
+    for (const p of positions.values()) {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+    }
+    for (const [k, p] of positions) out.set(k, glideDelay(p.x, minX, maxX));
+    return out;
+  }, [cascade, layout, positions]);
 
   // Each card's lane, said to a screen reader (the lanes layer is aria-hidden).
   const laneLabels = useMemo(() => {
@@ -349,25 +427,66 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     }
     return out;
   }, [visible, positions]);
-  const farScene = useMemo((): FarScene => {
+  // What feeds what, computed ONCE for both zooms: each drawn card to the
+  // goal holding most of its items (laneFor), and each season to its drawn
+  // routines. The far canvas draws them as threads and rings, the card layer
+  // as strands and frames (atlas-strands.tsx), so the two never disagree.
+  const links = useMemo(() => {
     const shown = new Set(clusters.map((c) => c.key));
-    const threads: [string, string][] = [];
+    const threads: AtlasStrandLink[] = [];
     if (goals.length > 0) {
       for (const c of visible) {
         if (c.kind === 'goal' || !shown.has(c.key)) continue;
         const g = laneFor(c, goals);
-        if (g && shown.has(`goal:${g}`)) threads.push([`goal:${g}`, c.key]);
+        if (g && shown.has(`goal:${g}`)) threads.push({ from: `goal:${g}`, to: c.key });
       }
     }
-    const seasonRings = visible
+    const seasonGroups = visible
       .filter((c) => c.kind === 'season' && shown.has(c.key) && (c.routineIds?.length ?? 0) > 0)
       .map((c) => ({
-        key: c.key,
-        label: ATLAS_COPY.farSeason(c.name, c.kindLabel),
+        card: c,
         members: [c.key, ...(c.routineIds ?? []).map((id) => `routine:${id}`).filter((k) => shown.has(k))],
       }));
-    return { clusters, threads, seasons: seasonRings };
+    return { threads, seasonGroups };
   }, [clusters, visible, goals]);
+  const farScene = useMemo(
+    (): FarScene => ({
+      clusters,
+      threads: links.threads.map((t): [string, string] => [t.from, t.to]),
+      seasons: links.seasonGroups.map(({ card, members }) => ({
+        key: card.key,
+        label: ATLAS_COPY.farSeason(card.name, card.kindLabel),
+        members,
+      })),
+    }),
+    [clusters, links]
+  );
+  // The Relay grid, built once for the constellation canvas and the handoff's overlay.
+  const farGrid = useMemo(
+    () =>
+      buildRelayGrid(
+        clusters.map((c) => ({ key: c.key, x: c.x, y: c.y, tiles: c.tiles, lit: c.lit })),
+        ATLAS_GRID_PITCH
+      ),
+    [clusters]
+  );
+  const policy = strandPolicy(layout);
+  const strandLinks = useMemo(() => (policy.strands ? links.threads : []), [policy.strands, links]);
+  const frames = useMemo((): AtlasFrameSpec[] => {
+    if (!policy.frames) return [];
+    const byId = new Map(seasons.map((x) => [x.id, x]));
+    return links.seasonGroups
+      // A season with none of its routines drawn has nothing to frame.
+      .filter(({ members }) => members.length > 1)
+      .map(({ card, members }) => {
+        const s0 = byId.get(card.id);
+        const from = s0?.startsOn ? formatDay(s0.startsOn) : null;
+        const to = s0?.endsOn ? formatDay(s0.endsOn) : null;
+        const dates =
+          from && to ? ATLAS_COPY.seasonRange(from, to) : from ? ATLAS_COPY.seasonFrom(from) : to ? ATLAS_COPY.seasonUntil(to) : null;
+        return { key: card.key, color: card.color, kind: card.kindLabel, name: card.name, dates, members };
+      });
+  }, [policy.frames, links, seasons]);
   const colors = useAtlasColors(
     islandRef,
     useMemo(() => visible.map((c) => c.color), [visible]),
@@ -399,7 +518,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     },
     []
   );
-  const flyTo = useCallback((target: AtlasCamera, onLand?: () => void) => {
+  const flyTo = useCallback((target: AtlasCamera, onLand?: () => void, flourish = false) => {
     const ui = useAtlasUiStore.getState();
     if (flight.current !== null) cancelAnimationFrame(flight.current);
     flight.current = null;
@@ -412,22 +531,36 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     const vp = viewportRef.current;
     let last = from;
     let t0: number | null = null;
+    let landed = false;
+    const total = flourish ? ATLAS_FLY_TOTAL_MS : ATLAS_FLY_MS;
     const step = (now: number) => {
       const store = useAtlasUiStore.getState();
+      // A pan, a pinch or a fit took the camera (and ended any flourish).
       if (store.camera !== last) {
         flight.current = null;
         return;
       }
       t0 ??= now;
-      const t = Math.min(1, (now - t0) / ATLAS_FLY_MS);
-      last = flyCamera(from, target, vp, 1 - (1 - t) ** 3);
-      store.setCamera(last);
-      flight.current = t < 1 ? requestAnimationFrame(step) : null;
-      // Landed: once the cards have mounted, hand focus on.
-      if (t >= 1 && onLand) requestAnimationFrame(onLand);
+      const elapsed = now - t0;
+      const t = Math.min(1, elapsed / ATLAS_FLY_MS);
+      last = flyCamera(from, target, vp, easeInOutCubic(t));
+      // The flourish: the handoff shown is the larger of the zoom's and the
+      // timed assembly's, so the cards form at a pace you can see.
+      const shown = flourish && elapsed < total ? Math.max(handoffProgress(last.z), flourishAt(elapsed)) : null;
+      store.setFlight(last, shown);
+      flight.current = elapsed < total ? requestAnimationFrame(step) : null;
+      // Landed: once the cards have mounted (and a flourish has finished, so
+      // a focus that pans the camera never cuts the assembly short), hand
+      // focus on.
+      if (elapsed >= total && !landed) {
+        landed = true;
+        if (onLand) requestAnimationFrame(onLand);
+      }
     };
     flight.current = requestAnimationFrame(step);
   }, []);
+  // A flourish never outlives the view.
+  useEffect(() => () => useAtlasUiStore.setState({ flourish: null }), []);
   const clustersRef = useRef(clusters);
   useLayoutEffect(() => {
     clustersRef.current = clusters;
@@ -445,7 +578,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
         if (!root || (active !== root && active !== document.body)) return;
         root.querySelector<HTMLElement>(`[data-atlas-card="${key}"]`)?.focus({ preventScroll: true });
       };
-      flyTo(centerOnPoint(cam, { x: c.x, y: c.y }, viewportRef.current, ATLAS_FLY_ZOOM), land);
+      flyTo(centerOnPoint(cam, { x: c.x, y: c.y }, viewportRef.current, ATLAS_FLY_ZOOM), land, true);
     },
     [flyTo]
   );
@@ -593,7 +726,15 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     if (!ui.fitted || viewportRef.current.w <= 0) return;
     lastLayout.current = layout;
     useAtlasUiStore.getState().setHotLane(null);
-    ui.setCamera(fitBounds(rects(visible), viewportRef.current, 48, ui.camera, ATLAS_FIT_FLOOR));
+    const fit = fitBounds(rects(visible), viewportRef.current, 48, ui.camera, ATLAS_FIT_FLOOR);
+    // A walk keeps standing on its card: it flies there in the new layout
+    // (atlas-walk.tsx), and a fit here would cut that flight short. Done and
+    // Escape go back to this layout's frame, not the old one's.
+    if (ui.walk) {
+      ui.setWalkReturn(fit);
+      return;
+    }
+    ui.setCamera(fit);
   }, [layout, rects, visible, releaseHold]);
 
   // The toolbar's Fit.
@@ -624,6 +765,8 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     if (!card) return;
     // The lane the card is DRAWN in, so the drop's "from" is what the screen shows.
     const drawnLane = ctx.result.cardLane.get(key);
+    // A drop into a Momentum column may pin the card: its settle may play.
+    if (ctx.layout === 'momentum') armPinSettle(key);
     const out = dropCard({
       layout: ctx.layout,
       card,
@@ -657,6 +800,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     const ctx = dropCtx.current;
     const card = ctx.cards.find((c) => c.key === key);
     if (!card) return;
+    if (band) armPinSettle(key);
     useAtlasStore.getState().pin(card.kind, card.id, band, ctx.places[key]);
     toast(band ? ATLAS_COPY.pinned(card.name, bandLabel(band)) : ATLAS_COPY.unpinned(card.name));
   }, []);
@@ -690,6 +834,35 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // The sheet is this view's: leaving Atlas (a scope switch, a page) closes
   // it, so it never springs open on the next visit.
   useEffect(() => () => useAtlasUiStore.getState().closeSheet(), []);
+
+  // Walk Atlas (atlas-walk.tsx) visits the drawn cards in the layout's
+  // reading order. A walk that ended asking to go home flies the camera back
+  // to where it started (it jumps under reduced motion). Leaving Atlas ends a
+  // walk, as it closes the sheet.
+  const walking = useAtlasUiStore((s) => s.walk !== null);
+  const walkOrder = useMemo(
+    () => (ready && walking ? atlasWalkOrder(layout, visible, positions) : NO_WALK),
+    [ready, walking, layout, visible, positions]
+  );
+  const walkHome = useAtlasUiStore((s) => s.walkHome);
+  useEffect(() => {
+    if (!walkHome) return;
+    useAtlasUiStore.getState().clearWalkHome();
+    flyTo(walkHome);
+  }, [walkHome, flyTo]);
+  useEffect(
+    () => () => {
+      // The camera is a module singleton: a walk left mid-way (or a flight
+      // home cut off by leaving) jumps it back to where the walk started,
+      // so the next visit opens where the person was, not on a walk stop.
+      const ui = useAtlasUiStore.getState();
+      const home = ui.walk?.returnTo ?? ui.walkHome;
+      ui.endWalk(false);
+      ui.clearWalkHome();
+      if (home) ui.setCamera(home);
+    },
+    []
+  );
 
   // The root's two keys (rule 18: not global shortcuts, so not commands).
   // Escape closes the sheet, and claims the key (preventDefault) so the item
@@ -800,10 +973,18 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
         <AtlasSurface
           rootRef={rootRef}
           inert={sheetOpen}
+          fold={!reduced}
+          cardsAt={positionsRef}
+          farOver={
+            handoffLive && !reduced && cards.length > 0 ? (
+              <AtlasHandoffCanvas scene={farScene} grid={farGrid} colors={colors} />
+            ) : null
+          }
           far={
             inBand && cards.length > 0 ? (
               <AtlasFarCanvas
                 scene={farScene}
+                grid={farGrid}
                 colors={colors}
                 reduced={reduced}
                 interactive={far}
@@ -814,6 +995,17 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
           }
         >
           {layout !== 'map' && <AtlasLanes lanes={result.lanes} timeline={result.timeline} />}
+          {/* Strands and season frames, under the cards. Off from the handoff
+              band down, where the far canvas draws the same links. */}
+          {ready && !inBand && (strandLinks.length > 0 || frames.length > 0) && (
+            <AtlasStrands
+              links={strandLinks}
+              frames={frames}
+              positions={positions}
+              expanded={expanded}
+              reduced={reduced}
+            />
+          )}
           {!far && orderedCards.map((card) => {
             const drawn = ready ? positions.get(card.key) : undefined;
             const gone = !drawn && ready ? leaving[card.key] : undefined;
@@ -846,7 +1038,8 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
                 dayAt={timelineGoal ? dayAt : undefined}
                 laneLabel={laneLabels.get(card.key)}
                 onTick={layout === 'map' ? undefined : onTick}
-                handoff={inBand}
+                handoff={inBand && !reduced}
+                glideDelay={delays.get(card.key)}
               />
             );
           })}
@@ -855,6 +1048,20 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
           <AtlasMinimap content={content} clusters={clusters} viewport={viewport} colors={colors} reduced={reduced} />
         )}
       </div>
+      <AtlasWalk
+        cards={visible}
+        layout={layout}
+        liveOrder={walkOrder}
+        onHold={holdForWalk}
+        positions={positions}
+        viewport={viewport}
+        todayStr={todayStr}
+        milestoneIds={milestoneIds}
+        flyTo={flyTo}
+        rootRef={rootRef}
+        reduced={reduced}
+        previewing={previewing}
+      />
       <AtlasFocusSheet
         cards={cards}
         viewport={viewport}

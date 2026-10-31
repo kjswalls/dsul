@@ -6,11 +6,11 @@ import { ContainerContextMenu } from '@/components/planner/container-context-men
 import { ItemMenuRow } from '@/components/planner/item-context-menu';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 import { ATLAS_COPY } from '@/lib/atlas-copy';
-import { handoffProgress, viewRect, type AtlasCamera } from '@/lib/atlas-camera';
+import { handoffShown, viewRect, type AtlasCamera } from '@/lib/atlas-camera';
+import { underLayer } from '@/lib/atlas-motion';
 import {
   ATLAS_GRID_PITCH,
   ATLAS_WAVE_PERIOD_MS,
-  buildRelayGrid,
   cellNum,
   cellsInView,
   dotStride,
@@ -37,10 +37,14 @@ import type { AtlasColors } from '@/components/views/atlas/use-atlas-colors';
  * the tab is visible, and never under reduced motion (one still frame). While
  * it runs, everything that is not waving is painted once into a cached layer.
  *
- * In the handoff band (zoom 0.6 to 0.5) the canvas draws its content at a
- * per-frame alpha (canvas pixels, never a parent's opacity, D8) while the
- * cards shrink toward their clusters above it. The dot grid is drawn at full
- * strength throughout, since it takes over from the board's CSS dots.
+ * In the handoff band (zoom 0.6 to 0.5, or a fly-in's flourish) the canvas
+ * brings its content up by per-frame alphas (canvas pixels, never a parent's
+ * opacity, D8; lib/atlas-motion.ts `underLayer`): the links first, then the
+ * aura, then the labels, while the cards fold above it and their tiles fly to
+ * the grid on the overlay (atlas-handoff-canvas.tsx). The relay tiles are the
+ * overlay's until every one has landed, then this canvas's. Under reduced
+ * motion it is a plain swap at 0.5. The dot grid is drawn at full strength
+ * throughout, since it takes over from the board's CSS dots.
  *
  * Each cluster also has a real element on top (below 0.5 only): a button that
  * flies in on a click or Enter, shows the tooltip on hover or focus, and is
@@ -175,8 +179,8 @@ interface Paint {
   byKey: ReadonlyMap<string, FarCluster>;
   scene: FarScene;
   colors: AtlasColors;
-  /** The handoff alpha for everything but the dot grid. */
-  alpha: number;
+  /** The handoff's alphas for everything but the dot grid, and whether the tiles are this canvas's. */
+  layer: ReturnType<typeof underLayer>;
   /** The wave's phase, 0 to 1; null for a still frame. */
   phase: number | null;
 }
@@ -217,9 +221,10 @@ function paintDots(p: Paint) {
 /** Bloom's watercolour wash under each cluster that is not resting. */
 function paintPools(p: Paint) {
   const { ctx, cam } = p;
+  if (p.layer.links <= 0) return;
   ctx.save();
   ctx.globalCompositeOperation = 'multiply';
-  ctx.globalAlpha = p.alpha;
+  ctx.globalAlpha = p.layer.links;
   for (const c of p.scene.clusters) {
     if (c.resting) continue;
     const [x, y] = screen(p, c.x, c.y);
@@ -238,8 +243,9 @@ function paintPools(p: Paint) {
 /** A season's dashed outline around what it holds, and the goal threads. */
 function paintLinks(p: Paint) {
   const { ctx, cam, grid } = p;
+  if (p.layer.links <= 0) return;
   ctx.save();
-  ctx.globalAlpha = p.alpha;
+  ctx.globalAlpha = p.layer.links;
   ctx.strokeStyle = p.colors.dot;
   ctx.lineWidth = 1;
   ctx.setLineDash([2, 5]);
@@ -293,11 +299,11 @@ function paintCells(p: Paint, cells: readonly RelayCell[]) {
   const ts = P * cam.z * 1.6;
   ctx.save();
   ctx.globalCompositeOperation = glow ? 'lighter' : 'source-over';
-  ctx.globalAlpha = p.alpha;
+  ctx.globalAlpha = p.layer.aura;
   // The aura: dots of one style share one path and one fill.
   for (const list of auraBuckets.values()) list.length = 0;
   for (const cell of cells) {
-    if (cell.role === 'tile') continue;
+    if (cell.role === 'tile' || p.layer.aura <= 0) continue;
     const c = p.byKey.get(cell.key);
     if (!c) continue;
     const wave = p.phase === null || c.resting ? 0 : waveAt(cell.d, p.phase, c.live);
@@ -321,7 +327,11 @@ function paintCells(p: Paint, cells: readonly RelayCell[]) {
     }
     ctx.fill();
   }
-  // The tiles, over the aura.
+  // The tiles, over the aura (in flight on the overlay until all have landed).
+  if (!p.layer.tiles) {
+    ctx.restore();
+    return;
+  }
   for (const cell of cells) {
     if (cell.role !== 'tile') continue;
     const c = p.byKey.get(cell.key);
@@ -329,7 +339,7 @@ function paintCells(p: Paint, cells: readonly RelayCell[]) {
     const sprite = tileSprite(toneOf(p, c), mode, cell.lit);
     if (!sprite) continue;
     const wave = p.phase === null || c.resting ? 0 : waveAt(cell.d, p.phase, c.live);
-    ctx.globalAlpha = p.alpha * Math.min(1, (c.resting ? 0.35 : cell.lit ? 0.85 : 0.6) + wave * 0.4);
+    ctx.globalAlpha = Math.min(1, (c.resting ? 0.35 : cell.lit ? 0.85 : 0.6) + wave * 0.4);
     const s = ts * (1 + wave * 0.14);
     ctx.drawImage(sprite, cell.x * cam.z + cam.x - s / 2, cell.y * cam.z + cam.y - s / 2, s, s);
   }
@@ -339,8 +349,9 @@ function paintCells(p: Paint, cells: readonly RelayCell[]) {
 /** Name, then "5 left" / "all done" / "resting", under each cluster. */
 function paintLabels(p: Paint) {
   const { ctx, cam, grid } = p;
+  if (p.layer.labels <= 0) return;
   ctx.save();
-  ctx.globalAlpha = p.alpha;
+  ctx.globalAlpha = p.layer.labels;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   for (const c of p.scene.clusters) {
@@ -390,6 +401,7 @@ function paint(p: Paint, part: 'all' | 'static' | 'live', waving: ReadonlySet<st
 
 export function AtlasFarCanvas({
   scene,
+  grid,
   colors,
   reduced,
   interactive,
@@ -397,6 +409,8 @@ export function AtlasFarCanvas({
   onFly,
 }: {
   scene: FarScene;
+  /** The Relay grid, built once by the view for this canvas and the handoff overlay. */
+  grid: RelayGrid;
   colors: AtlasColors;
   reduced: boolean;
   /** Below 0.5: the cluster buttons are on (in the handoff band the cards are). */
@@ -406,14 +420,6 @@ export function AtlasFarCanvas({
   onFly: (key: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const grid = useMemo(
-    () =>
-      buildRelayGrid(
-        scene.clusters.map((c) => ({ key: c.key, x: c.x, y: c.y, tiles: c.tiles, lit: c.lit })),
-        ATLAS_GRID_PITCH
-      ),
-    [scene.clusters]
-  );
   const byKey = useMemo(() => new Map(scene.clusters.map((c) => [c.key, c])), [scene.clusters]);
   const waving = useMemo(
     () => new Set(reduced ? [] : scene.clusters.filter((c) => c.live > 0 && !c.resting).map((c) => c.key)),
@@ -421,9 +427,9 @@ export function AtlasFarCanvas({
   );
 
   // Everything the painter reads, in a ref: a camera move repaints without a render.
-  const live = useRef({ grid, byKey, scene, colors, waving });
+  const live = useRef({ grid, byKey, scene, colors, waving, reduced });
   useEffect(() => {
-    live.current = { grid, byKey, scene, colors, waving };
+    live.current = { grid, byKey, scene, colors, waving, reduced };
   });
 
   // Paused when the canvas is off screen or the tab is hidden.
@@ -465,7 +471,7 @@ export function AtlasFarCanvas({
       const f = frame.current;
       const { w, h, dpr } = f.size;
       if (w <= 0 || h <= 0) return;
-      const cam = useAtlasUiStore.getState().camera;
+      const { camera: cam, flourish } = useAtlasUiStore.getState();
       const L = live.current;
       const runWave = L.waving.size > 0;
       const base: Paint = {
@@ -477,7 +483,7 @@ export function AtlasFarCanvas({
         byKey: L.byKey,
         scene: L.scene,
         colors: L.colors,
-        alpha: handoffProgress(cam.z),
+        layer: underLayer(handoffShown(cam.z, flourish), L.reduced),
         phase: runWave ? (t / ATLAS_WAVE_PERIOD_MS) % 1 : null,
       };
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -562,11 +568,15 @@ export function AtlasFarCanvas({
   }, [draw]);
 
   // A camera move repaints (never a React render).
-  useEffect(() => useAtlasUiStore.subscribe((s, prev) => s.camera !== prev.camera && requestDraw()), [requestDraw]);
+  useEffect(
+    () =>
+      useAtlasUiStore.subscribe((s, prev) => (s.camera !== prev.camera || s.flourish !== prev.flourish) && requestDraw()),
+    [requestDraw]
+  );
   // So does new data, new colours or a new wave set.
   useEffect(() => {
     requestDraw();
-  }, [grid, colors, waving, scene, requestDraw]);
+  }, [grid, colors, waving, scene, reduced, requestDraw]);
 
   // The wave loop: only with something to wave, on screen, tab visible, and
   // never under reduced motion.

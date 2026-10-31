@@ -13,7 +13,6 @@ import {
   type RefObject,
 } from 'react';
 import Link from 'next/link';
-import { toast } from 'sonner';
 import { CalendarCheck, ExternalLink, LayoutGrid } from 'lucide-react';
 import { AtlasRow } from '@/components/views/atlas/atlas-row';
 import { AtlasTileStrip } from '@/components/views/atlas/atlas-tile-strip';
@@ -24,16 +23,20 @@ import { ATLAS_COPY } from '@/lib/atlas-copy';
 import { formatDay } from '@/lib/active';
 import { formatCueTime } from '@/lib/reminders/copy';
 import { usePlannerStore } from '@/lib/planner-store';
-import { ITEM_VERBS, type VerbContext } from '@/lib/item-verbs';
-import { toDateOnly } from '@/lib/overdue';
+import { canPutOnToday, putNextOnToday } from '@/lib/atlas-verbs';
 import { useOpenConsole } from '@/lib/console-door';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import type { Viewport } from '@/lib/atlas-camera';
 import { cn } from '@/lib/utils';
+import { ATLAS_EASE_EXIT, ATLAS_EASE_OUT, ATLAS_MOTION, ATLAS_SHEET_RISE_TOTAL_MS } from '@/lib/atlas-motion';
 
-/** The grow and shrink, as in the cards mock. */
-const SHEET_MS = 350;
-const SHEET_EASE = 'cubic-bezier(.2,.8,.2,1)';
+/**
+ * The grow and the shrink (lib/atlas-motion.ts): out of the card on the settle
+ * curve, back into it a little quicker on an exit curve, so a close gets out
+ * of the way.
+ */
+const SHEET_OPEN_MS = ATLAS_MOTION.sheetOpenMs;
+const SHEET_CLOSE_MS = ATLAS_MOTION.sheetCloseMs;
 /** How long a row ticked in the sheet stays in its group before it moves. */
 const TICK_HOLD_MS = 1500;
 /** Done rows shown before "Show n more": a project keeps every one-off ever filed in it. */
@@ -44,7 +47,7 @@ type Phase = 'from' | 'open' | 'leaving';
 type Group = 'next' | 'later' | 'done' | 'milestones';
 
 /** Organize's section for each card kind (lib/console-door.ts opens it). */
-const CONSOLE_SECTION: Record<AtlasCard['kind'], string> = {
+export const CONSOLE_SECTION: Record<AtlasCard['kind'], string> = {
   project: 'projects',
   routine: 'routines',
   season: 'seasons',
@@ -117,7 +120,7 @@ export function AtlasFocusSheet({
   // Shrink: back into the card, then gone.
   useEffect(() => {
     if (phase !== 'leaving') return;
-    const t = setTimeout(() => setView((v) => (v && v.phase === 'leaving' ? null : v)), SHEET_MS);
+    const t = setTimeout(() => setView((v) => (v && v.phase === 'leaving' ? null : v)), SHEET_CLOSE_MS);
     return () => clearTimeout(t);
   }, [phase]);
 
@@ -221,9 +224,12 @@ export function AtlasFocusSheet({
 
   const box = view.phase === 'open' ? sheetTarget(viewport) : view.sheet.from;
   const open = view.phase === 'open';
+  const leaving = view.phase === 'leaving';
+  const ms = leaving ? SHEET_CLOSE_MS : SHEET_OPEN_MS;
+  const ease = leaving ? ATLAS_EASE_EXIT : ATLAS_EASE_OUT;
   const transition = reduce
     ? 'none'
-    : ['left', 'top', 'width', 'height'].map((p) => `${p} ${SHEET_MS}ms ${SHEET_EASE}`).join(', ');
+    : ['left', 'top', 'width', 'height', 'border-radius'].map((p) => `${p} ${ms}ms ${ease}`).join(', ');
 
   return (
     <>
@@ -243,7 +249,7 @@ export function AtlasFocusSheet({
         className={cn('absolute inset-0 z-20', open && 'backdrop-blur-[2px]')}
         style={{
           background: open ? 'var(--scrim)' : 'transparent',
-          transition: reduce ? 'none' : 'background-color 250ms ease',
+          transition: reduce ? 'none' : `background-color ${ATLAS_MOTION.scrimMs}ms ${ATLAS_EASE_OUT}`,
           pointerEvents: view.phase === 'leaving' ? 'none' : undefined,
         }}
       />
@@ -259,8 +265,9 @@ export function AtlasFocusSheet({
         data-atlas-sheet={card.key}
         data-phase={view.phase}
         data-click-away-ignore=""
-        className="absolute z-[21] flex flex-col overflow-hidden rounded-[20px] border border-border bg-card text-card-foreground shadow-[var(--shadow-elev-panel)] outline-none"
-        style={{ left: box.x, top: box.y, width: box.width, height: box.height, transition }}
+        className="absolute z-[21] flex flex-col overflow-hidden border border-border bg-card text-card-foreground shadow-[var(--shadow-elev-panel)] outline-none"
+        // The corners ease from the card's 16px to the sheet's 20px with the box.
+        style={{ left: box.x, top: box.y, width: box.width, height: box.height, borderRadius: open ? 20 : 16, transition }}
       >
         <SheetBody
           key={view.seq}
@@ -289,6 +296,13 @@ function SheetBody({
   keepFocus: () => void;
 }) {
   const timeFormat = usePlannerStore((s) => s.timeFormat);
+  // The blocks rise only as the sheet opens (the body remounts per open), so
+  // one that mounts later (a Done group after a tick) is simply there.
+  const [rising, setRising] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setRising(false), ATLAS_SHEET_RISE_TOTAL_MS);
+    return () => clearTimeout(t);
+  }, []);
   const openConsole = useOpenConsole();
   const [allDone, setAllDone] = useState(false);
   const held = useSheetHold();
@@ -352,7 +366,12 @@ function SheetBody({
     ));
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-[22px] pb-[22px] pt-[18px]">
+    // atlas-sheet-body: each block rises a few pixels into place as the sheet
+    // opens, staggered, by transform only (globals.css; off under reduced motion).
+    <div
+      data-rising={rising ? '' : undefined}
+      className="atlas-sheet-body flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-[22px] pb-[22px] pt-[18px]"
+    >
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <button
           type="button"
@@ -391,7 +410,7 @@ function SheetBody({
         </div>
       )}
 
-      {card.kind !== 'goal' && <AtlasTileStrip card={card} />}
+      {card.kind !== 'goal' && <AtlasTileStrip card={card} reduced={prefersReducedMotion()} />}
 
       {/* No next step and nothing to say about it (an ended goal, a paused
           gate): no Next up at all; its members are in Later. */}
@@ -513,41 +532,6 @@ function SheetGroup({ title, testId, children }: { title: string; testId: string
       <div className="-mx-[7px] flex flex-col">{children}</div>
     </section>
   );
-}
-
-/**
- * The verb context for today, where today is `useToday()`'s day (rule 4),
- * the same one the gate and the click both use. The Date is the instant the
- * store resolves the write against, read when this is built.
- */
-function todayContext(todayStr: string, milestoneIds: ReadonlySet<string>): VerbContext {
-  const tz = usePlannerStore.getState().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return { dateStr: todayStr, date: new Date(), todayStr, tz, milestoneIds, occurrence: 'absent' };
-}
-
-/**
- * Whether "Put next step on Today" is offered for this row (rule 4): the
- * card already said it may (never a milestone, never recurring), the verb's
- * own gate agrees, and the step is not on today already.
- */
-function canPutOnToday(next: AtlasMember, todayStr: string, milestoneIds: ReadonlySet<string>): boolean {
-  if (milestoneIds.has(next.item.id)) return false;
-  const start = 'startDate' in next.item && next.item.startDate ? toDateOnly(next.item.startDate) : undefined;
-  if (start === todayStr) return false;
-  return ITEM_VERBS.reschedule.eligible(next.item, todayContext(todayStr, milestoneIds));
-}
-
-/**
- * `ITEM_VERBS.reschedule.run(item, ctx, today)`, re-read and re-checked at
- * click time: the row may have been painted from a snapshot.
- */
-function putNextOnToday(itemId: string, todayStr: string, milestoneIds: ReadonlySet<string>): void {
-  const item = usePlannerStore.getState().items.find((i) => i.id === itemId);
-  if (!item || milestoneIds.has(item.id)) return;
-  const ctx = todayContext(todayStr, milestoneIds);
-  if (!ITEM_VERBS.reschedule.eligible(item, ctx)) return;
-  ITEM_VERBS.reschedule.run(item, ctx, todayStr);
-  toast(ATLAS_COPY.putOnTodayDone(item.title));
 }
 
 /**

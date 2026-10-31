@@ -24,7 +24,10 @@ import {
  * and M pins it, and the Look pane has the Bloom or Dusk row. PR4: a
  * braindump row dropped on a card files it there (it stays in the braindump)
  * and Undo takes it back; a row dragged from one routine's card to another's
- * moves it, as one undo.
+ * moves it, as one undo. Round 2: a click on a far cluster flies in and
+ * plays the handoff as a flourish that lets go, and Ctrl+wheel mid-flight
+ * takes it back. Walk Atlas stands on one card at a time from the palette,
+ * puts a step on Today through the verb, and Escape takes the camera back.
  *
  * Under its own prefix, swept by name like organize.spec.ts (projects are not
  * items, so the title sweep would miss them).
@@ -64,6 +67,29 @@ async function dragOntoCard(page: Page, source: Locator, card: Locator) {
   } finally {
     await page.mouse.up();
   }
+}
+
+/**
+ * Zoom in about the middle of `cards` until the board is at least 70%. A Fit on
+ * the suite's crowded shared board can land under 60%, where the cards fold
+ * flat into the far zoom's handoff and their rows are no longer something to
+ * pick up.
+ */
+async function zoomToRows(page: Page, ...cards: Locator[]) {
+  for (let i = 0; i < 12; i++) {
+    const pct = parseInt((await page.getByTestId('atlas-zoom').textContent()) ?? '', 10);
+    if (pct >= 70) break;
+    const boxes = (await Promise.all(cards.map((c) => c.boundingBox()))).filter((b) => b !== null);
+    if (boxes.length === 0) break;
+    const x = boxes.reduce((a, b) => a + b.x + b.width / 2, 0) / boxes.length;
+    const y = boxes.reduce((a, b) => a + b.y + b.height / 2, 0) / boxes.length;
+    await page.mouse.move(x, y);
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up('Control');
+    await page.waitForTimeout(120);
+  }
+  await page.waitForTimeout(700);
 }
 
 test.describe('atlas', () => {
@@ -316,8 +342,78 @@ test.describe('atlas', () => {
     // The Look pane has the far zoom's pick, on the desktop.
     await page.goto('/settings/look');
     await expect(page.locator('[data-setting-row="look.atlasFar"]').first()).toBeVisible();
+    // Picking Dusk shows at once (the page's look tick once left it out, so
+    // the chip kept saying Bloom), and Bloom puts it back.
+    const farChip = page.getByTestId('setting-look.atlasFar').first();
+    await farChip.click();
+    // By value inside the open picker: the Look pane also has a dark theme named Dusk.
+    const pick = (v: string) => page.locator(`[data-radix-popper-content-wrapper] button[data-value="${v}"]`);
+    await pick('dusk').click();
+    await expect(farChip).toContainText('Dusk');
+    await farChip.click();
+    await pick('bloom').click();
+    await expect(farChip).toContainText('Bloom');
     await page.goto('/');
     await waitForAppReady(page);
+    await setScope(page, 'Day');
+  });
+
+  test('a click on a far cluster flies in with the handoff, which lets go, and Ctrl+wheel takes it back', async ({ page }) => {
+    const name = scope.title('Fly');
+    const projectId = await createProject(page, name);
+    await createTestTask(page, { title: scope.title('Fly step'), project: name });
+    await reloadApp(page);
+
+    await setScope(page, 'Atlas');
+    const view = page.getByTestId('atlas-view');
+    const world = page.getByTestId('atlas-world');
+    const overlay = page.getByTestId('atlas-handoff-canvas');
+    const card = page.locator(`[data-atlas-card="project:${projectId}"]`);
+    await expect(card).toBeVisible();
+    // Cards only, above the band: no fold, no overlay.
+    await expect(world).not.toHaveAttribute('data-handoff', 'true');
+    await expect(overlay).toHaveCount(0);
+
+    const zoomOut = async () => {
+      const box = (await view.boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.keyboard.down('Control');
+      for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 120);
+      await page.keyboard.up('Control');
+      await expect(page.locator('[data-atlas-card]')).toHaveCount(0);
+    };
+
+    // Far out (below 50%): the constellation alone, and no overlay there either.
+    await zoomOut();
+    await expect(overlay).toHaveCount(0);
+    const cluster = page.locator(`[data-atlas-far-cluster="project:${projectId}"]`);
+    await expect(cluster).toHaveCount(1);
+
+    // The click flies in and plays the handoff as a flourish: the fold and the
+    // overlay are up while the card assembles, then both let go (the whole
+    // fly-in is under a second), and the card is whole at 100%.
+    await cluster.click();
+    await expect(world).toHaveAttribute('data-handoff', 'true', { timeout: 2_000 });
+    await expect(card).toBeVisible({ timeout: 2_000 });
+    await expect(world).not.toHaveAttribute('data-handoff', 'true', { timeout: 3_000 });
+    await expect(overlay).toHaveCount(0);
+    await expect(page.getByTestId('atlas-zoom')).toHaveText('100%');
+    await expect(card).not.toHaveAttribute('style', /--atlas-fold-x/);
+
+    // Again, and Ctrl+wheel in mid-flight takes the camera at once: the
+    // flourish ends with it, so nothing stays folded at a zoom above the band.
+    await zoomOut();
+    await page.locator(`[data-atlas-far-cluster="project:${projectId}"]`).click();
+    await expect(world).toHaveAttribute('data-handoff', 'true', { timeout: 2_000 });
+    const box = (await view.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.keyboard.down('Control');
+    for (let i = 0; i < 6; i++) await page.mouse.wheel(0, -120);
+    await page.keyboard.up('Control');
+    await expect(card).toBeVisible();
+    await expect(world).not.toHaveAttribute('data-handoff', 'true', { timeout: 1_000 });
+    await expect(overlay).toHaveCount(0);
+    await expect(page.getByTestId('atlas-zoom')).not.toHaveText('100%');
     await setScope(page, 'Day');
   });
 
@@ -366,6 +462,7 @@ test.describe('atlas', () => {
       await expect(to).toBeVisible();
       await page.getByRole('button', { name: 'Fit every card on screen' }).click();
       await page.waitForTimeout(700);
+      await zoomToRows(page, from, to);
 
       const row = from.locator(`[data-testid="atlas-row"][data-item-id="${stepId}"]`);
       await expect(row).toBeVisible();
@@ -383,6 +480,69 @@ test.describe('atlas', () => {
     } finally {
       await cleanupTestCollections(scope.prefix);
     }
+  });
+
+  test('Walk Atlas stands on one card at a time, puts a step on Today, and Escape takes the camera back', async ({ page }) => {
+    const name = scope.title('Walk');
+    const projectId = await createProject(page, name);
+    const stepTitle = scope.title('Walk step');
+    const taskId = await createTestTask(page, { title: stepTitle, project: name });
+    await reloadApp(page);
+
+    await setScope(page, 'Atlas');
+    const key = `project:${projectId}`;
+    await expect(page.locator(`[data-atlas-card="${key}"]`)).toBeVisible();
+    const world = page.getByTestId('atlas-world');
+    const before = await world.evaluate((el) => (el as HTMLElement).style.transform);
+
+    // From the palette (no default key). The toolbar's Walk says it is on.
+    await runCommand(page, 'atlas.walk', { query: '/Walk Atlas' });
+    const walk = page.getByTestId('atlas-walk');
+    await expect(walk).toBeVisible();
+    await expect(page.getByTestId('atlas-walk-button')).toHaveAttribute('aria-pressed', 'true');
+    await expect(walk.getByTestId('atlas-walk-next')).toBeFocused();
+    await expect(page.getByTestId('atlas-walk-veil')).toHaveAttribute('data-up', 'true');
+
+    // Step with the arrow key until the walk stands on our card (the suite
+    // shares one account, so other tests' cards are on the map too). The walk
+    // says how many cards it holds ("1 of N"), so the loop is bounded by that,
+    // never by a guess at how full the account is.
+    const total = Number((await walk.getByTestId('atlas-walk-step').textContent())?.match(/of (\d+)/)?.[1] ?? '0');
+    expect(total).toBeGreaterThan(0);
+    for (let i = 0; i < total && (await walk.getAttribute('data-walk-card')) !== key; i++) {
+      await page.keyboard.press('ArrowRight');
+    }
+    await expect(walk).toHaveAttribute('data-walk-card', key);
+    await expect(walk.getByTestId('atlas-walk-question')).toHaveText('Still the right next step?');
+    await expect(walk.getByTestId('atlas-walk-detail')).toContainText(stepTitle);
+    // The card in the cut-out is live and never dimmed: it is on top at its
+    // centre. Polled, because the camera flies to it (and the hole slides)
+    // after the walk names it; the poll reports what IS on top when it is not.
+    const card = page.locator(`[data-atlas-card="${key}"]`);
+    await expect
+      .poll(() =>
+        card.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          if (hit?.closest('[data-atlas-card]') === el) return 'card';
+          const id = hit?.closest('[data-testid]')?.getAttribute('data-testid') ?? hit?.tagName ?? 'nothing';
+          return `${id} at ${Math.round(r.left + r.width / 2)},${Math.round(r.top + r.height / 2)}`;
+        }),
+      )
+      .toBe('card');
+
+    // Put on Today is the reschedule verb; it goes once it has run.
+    await walk.getByTestId('atlas-walk-today').click();
+    await expect(walk.getByTestId('atlas-walk-today')).toHaveCount(0);
+    await expect(card.locator(`[data-testid="atlas-row"][data-item-id="${taskId}"]`)).toBeVisible();
+
+    // Escape ends it and the camera goes back where it was.
+    await page.keyboard.press('Escape');
+    await expect(walk).toHaveCount(0);
+    await expect(page.getByTestId('atlas-walk-button')).toHaveAttribute('aria-pressed', 'false');
+    await expect.poll(() => world.evaluate((el) => (el as HTMLElement).style.transform)).toBe(before);
+
+    await setScope(page, 'Day');
   });
 
   test('the phone shows no Atlas, even with Atlas left on this device', async ({ page }) => {

@@ -231,7 +231,7 @@ export default function SettingsPage() {
   const searchParams = useSearchParams();
   const isMobile = useIsMobile();
 
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useTheme();
   const userId = usePlannerStore((s) => s.userId);
   const hydratedUserId = useMorningStore((s) => s.settingsHydratedUserId);
   const push = usePushSubscription();
@@ -364,7 +364,9 @@ export default function SettingsPage() {
       `|${s.aiHidden}|${s.model?.limitedUntil}|${s.model?.modelLabel}|${s.openclaw.agent}|${s.openclaw.agentId}`
   );
   const paletteTick = usePaletteStore((s) => s.palette);
-  const lookTick = useLookStore((s) => `${s.light}|${s.dark}|${s.layout}|${s.appIcon}`);
+  // Every field a look.* record reads. atlasFarPaper was missing once, and
+  // picking Dusk wrote the store while the chip kept saying Bloom.
+  const lookTick = useLookStore((s) => `${s.light}|${s.dark}|${s.layout}|${s.appIcon}|${s.atlasFarPaper}`);
   // JSON.stringify because `enabled` is an object; `available` rides along so
   // the unavailable() reason appears without a reload once hydration settles.
   const extensionsTick = useExtensionsStore(
@@ -428,6 +430,7 @@ export default function SettingsPage() {
   const ctx = useMemo<SettingCtx>(
     () => ({
       theme,
+      resolvedTheme,
       setTheme: setThemeSmoothly,
       userId,
       push,
@@ -444,6 +447,7 @@ export default function SettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       theme,
+      resolvedTheme,
       setThemeSmoothly,
       userId,
       push,

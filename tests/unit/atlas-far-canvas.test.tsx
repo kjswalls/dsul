@@ -31,6 +31,8 @@ import { useAtlasStore } from '@/lib/atlas-store';
 import { useLookStore } from '@/lib/look-store';
 import { useUIStore } from '@/lib/ui-store';
 import { ATLAS_COPY } from '@/lib/atlas-copy';
+import { ATLAS_CARD_W } from '@/lib/atlas-seed';
+import { ATLAS_FOLD_Y, ATLAS_MOTION, foldScale } from '@/lib/atlas-motion';
 import { TODAY, asDate, installDomShims, manualRaf, seed, sizeCanvases, spyCanvas, task } from './helpers/atlas-far-setup';
 
 beforeAll(installDomShims);
@@ -76,11 +78,21 @@ describe('the far zoom', () => {
     expect(cards()).toHaveLength(1);
     expect(canvas()).not.toBeNull();
     const card = cards()[0] as HTMLElement;
-    expect(card.style.transform).toMatch(/scale\(var\(--atlas-handoff, 1\)\)/);
+    // It folds flat onto its tile strip by its own fold, scrubbed by the zoom.
+    expect(card.style.transform).toMatch(/scale\(var\(--atlas-fold-x, 1\), var\(--atlas-fold-y, 1\)\)/);
+    expect(card.style.transformOrigin).toBe(`${ATLAS_CARD_W / 2}px ${ATLAS_FOLD_Y}px`);
     expect(card.style.transition).toBe('none');
     const world = screen.getByTestId('atlas-world');
     expect(world.getAttribute('data-handoff')).toBe('true');
-    expect(parseFloat(world.style.getPropertyValue('--atlas-handoff'))).toBeCloseTo(0.7);
+    const fold = foldScale(0.5);
+    // Written on the card itself (registered non-inherited), never on the
+    // world, so a frame restyles the cards in view and nothing inside them.
+    expect(parseFloat(card.style.getPropertyValue('--atlas-fold-x'))).toBeCloseTo(fold.sx, 3);
+    expect(parseFloat(card.style.getPropertyValue('--atlas-fold-y'))).toBeCloseTo(fold.sy, 3);
+    expect(world.style.getPropertyValue('--atlas-fold-x')).toBe('');
+    expect(world.style.getPropertyValue('--atlas-sweep')).toBe('');
+    // The tiles fly on the overlay, drawn over the cards.
+    expect(screen.getByTestId('atlas-handoff-canvas')).toBeTruthy();
     // The CSS dots step aside; the canvas draws the grid.
     expect(screen.queryByTestId('atlas-dots')).toBeNull();
     // No cluster buttons while the cards are still there.
@@ -103,7 +115,128 @@ describe('the far zoom', () => {
     zoom(0.8);
     expect(cards()).toHaveLength(1);
     expect(canvas()).toBeNull();
-    expect((cards()[0] as HTMLElement).style.transform).not.toMatch(/atlas-handoff/);
+    expect(screen.queryByTestId('atlas-handoff-canvas')).toBeNull();
+    expect((cards()[0] as HTMLElement).style.transform).not.toMatch(/atlas-fold/);
+    expect((cards()[0] as HTMLElement).style.getPropertyValue('--atlas-fold-x')).toBe('');
+  });
+
+  it('mounts the overlay only where the handoff can be strictly between its ends', () => {
+    spyCanvas();
+    seed([task('a'), task('b', { status: 'completed' })]);
+    render(<AtlasView />);
+    zoom(0.55);
+    expect(screen.getByTestId('atlas-handoff-canvas')).toBeTruthy();
+    // At 0.5 and below every tile is the constellation's: a pan there clears no overlay.
+    zoom(0.5);
+    expect(screen.queryByTestId('atlas-handoff-canvas')).toBeNull();
+    zoom(0.3);
+    expect(screen.queryByTestId('atlas-handoff-canvas')).toBeNull();
+    expect(canvas()).not.toBeNull();
+  });
+
+  it('streams the tiles on the overlay through the band, drawing only strictly inside it', () => {
+    const log = spyCanvas();
+    seed([task('a'), task('b', { status: 'completed' }), task('c')]);
+    render(<AtlasView />);
+    zoom(0.55);
+    log.calls.length = 0;
+    raf.step();
+    // Mid-band: the strip squares (fills) and the landing sprites, and the
+    // constellation canvas holds its labels back until the tiles have landed.
+    expect(log.count('drawImage')).toBeGreaterThan(0);
+    expect(log.count('stroke')).toBeGreaterThan(0);
+    expect(log.texts()).toEqual([]);
+    // Scrubbed by the zoom: a nudge redraws, with no clock running.
+    zoom(0.54);
+    expect(raf.pending()).toBeGreaterThan(0);
+    raf.step();
+    expect(raf.pending()).toBe(0);
+  });
+
+  it('is a plain swap under reduced motion: no fold, no overlay, nothing drawn but dots until 0.5', () => {
+    document.documentElement.setAttribute('data-reduce-motion', 'true');
+    const log = spyCanvas();
+    seed([task('a'), task('b', { status: 'completed' })]);
+    render(<AtlasView />);
+    zoom(0.55);
+    const card = cards()[0] as HTMLElement;
+    expect(card.style.transform).toBe('translate(0px, 0px)');
+    expect(screen.getByTestId('atlas-world').getAttribute('data-handoff')).toBeNull();
+    expect(screen.queryByTestId('atlas-handoff-canvas')).toBeNull();
+    log.calls.length = 0;
+    raf.step();
+    expect(log.count('drawImage')).toBe(0);
+    expect(log.texts()).toEqual([]);
+    zoom(0.4);
+    raf.step();
+    expect(log.texts()).toContain('Work');
+  });
+
+  it('plays the handoff as a timed flourish on a click fly-in, then lets go', () => {
+    const log = spyCanvas();
+    seed([task('a'), task('b', { status: 'completed' })]);
+    render(<AtlasView />);
+    zoom(0.3);
+    const hit = document.querySelector<HTMLElement>('[data-atlas-far-cluster="project:p1"]')!;
+    fireEvent.pointerDown(hit, { button: 0, clientX: 50, clientY: 50, pointerId: 1 });
+    fireEvent.pointerUp(window, { button: 0, clientX: 50, clientY: 50, pointerId: 1 });
+    const seen: number[] = [];
+    let flown = false;
+    for (let i = 0; i < 60 && raf.pending() > 0; i++) {
+      act(() => raf.step(16));
+      const { camera, flourish } = useAtlasUiStore.getState();
+      if (flourish !== null) seen.push(flourish);
+      // Past the camera's flight the cards are whole-sized boxes still assembling.
+      if (camera.z === 1 && flourish !== null && flourish > 0.05 && !flown) {
+        flown = true;
+        expect(cards()).toHaveLength(1);
+        expect(screen.getByTestId('atlas-world').getAttribute('data-handoff')).toBe('true');
+        expect(screen.getByTestId('atlas-handoff-canvas')).toBeTruthy();
+      }
+    }
+    // The assembly ran on its own clock past the flight, and came down to whole cards.
+    expect(flown).toBe(true);
+    expect(seen.length).toBeGreaterThan(ATLAS_MOTION.flyMs / 16);
+    expect(seen[seen.length - 1]).toBeLessThan(0.05);
+    const end = useAtlasUiStore.getState();
+    expect(end.camera.z).toBe(1);
+    expect(end.flourish).toBeNull();
+    expect(screen.queryByTestId('atlas-handoff-canvas')).toBeNull();
+    expect(screen.getByTestId('atlas-world').getAttribute('data-handoff')).toBeNull();
+    expect(log.count('drawImage')).toBeGreaterThan(0);
+  });
+
+  it('hands focus to the card only once the flourish has finished, so a pan to it never cuts it short', () => {
+    spyCanvas();
+    seed([task('a')]);
+    render(<AtlasView />);
+    zoom(0.3);
+    const hit = document.querySelector<HTMLElement>('[data-atlas-far-cluster="project:p1"]')!;
+    hit.focus();
+    fireEvent.keyDown(hit, { key: 'Enter' });
+    let focusedMidFlourish = false;
+    for (let i = 0; i < 80 && raf.pending() > 0; i++) {
+      act(() => raf.step(16));
+      const focused = document.activeElement?.getAttribute('data-atlas-card') === 'project:p1';
+      if (focused && useAtlasUiStore.getState().flourish !== null) focusedMidFlourish = true;
+    }
+    expect(focusedMidFlourish).toBe(false);
+    expect(document.activeElement?.getAttribute('data-atlas-card')).toBe('project:p1');
+  });
+
+  it('a pinch during the flourish takes the handoff back at once', () => {
+    spyCanvas();
+    seed([task('a')]);
+    render(<AtlasView />);
+    zoom(0.3);
+    const hit = document.querySelector<HTMLElement>('[data-atlas-far-cluster="project:p1"]')!;
+    fireEvent.keyDown(hit, { key: 'Enter' });
+    for (let i = 0; i < 4; i++) act(() => raf.step(16));
+    expect(useAtlasUiStore.getState().flourish).not.toBeNull();
+    zoom(0.8);
+    expect(useAtlasUiStore.getState().flourish).toBeNull();
+    act(() => raf.step(16));
+    expect(useAtlasUiStore.getState().camera.z).toBe(0.8);
   });
 
   it('turns the island dark under Dusk only, only zoomed out, only on a light theme', () => {
@@ -135,6 +268,34 @@ describe('the far zoom', () => {
     expect(island().getAttribute('data-atlas-dusk')).toBeNull();
     // Coming in from above, the band alone never turns Dusk on.
     zoom(0.55);
+    expect(island().getAttribute('data-atlas-dusk')).toBeNull();
+  });
+
+  it('holds Dusk through a fly-in until its flourish has finished assembling the cards', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    spyCanvas();
+    useLookStore.setState({ atlasFarPaper: 'dusk' });
+    seed([task('a')]);
+    render(<AtlasView />);
+    zoom(0.3);
+    act(() => vi.advanceTimersByTime(400));
+    expect(island().classList.contains('dark')).toBe(true);
+    const hit = document.querySelector<HTMLElement>('[data-atlas-far-cluster="project:p1"]')!;
+    fireEvent.keyDown(hit, { key: 'Enter' });
+    let held = 0;
+    for (let i = 0; i < 80 && raf.pending() > 0; i++) {
+      act(() => raf.step(16));
+      const { camera, flourish } = useAtlasUiStore.getState();
+      // Out of the band, still assembling: the board stays on the slate.
+      if (flourish !== null && camera.z >= 0.6) {
+        held++;
+        expect(island().getAttribute('data-atlas-dusk')).toBe('true');
+        expect(island().classList.contains('dark')).toBe(true);
+      }
+    }
+    expect(held).toBeGreaterThan(0);
+    // Once the flourish lets go, so does Dusk.
+    expect(useAtlasUiStore.getState().flourish).toBeNull();
     expect(island().getAttribute('data-atlas-dusk')).toBeNull();
   });
 

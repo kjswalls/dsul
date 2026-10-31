@@ -59,18 +59,21 @@ export const ATLAS_FLY_ZOOM = 1;
 
 /**
  * How far through the handoff band a zoom is: 0 at or above 0.6 (cards only),
- * 1 at or below 0.5 (canvas only). The canvas draws at this alpha (canvas
- * pixels, never a parent's opacity) and the cards scale by
- * `handoffCardScale`.
+ * 1 at or below 0.5 (canvas only). lib/atlas-motion.ts turns it into the
+ * cards' fold, the tiles' flight and the canvas's alphas (canvas pixels,
+ * never a parent's opacity).
  */
 export function handoffProgress(z: number): number {
   if (!Number.isFinite(z)) return 0;
   return Math.max(0, Math.min(1, (ATLAS_HANDOFF_ZOOM - z) / (ATLAS_HANDOFF_ZOOM - ATLAS_FAR_ZOOM)));
 }
 
-/** A card's scale in the band: 1 at its top, 0.4 as it hands off to its tiles. */
-export function handoffCardScale(z: number): number {
-  return 1 - 0.6 * handoffProgress(z);
+/**
+ * The handoff the board shows: a fly-in's flourish while one runs, else the
+ * zoom's own (lib/atlas-motion.ts).
+ */
+export function handoffShown(z: number, flourish: number | null): number {
+  return flourish ?? handoffProgress(z);
 }
 
 export const IDENTITY_CAMERA: AtlasCamera = { x: 0, y: 0, z: 1 };

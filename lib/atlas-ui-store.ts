@@ -16,6 +16,19 @@ import type { AtlasKind } from './atlas-model';
  * this device's blob until 087 is applied), not here.
  */
 
+/**
+ * Walk Atlas (atlas-walk.tsx): where the walk is, and the camera it started
+ * from. `key` is the card it stands on, so a layout switch or a filter
+ * mid-walk keeps it on that card; `step` is the fallback when the card has
+ * gone (and equals the order's length on the closing stop). `returnTo` is
+ * the camera as the walk started, re-framed if the layout switches mid-walk.
+ */
+export interface AtlasWalk {
+  step: number;
+  key: string | null;
+  returnTo: AtlasCamera;
+}
+
 export interface AtlasSheet {
   kind: AtlasKind;
   id: string;
@@ -27,6 +40,14 @@ interface AtlasUiStore {
   /** False until the first fit; a fresh mount fits to the cards once. */
   fitted: boolean;
   setCamera: (camera: AtlasCamera) => void;
+  /**
+   * A click's fly-in plays the far zoom handoff as a timed flourish
+   * (lib/atlas-motion.ts `flourishAt`): while it runs this holds the handoff
+   * shown, 0 to 1, in place of the zoom's own; null otherwise. Memory only.
+   */
+  flourish: number | null;
+  /** One frame of a fly-in: the camera and the flourish in one set. */
+  setFlight: (camera: AtlasCamera, flourish: number | null) => void;
   markFitted: () => void;
   /**
    * Bumped by the toolbar's Fit (it lives in the header capsule, away from the
@@ -59,11 +80,27 @@ interface AtlasUiStore {
    */
   minimapPinned: boolean;
   toggleMinimapPinned: () => void;
+  /** Walk Atlas, memory only; null while no walk is on. */
+  walk: AtlasWalk | null;
+  /**
+   * A walk that ended asking to go back where it started: AtlasView flies the
+   * camera there and clears it. Null otherwise.
+   */
+  walkHome: AtlasCamera | null;
+  /** Starts a walk from the camera as it is now (and closes the focus sheet). */
+  startWalk: () => void;
+  walkTo: (step: number, key: string | null) => void;
+  /** A layout switch mid-walk: Done and Escape go back to the new layout's frame. */
+  setWalkReturn: (camera: AtlasCamera) => void;
+  /** Ends the walk; with `restore`, asks for the camera it started from. */
+  endWalk: (restore: boolean) => void;
+  clearWalkHome: () => void;
   reset: () => void;
 }
 
 const INITIAL = {
   camera: { x: 0, y: 0, z: 1 },
+  flourish: null,
   fitted: false,
   fitToken: 0,
   sheet: null,
@@ -71,11 +108,16 @@ const INITIAL = {
   seeded: {},
   hotLane: null,
   minimapPinned: false,
+  walk: null,
+  walkHome: null,
 } satisfies Partial<AtlasUiStore>;
 
 export const useAtlasUiStore = create<AtlasUiStore>()((set) => ({
   ...INITIAL,
-  setCamera: (camera) => set({ camera }),
+  // Any other camera move (a pinch, a pan, a fit) ends a flourish at once:
+  // the hand takes the handoff back.
+  setCamera: (camera) => set((s) => (s.flourish === null ? { camera } : { camera, flourish: null })),
+  setFlight: (camera, flourish) => set((s) => (s.camera === camera && s.flourish === flourish ? s : { camera, flourish })),
   markFitted: () => set({ fitted: true }),
   requestFit: () => set((s) => ({ fitToken: s.fitToken + 1 })),
   openSheet: (kind, id, from) => set({ sheet: { kind, id, from } }),
@@ -91,6 +133,12 @@ export const useAtlasUiStore = create<AtlasUiStore>()((set) => ({
     set((s) => (Object.keys(places).length === 0 ? s : { seeded: { ...s.seeded, ...places } })),
   setHotLane: (hotLane) => set((s) => (s.hotLane === hotLane ? s : { hotLane })),
   toggleMinimapPinned: () => set((s) => ({ minimapPinned: !s.minimapPinned })),
+  startWalk: () => set((s) => ({ walk: { step: 0, key: null, returnTo: s.camera }, walkHome: null, sheet: null })),
+  walkTo: (step, key) =>
+    set((s) => (!s.walk || (s.walk.step === step && s.walk.key === key) ? s : { walk: { ...s.walk, step, key } })),
+  setWalkReturn: (camera) => set((s) => (s.walk ? { walk: { ...s.walk, returnTo: camera } } : s)),
+  endWalk: (restore) => set((s) => (s.walk ? { walk: null, walkHome: restore ? s.walk.returnTo : null } : s)),
+  clearWalkHome: () => set((s) => (s.walkHome === null ? s : { walkHome: null })),
   reset: () => set({ ...INITIAL }),
 }));
 

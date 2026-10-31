@@ -4,7 +4,7 @@ import {
   ATLAS_HANDOFF_ZOOM,
   centerOnPoint,
   flyCamera,
-  handoffCardScale,
+  handoffShown,
   handoffProgress,
   screenToWorld,
   viewRect,
@@ -102,8 +102,10 @@ describe('atlas far zoom camera', () => {
     expect(handoffProgress(0.5)).toBe(1);
     expect(handoffProgress(0.2)).toBe(1);
     expect(handoffProgress(NaN)).toBe(0);
-    expect(handoffCardScale(0.6)).toBe(1);
-    expect(handoffCardScale(0.5)).toBeCloseTo(0.4);
+    // A fly-in's flourish stands in for the zoom's own while it runs.
+    expect(handoffShown(0.55, null)).toBeCloseTo(0.5);
+    expect(handoffShown(1, 0.8)).toBe(0.8);
+    expect(handoffShown(0.3, 0)).toBe(0);
   });
 
   it('centres a world point, at a zoom', () => {

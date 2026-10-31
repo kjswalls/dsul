@@ -304,6 +304,12 @@ export function railPaneFor(pane: PaneId): RootPaneId {
  */
 export interface SettingCtx {
   theme: string | undefined;
+  /**
+   * The theme actually showing ('light' | 'dark'), next-themes' resolvedTheme:
+   * "system" already asked of the OS, and live when the OS flips. Optional, so
+   * a ctx built without it falls back to asking matchMedia once.
+   */
+  resolvedTheme?: string;
   setTheme: (value: string) => void;
   userId: string | null;
   /** Push is browser state, not a stored boolean — the Rituals pane supplies it. */
@@ -355,6 +361,21 @@ export interface SettingOption {
   label: string;
 }
 
+/**
+ * Is a dark theme showing? next-themes' resolvedTheme when the page supplies
+ * it (live: it changes when the OS flips under "system", and the page's ctx
+ * memo re-renders the row off it); otherwise the picked mode, with "system"
+ * (or no pick) asked of the OS once.
+ */
+function darkThemeShowing(ctx: SettingCtx): boolean {
+  if (ctx.resolvedTheme === 'dark') return true;
+  if (ctx.resolvedTheme === 'light') return false;
+  if (ctx.theme === 'dark') return true;
+  if (ctx.theme === 'light') return false;
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
 export interface SettingRecord {
   /** Dotted and PERMANENT — the join key for search, the deep link, and the e2e handle. */
   id: string;
@@ -403,6 +424,12 @@ export interface SettingRecord {
   desktopOnly?: boolean;
   /** Present but not actionable, with the reason shown inline. */
   unavailable?: (ctx: SettingCtx) => string | null;
+  /**
+   * A line under the description about right now, with the control still
+   * live (unlike `unavailable`): e.g. a light-theme setting picked while a
+   * dark theme is showing, so the pick has nothing to change yet.
+   */
+  note?: (ctx: SettingCtx) => string | null;
   /**
    * The store behind this row cannot answer for it YET — a fetch is still in
    * flight for the signed-in account.
@@ -1060,6 +1087,9 @@ export const SETTINGS: SettingRecord[] = [
     options: ATLAS_FAR_PAPER.map((o) => ({ value: o.value, label: o.label })),
     // Not "dusk": the dark theme of that name owns it in search.
     keywords: ['atlas', 'zoom', 'constellation', 'far', 'glow', 'watercolour', 'slate', 'map'],
+    // On a dark theme Atlas always glows, so either pick looks the same
+    // until a light theme is showing. Said here, or the row reads as broken.
+    note: (ctx) => (darkThemeShowing(ctx) ? ATLAS_COPY.farSettingDarkNote : null),
     read: () => look().atlasFarPaper,
     write: (v) => {
       if (isAtlasFarPaper(v)) look().setAtlasFarPaper(v);

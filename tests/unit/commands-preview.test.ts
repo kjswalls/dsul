@@ -95,6 +95,8 @@ const GATED_DURING_PREVIEW: Record<string, boolean> = {
   'view.atlasLayoutGoal': false,
   'view.atlasLayoutTimeline': false,
   'atlas.toggleMinimap': false,
+  // Starts or ends a walk: the camera only. Its buttons are verbs, and view-root is inert while previewing.
+  'atlas.walk': false,
   'view.toggleScope': false,
   'view.zen': false,
   'view.weekColumnsWider': false,
