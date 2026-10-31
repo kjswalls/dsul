@@ -8,7 +8,8 @@ import { act, render, screen, cleanup, fireEvent, within } from '@testing-librar
  * before cards draw, a seed is written once, a drag is one write, the table
  * missing falls back to this device, and a preview reads and writes nothing.
  *
- * The focus sheet and its Escape/Enter keys land with PR1c and are tested there.
+ * PR1c: the focus sheet (double-click, Enter, Focus), its groups and actions,
+ * and the root's Escape and Enter.
  */
 
 const push = vi.fn();
@@ -41,6 +42,8 @@ import { useUIStore } from '@/lib/ui-store';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 import { useAtlasStore } from '@/lib/atlas-store';
 import type { Item, Project } from '@/lib/planner-types';
+import { EXT_GOALS } from '@/lib/extension-registry';
+import { disableExtensions, enableExtensions } from './support/extensions';
 
 const TODAY = '2026-07-16';
 const asDate = (ymd: string) => new Date(`${ymd}T12:00:00Z`);
@@ -551,5 +554,326 @@ describe('the locks', () => {
     render(<AtlasView />);
     fireEvent.pointerDown(screen.getByTestId('atlas-surface'), { button: 0, pointerId: 1 });
     expect(document.activeElement).toBe(document.querySelector('[data-atlas-root]'));
+  });
+});
+
+describe('the focus sheet (PR1c)', () => {
+  beforeEach(() => {
+    // The grow and shrink jump, so the sheet comes and goes in one commit.
+    document.documentElement.setAttribute('data-reduce-motion', '');
+  });
+  afterEach(() => {
+    document.documentElement.removeAttribute('data-reduce-motion');
+  });
+  const sheet = () => screen.queryByTestId('atlas-focus-sheet');
+  const root = () => document.querySelector<HTMLElement>('[data-atlas-root]')!;
+
+  it('grows from a double-clicked card, holding Next up, Later and Done, and is never an activeDialog', () => {
+    seed([task('a', { startDate: '2026-07-20' }), task('b'), task('c', { status: 'completed' })]);
+    render(<AtlasView />);
+    fireEvent.doubleClick(within(card()).getByTestId('atlas-card-footer'));
+    const el = sheet()!;
+    expect(el).toBeTruthy();
+    expect(el.dataset.atlasSheet).toBe('project:p1');
+    expect(useAtlasUiStore.getState().sheet).toMatchObject({ kind: 'project', id: 'p1' });
+    expect(useUIStore.getState().activeDialog).toBeNull();
+    const ids = (testId: string) => rowsIn(within(el).getByTestId(testId)).map((r) => r.dataset.itemId);
+    expect(ids('atlas-sheet-next')).toEqual(['a']);
+    expect(ids('atlas-sheet-later')).toEqual(['b']);
+    expect(ids('atlas-sheet-done')).toEqual(['c']);
+    expect(within(el).getByTestId('atlas-sheet-back').textContent).toBe('‹ Atlas');
+    // The map behind takes no press or focus while the sheet is up.
+    expect(screen.getByTestId('atlas-surface').hasAttribute('inert')).toBe(true);
+  });
+
+  it('a double-click on a row or its box is the row’s, not the sheet’s', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    fireEvent.doubleClick(rowsIn(card())[0]);
+    expect(sheet()).toBeNull();
+  });
+
+  it('opens from Enter on a focused card and from the hover bar’s Focus', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    card().focus();
+    fireEvent.keyDown(card(), { key: 'Enter' });
+    expect(sheet()).toBeTruthy();
+    fireEvent.keyDown(sheet()!, { key: 'Escape' });
+    expect(sheet()).toBeNull();
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    expect(sheet()).toBeTruthy();
+  });
+
+  it('Enter on a row opens the row, not the sheet', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    fireEvent.keyDown(rowsIn(card())[0], { key: 'Enter' });
+    expect(sheet()).toBeNull();
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item' });
+  });
+
+  it('a sheet row ticks and opens the item in the rail, and the sheet stays', () => {
+    seed([task('a'), task('b')]);
+    render(<AtlasView />);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    const row = rowsIn(within(sheet()!).getByTestId('atlas-sheet-later'))[0];
+    fireEvent.click(row);
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item' });
+    expect(sheet()).toBeTruthy();
+    fireEvent.click(within(rowsIn(sheet()!)[0]).getByTestId('atlas-row-check'));
+    expect(usePlannerStore.getState().items.find((i) => i.id === 'a')).toMatchObject({ status: 'completed' });
+    // Held in its slot for a moment, drawn done.
+    expect(rowsIn(within(sheet()!).getByTestId('atlas-sheet-next'))[0].dataset.completed).toBe('true');
+  });
+
+  /**
+   * The item panel's own Escape rule (components/planner/item-dialog.tsx),
+   * copied so the tests can see which of the two takes the key: it leaves a
+   * claimed key alone, and otherwise acts from inside the panel or from <body>.
+   */
+  function withPanelEscape(run: () => void) {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const active = document.activeElement;
+      if (active && active !== document.body) return;
+      useUIStore.getState().closeDialog();
+    };
+    window.addEventListener('keydown', onKey);
+    try {
+      run();
+    } finally {
+      window.removeEventListener('keydown', onKey);
+    }
+  }
+  const escapeOn = (target: Element) => {
+    const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => {
+      target.dispatchEvent(ev);
+    });
+    return ev;
+  };
+
+  it('Escape closes the sheet but leaves an open item, and hands focus back to the card', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    fireEvent.doubleClick(within(card()).getByTestId('atlas-card-footer'));
+    fireEvent.click(rowsIn(sheet()!)[0]);
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item' });
+    sheet()!.focus();
+    withPanelEscape(() => {
+      const ev = escapeOn(sheet()!);
+      expect(ev.defaultPrevented).toBe(true);
+    });
+    expect(sheet()).toBeNull();
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item' });
+    expect(document.activeElement).toBe(card());
+  });
+
+  it('with focus fallen to <body>, Escape still closes the sheet and not the item', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    fireEvent.click(rowsIn(sheet()!)[0]);
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+    withPanelEscape(() => {
+      const ev = escapeOn(document.body);
+      expect(ev.defaultPrevented).toBe(true);
+    });
+    expect(sheet()).toBeNull();
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item' });
+    expect(document.activeElement).toBe(card());
+  });
+
+  it('keeps focus in the sheet when Put on Today hides itself, so Escape still closes it', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    const btn = screen.getByTestId('atlas-sheet-today');
+    btn.focus();
+    fireEvent.click(btn);
+    expect(screen.queryByTestId('atlas-sheet-today')).toBeNull();
+    expect(sheet()!.contains(document.activeElement)).toBe(true);
+    escapeOn(document.activeElement!);
+    expect(sheet()).toBeNull();
+  });
+
+  it('a ticked row moves to Done when its hold ends, the next step takes Next up, and focus follows the box', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(asDate(TODAY));
+    seed([task('a'), task('b', { order: 1 })]);
+    render(<AtlasView />);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    const ids = (testId: string) => rowsIn(within(sheet()!).getByTestId(testId)).map((r) => r.dataset.itemId);
+    expect(ids('atlas-sheet-next')).toEqual(['a']);
+    const box = within(rowsIn(within(sheet()!).getByTestId('atlas-sheet-next'))[0]).getByTestId('atlas-row-check');
+    box.focus();
+    fireEvent.click(box);
+    expect(ids('atlas-sheet-next')).toEqual(['a']);
+    act(() => {
+      vi.advanceTimersByTime(1600);
+    });
+    expect(ids('atlas-sheet-next')).toEqual(['b']);
+    expect(ids('atlas-sheet-done')).toEqual(['a']);
+    const active = document.activeElement as HTMLElement;
+    expect(sheet()!.contains(active)).toBe(true);
+    expect(active.closest<HTMLElement>('[data-item-id]')?.dataset.itemId).toBe('a');
+  });
+
+  it('a double-click on Focus leaves the sheet open (the second click lands on the scrim)', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'), { detail: 1 });
+    fireEvent.click(screen.getByTestId('atlas-sheet-scrim'), { detail: 2 });
+    expect(sheet()).toBeTruthy();
+  });
+
+  it('a press on the scrim keeps focus, and the close hands it to the card', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    const scrim = screen.getByTestId('atlas-sheet-scrim');
+    expect(fireEvent.mouseDown(scrim)).toBe(false);
+    fireEvent.click(scrim);
+    expect(sheet()).toBeNull();
+    expect(document.activeElement).toBe(card());
+  });
+
+  it('is named by its heading, with group headings one level under it', () => {
+    seed([task('a'), task('b', { status: 'completed' })]);
+    render(<AtlasView />);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    const el = sheet()!;
+    const h2 = el.querySelector('h2')!;
+    expect(el.getAttribute('aria-labelledby')).toBe(h2.id);
+    expect(h2.textContent).toBe('Work');
+    expect([...el.querySelectorAll('h2, h3, h4, h5, h6')].map((h) => h.tagName)).toEqual(['H2', 'H3', 'H3']);
+    const done = screen.getByTestId('atlas-sheet-done-button');
+    expect(done.getAttribute('aria-keyshortcuts')).toBe('Escape');
+    expect(done.querySelector('kbd')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  it('Escape with no sheet claims nothing, so the panel keeps its own', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    fireEvent.pointerDown(screen.getByTestId('atlas-surface'), { button: 0, pointerId: 1 });
+    const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => {
+      root().dispatchEvent(ev);
+    });
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it('Escape works from the bare root, and is ignored from a text field or a key already taken', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    // From a field inside the sheet: ignored.
+    const input = document.createElement('input');
+    sheet()!.appendChild(input);
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(sheet()).toBeTruthy();
+    input.remove();
+    // A key someone else claimed first (a Radix menu, at the document): ignored.
+    const claim = (e: Event) => e.preventDefault();
+    document.addEventListener('keydown', claim, true);
+    fireEvent.keyDown(sheet()!, { key: 'Escape' });
+    document.removeEventListener('keydown', claim, true);
+    expect(sheet()).toBeTruthy();
+    // From the root itself (focused by a bare-canvas press earlier): closes.
+    fireEvent.keyDown(root(), { key: 'Escape' });
+    expect(sheet()).toBeNull();
+  });
+
+  it('closes from the scrim, the crumb and Done', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    for (const id of ['atlas-sheet-scrim', 'atlas-sheet-back', 'atlas-sheet-done-button']) {
+      fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+      expect(sheet()).toBeTruthy();
+      fireEvent.click(screen.getByTestId(id));
+      expect(sheet()).toBeNull();
+    }
+  });
+
+  it('puts an undated next step on Today through the reschedule verb', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    fireEvent.click(screen.getByTestId('atlas-sheet-today'));
+    const a = usePlannerStore.getState().items.find((i) => i.id === 'a') as { startDate?: string };
+    expect(a.startDate?.slice(0, 10)).toBe(TODAY);
+    // On Today now, so it is no longer offered.
+    expect(screen.queryByTestId('atlas-sheet-today')).toBeNull();
+  });
+
+  it('never offers Put on Today for a recurring next step or a milestone', () => {
+    seed([task('r', { repeatFrequency: 'daily', startDate: '2026-07-01' } as Partial<Item>)]);
+    render(<AtlasView />);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    expect(within(sheet()!).getByTestId('atlas-sheet-next')).toBeTruthy();
+    expect(screen.queryByTestId('atlas-sheet-today')).toBeNull();
+    cleanup();
+    useAtlasUiStore.getState().reset();
+
+    seed([task('m', { project: undefined }), task('f', { project: undefined, status: 'completed' })]);
+    usePlannerStore.setState({
+      goals: [
+        { id: 'g1', name: 'Ship', state: 'active', memberIds: ['f'], milestoneIds: ['m'], checkinIds: [] } as never,
+      ],
+    });
+    enableExtensions(EXT_GOALS);
+    render(<AtlasView />);
+    const goalCard = card('goal:g1');
+    expect(goalCard).toBeTruthy();
+    fireEvent.click(within(goalCard).getByTestId('atlas-card-focus'));
+    expect(rowsIn(within(sheet()!).getByTestId('atlas-sheet-milestones')).map((r) => r.dataset.itemId)).toEqual(['m']);
+    expect(screen.queryByTestId('atlas-sheet-today')).toBeNull();
+    disableExtensions(EXT_GOALS);
+  });
+
+  it('opens the container in Organize through the console door', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    fireEvent.click(screen.getByTestId('atlas-sheet-organize'));
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'organize', section: 'projects', focusId: 'p1' });
+  });
+
+  it('closes when Atlas unmounts, so it never springs back on the next visit', () => {
+    seed([task('a')]);
+    const { unmount } = render(<AtlasView />);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    unmount();
+    expect(useAtlasUiStore.getState().sheet).toBeNull();
+  });
+
+  it('shows a subtask under its parent row', () => {
+    seed([task('p'), task('s', { parentItemId: 'p' } as Partial<Item>)]);
+    render(<AtlasView />);
+    expect(rowsIn(card()).map((r) => r.dataset.itemId)).toEqual(['p']);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    const sub = sheet()!.querySelector<HTMLElement>('[data-atlas-subtask-of="p"] [data-testid="atlas-row"]');
+    expect(sub?.dataset.itemId).toBe('s');
+  });
+
+  it('grows by geometry, never opacity, when motion is allowed', () => {
+    document.documentElement.removeAttribute('data-reduce-motion');
+    seed([task('a'), task('b', { status: 'completed' })]);
+    render(<AtlasView />);
+    fireEvent.click(within(card()).getByTestId('atlas-card-focus'));
+    const el = sheet()!;
+    expect(el.dataset.phase).toBe('from');
+    expect(el.style.transition).toMatch(/left/);
+    const offenders = [root(), ...root().querySelectorAll('*')].filter((n) => {
+      const cls = (n.getAttribute('class') ?? '').split(/\s+/);
+      const bare = cls.some((c) => /(^|:)opacity-/.test(c) && !/^(disabled|data-\[disabled\]):/.test(c));
+      return bare || /opacity\s*:/.test(n.getAttribute('style') ?? '');
+    });
+    expect(offenders.map((n) => n.outerHTML.slice(0, 120))).toEqual([]);
+    // Closing shrinks it back before it goes.
+    act(() => useAtlasUiStore.getState().closeSheet());
+    expect(sheet()?.dataset.phase).toBe('leaving');
   });
 });

@@ -5,6 +5,7 @@ import {
   memberStateOn,
   sameAtlasCard,
   createAtlasCardSharer,
+  atlasSheetSections,
   type AtlasModelInput,
 } from '@/lib/atlas-model';
 import { projectColorToken } from '@/lib/accent-colors';
@@ -402,5 +403,81 @@ describe('buildAtlasCards', () => {
     const after = share(buildAtlasCards(input({ items: ticked, projects })));
     expect(cardOf(after, 'project:p-Home')).toBe(cardOf(first, 'project:p-Home'));
     expect(cardOf(after, 'project:p-Work')).not.toBe(cardOf(first, 'project:p-Work'));
+  });
+});
+
+describe('the focus sheet (PR1c)', () => {
+  it('groups a project as Next up, Later (open, then quiet) and Done', () => {
+    const items = [
+      task({ id: 'a', project: 'Work', startDate: '2026-03-12' }),
+      task({ id: 'b', project: 'Work', order: 1 }),
+      task({ id: 'c', project: 'Work', status: 'completed' }),
+      task({ id: 'x', project: 'Work', status: 'cancelled' }),
+      // A weekly habit off today (a Tuesday): quiet, so Later, never Next up.
+      habit({ id: 'h', project: 'Work', repeatFrequency: 'custom', repeatDays: [1] } as Partial<Item> & { id: string }),
+    ];
+    const card = cardOf(buildAtlasCards(input({ items, projects: [project('Work')] })), 'project:p-Work');
+    const s = atlasSheetSections(card);
+    expect(s.next?.item.id).toBe('a');
+    expect(s.later.map((m) => m.item.id)).toEqual(['b', 'h']);
+    expect(s.done.map((m) => m.item.id)).toEqual(['c']);
+    expect(s.milestones).toEqual([]);
+  });
+
+  it('gives a goal its milestones as their own group, never Next up', () => {
+    const items = [
+      task({ id: 'm1', startDate: '2026-04-01' }),
+      task({ id: 'm2', status: 'completed' }),
+      task({ id: 'f1' }),
+      task({ id: 'f2', status: 'completed' }),
+    ];
+    const goals = [goal('g', { memberIds: ['f1', 'f2'], milestoneIds: ['m1', 'm2'] })];
+    const card = cardOf(buildAtlasCards(input({ items, goals })), 'goal:g');
+    const s = atlasSheetSections(card);
+    expect(s.next?.item.id).toBe('f1');
+    expect(s.later).toEqual([]);
+    expect(s.done.map((m) => m.item.id)).toEqual(['f2']);
+    expect(s.milestones.map((m) => m.item.id)).toEqual(['m1', 'm2']);
+  });
+
+  it("keeps an achieved goal's open feeders, in Later (no next step)", () => {
+    const items = [task({ id: 'f1' }), task({ id: 'f2', status: 'completed' })];
+    const goals = [goal('g', { state: 'achieved', memberIds: ['f1', 'f2'] })];
+    const card = cardOf(buildAtlasCards(input({ items, goals })), 'goal:g');
+    const s = atlasSheetSections(card);
+    expect(s.next).toBeNull();
+    expect(s.later.map((m) => m.item.id)).toEqual(['f1']);
+    expect(s.done.map((m) => m.item.id)).toEqual(['f2']);
+  });
+
+  it('carries subtasks under their parent, never as tiles', () => {
+    const items = [
+      task({ id: 'p', project: 'Work' }),
+      task({ id: 's2', project: 'Work', parentItemId: 'p', order: 2 } as Partial<Item> & { id: string }),
+      task({ id: 's1', project: 'Work', parentItemId: 'p', order: 1 } as Partial<Item> & { id: string }),
+      task({ id: 'sx', project: 'Work', parentItemId: 'p', status: 'cancelled' } as Partial<Item> & { id: string }),
+    ];
+    const card = cardOf(buildAtlasCards(input({ items, projects: [project('Work')] })), 'project:p-Work');
+    expect(card.tiles).toHaveLength(1);
+    expect(card.subtasks?.p.map((m) => m.item.id)).toEqual(['s1', 's2']);
+  });
+
+  it('has no subtasks field when no member has one', () => {
+    const card = cardOf(
+      buildAtlasCards(input({ items: [task({ id: 'a', project: 'Work' })], projects: [project('Work')] })),
+      'project:p-Work'
+    );
+    expect(card.subtasks).toBeUndefined();
+  });
+
+  it('a ticked subtask is a change the sharer sees', () => {
+    const parent = task({ id: 'p', project: 'Work' });
+    const sub = task({ id: 's', project: 'Work', parentItemId: 'p' } as Partial<Item> & { id: string });
+    const share = createAtlasCardSharer();
+    const [first] = share(buildAtlasCards(input({ items: [parent, sub], projects: [project('Work')] })));
+    const done = { ...sub, status: 'completed' } as Item;
+    const [second] = share(buildAtlasCards(input({ items: [parent, done], projects: [project('Work')] })));
+    expect(second).not.toBe(first);
+    expect(second.subtasks?.p[0].state).toBe('lit');
   });
 });

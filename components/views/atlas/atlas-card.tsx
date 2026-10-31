@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ChevronDown, Crosshair, ExternalLink } from 'lucide-react';
+import { ChevronDown, Crosshair, ExternalLink, Maximize2 } from 'lucide-react';
 import { ContainerContextMenu } from '@/components/planner/container-context-menu';
 import { ItemMenuRow } from '@/components/planner/item-context-menu';
 import { AtlasRow } from '@/components/views/atlas/atlas-row';
@@ -41,6 +41,7 @@ export const AtlasCard = memo(function AtlasCard({
   onMove,
   onToggleExpanded,
   onCenter,
+  onOpenSheet,
 }: {
   card: AtlasCardModel;
   at: Point;
@@ -50,6 +51,8 @@ export const AtlasCard = memo(function AtlasCard({
   onMove: (key: string, to: Point) => void;
   onToggleExpanded: (key: string) => void;
   onCenter: (rect: Rect) => void;
+  /** Grow this card into the focus sheet (double-click, Enter, or Focus). */
+  onOpenSheet: (key: string, el: HTMLElement) => void;
 }) {
   const ref = useRef<HTMLElement>(null);
   const commit = useCallback((to: Point) => onMove(card.key, to), [onMove, card.key]);
@@ -77,6 +80,10 @@ export const AtlasCard = memo(function AtlasCard({
   const timeFormat = usePlannerStore((s) => s.timeFormat);
   const footerRight = touchLine(card, timeFormat);
 
+  const openSheet = () => {
+    if (ref.current) onOpenSheet(card.key, ref.current);
+  };
+
   const center = () => {
     const h = ref.current?.offsetHeight ?? 0;
     onCenter({ x: at.x, y: at.y, w: ATLAS_CARD_W, h });
@@ -96,6 +103,12 @@ export const AtlasCard = memo(function AtlasCard({
       {...handlers}
       onPointerEnter={held.onEnter}
       onPointerLeave={held.onLeave}
+      onDoubleClick={(e) => {
+        // A double-click on a row, the tick box or a control is theirs.
+        const t = e.target as Element;
+        if (t.closest?.('[data-testid="atlas-row"], button, a, input, [role="checkbox"]')) return;
+        openSheet();
+      }}
       className={cn(
         'group/card absolute left-0 top-0 flex flex-col rounded-2xl border bg-card text-card-foreground outline-none',
         'focus-visible:ring-2 focus-visible:ring-ring',
@@ -153,12 +166,21 @@ export const AtlasCard = memo(function AtlasCard({
 
       {/* The hover bar: shown on hover or focus within, by visibility, never
           by opacity. Its transparent `after:` block bridges the gap down to
-          the card, so the pointer keeps the card hovered on its way up. Focus
-          (the sheet) joins it in PR1c. */}
+          the card, so the pointer keeps the card hovered on its way up. */}
       <div
         data-testid="atlas-card-hoverbar"
         className="invisible absolute -top-8 right-1.5 flex gap-0.5 rounded-[10px] border border-border bg-card p-0.5 shadow-[var(--shadow-elev-sm)] after:absolute after:inset-x-0 after:top-full after:h-2 group-hover/card:visible group-focus-within/card:visible"
       >
+        <button
+          type="button"
+          data-testid="atlas-card-focus"
+          aria-label={ATLAS_COPY.focusLabel(card.name)}
+          onClick={openSheet}
+          className="inline-flex items-center gap-1 whitespace-nowrap rounded-[7px] px-2 py-1 text-2xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <Maximize2 className="size-3" aria-hidden />
+          {ATLAS_COPY.focus}
+        </button>
         <Link
           href={`/${card.kind}/${card.id}`}
           data-testid="atlas-card-open-page"
@@ -215,7 +237,7 @@ export const AtlasCard = memo(function AtlasCard({
 });
 
 /** The footer's right side: the touch line, or a routine's usual time. */
-function touchLine(card: AtlasCardModel, timeFormat: TimeFormat): string {
+export function touchLine(card: AtlasCardModel, timeFormat: TimeFormat): string {
   const t = card.touch;
   const day = touchDay(t);
   const parts: string[] = [];

@@ -8,6 +8,9 @@ import { cleanupByTitlePrefix, cleanupTestLabels, createTestTask, specScope } fr
  * next step; a row's right-click is the item menu. A card dragged on Your map
  * stays where it was put across a reload (PR1b: the account path, since the
  * local stack applies migration 087; the per-device fallback is unit-tested).
+ * PR1c: a double-clicked card grows into the focus sheet, whose rows open in
+ * the rail, and Escape closes the sheet before the item; Organize's "Open
+ * Atlas" door switches the scope.
  *
  * Under its own prefix, swept by name like organize.spec.ts (projects are not
  * items, so the title sweep would miss them).
@@ -116,6 +119,58 @@ test.describe('atlas', () => {
     await expect(again).toBeVisible();
     await expect.poll(() => again.evaluate((el) => (el as HTMLElement).style.transform)).toBe(after);
 
+    await setScope(page, 'Day');
+  });
+
+  test('a double-clicked card grows into the focus sheet, and Escape closes it before the item', async ({ page }) => {
+    const name = scope.title('Focus');
+    const projectId = await createProject(page, name);
+    const firstId = await createTestTask(page, { title: scope.title('First step'), project: name });
+    const laterId = await createTestTask(page, { title: scope.title('Later step'), project: name });
+    await reloadApp(page);
+
+    await setScope(page, 'Atlas');
+    const card = page.locator(`[data-atlas-card="project:${projectId}"]`);
+    await expect(card).toBeVisible();
+    await card.getByTestId('atlas-card-footer').dblclick();
+
+    const sheet = page.getByTestId('atlas-focus-sheet');
+    await expect(sheet).toBeVisible();
+    await expect(sheet).toHaveAttribute('data-phase', 'open');
+    await expect(sheet.getByTestId('atlas-sheet-back')).toHaveText('‹ Atlas');
+    const rowIds = await sheet
+      .locator('[data-testid="atlas-row"]')
+      .evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.itemId));
+    expect(rowIds).toEqual(expect.arrayContaining([firstId, laterId]));
+
+    // A row opens the item in the rail; the sheet stays.
+    await sheet.locator(`[data-testid="atlas-row"][data-item-id="${laterId}"]`).click();
+    await expect(page.getByTestId('item-dialog')).toBeVisible();
+    await expect(sheet).toBeVisible();
+
+    // Escape from the sheet closes the sheet only, and focus returns to the card.
+    await sheet.focus();
+    await page.keyboard.press('Escape');
+    await expect(sheet).toHaveCount(0);
+    await expect(page.getByTestId('item-dialog')).toBeVisible();
+    await expect(card).toBeFocused();
+
+    // Enter on the focused card opens it again; Done closes it.
+    await page.keyboard.press('Enter');
+    await expect(sheet).toBeVisible();
+    await sheet.getByTestId('atlas-sheet-done-button').click();
+    await expect(sheet).toHaveCount(0);
+
+    await setScope(page, 'Day');
+  });
+
+  test("Organize's Open Atlas door closes the console and opens Atlas", async ({ page }) => {
+    await setScope(page, 'Day');
+    await runCommand(page, 'app.categories', { query: '/projects' });
+    await expect(page.getByTestId('organize-console')).toBeVisible();
+    await page.getByTestId('organize-open-atlas').click();
+    await expect(page.getByTestId('organize-console')).toHaveCount(0);
+    await expect(page.getByTestId('atlas-view')).toBeVisible();
     await setScope(page, 'Day');
   });
 

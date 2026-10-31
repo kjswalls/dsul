@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import * as TabsPrimitive from '@radix-ui/react-tabs';
-import { X } from 'lucide-react';
+import { Map as MapIcon, X } from 'lucide-react';
 import {
   ResponsiveModal,
   ResponsiveModalContent,
@@ -31,6 +31,10 @@ import { PausedSection, usePausedRailNote } from './sections/paused';
 import { CardsSection } from './sections/cards';
 import { TrashSection } from './sections/trash';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { useUIStore } from '@/lib/ui-store';
+import { useViewStore } from '@/lib/view-store';
+import { ATLAS_COPY } from '@/lib/atlas-copy';
 
 /**
  * ORGANIZE — one console for every container and label.
@@ -300,6 +304,7 @@ export function OrganizeConsole({
             Your routines, seasons, projects and item types, what you&apos;ve
             paused, and anything you&apos;ve deleted in the last 30 days.
           </ResponsiveModalDescription>
+          <OpenAtlasDoor />
           {/* Ours, on the header band's baseline, rather than the stock close
               floating over the rail. */}
           <button
@@ -358,6 +363,40 @@ export function OrganizeConsole({
         <FooterBar section={activeSection} selectedId={selectedId} creating={creating} />
       </ResponsiveModalContent>
     </ResponsiveModal>
+  );
+}
+
+/**
+ * "Open Atlas": the console's door to the Atlas scope, desktop only (the phone
+ * never shows Atlas).
+ *
+ * Not a navigation, so not a Link: the console lives on the planner route and
+ * Atlas is a scope of that same page. The slot is let go FIRST
+ * (`closeDialog()`, the same exit the console's outward links take through
+ * `onNavigate`), then the scope changes, so the console never lingers over the
+ * view it handed off to. It never arms the console slot, so the console-door
+ * allow-list is unchanged.
+ */
+function OpenAtlasDoor() {
+  const isMobile = useIsMobile();
+  // Opened from Atlas itself (the sheet's Open in Organize, ⌘K): the door
+  // could only close the console, which its label doesn't promise.
+  const onAtlas = useViewStore((s) => s.scope === 'atlas');
+  if (isMobile || onAtlas) return null;
+  return (
+    <button
+      type="button"
+      data-testid="organize-open-atlas"
+      aria-label={ATLAS_COPY.openAtlasLabel}
+      onClick={() => {
+        useUIStore.getState().closeDialog();
+        useViewStore.getState().setScope('atlas');
+      }}
+      className="text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-ring mr-1.5 inline-flex h-6 items-center gap-1.5 rounded-[5px] px-2 text-xs font-medium focus-visible:outline-1 focus-visible:outline-solid"
+    >
+      <MapIcon className="h-3.5 w-3.5" aria-hidden />
+      {ATLAS_COPY.openAtlas}
+    </button>
   );
 }
 

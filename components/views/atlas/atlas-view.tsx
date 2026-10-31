@@ -1,8 +1,18 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+} from 'react';
 import { AtlasSurface } from '@/components/views/atlas/atlas-surface';
 import { AtlasCard } from '@/components/views/atlas/atlas-card';
+import { AtlasFocusSheet } from '@/components/views/atlas/atlas-focus-sheet';
 import { useAtlasCards } from '@/components/views/atlas/use-atlas-cards';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 import { useAtlasStore } from '@/lib/atlas-store';
@@ -65,6 +75,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   const expanded = useAtlasUiStore((s) => s.expanded);
   const fitToken = useAtlasUiStore((s) => s.fitToken);
   const seeded = useAtlasUiStore((s) => s.seeded);
+  const sheetOpen = useAtlasUiStore((s) => s.sheet !== null);
   const [viewport, setViewport] = useState<Viewport>({ w: 0, h: 0 });
   // The latest viewport for the callbacks below, written where it is measured
   // (never during render), so a resize never re-renders a card.
@@ -195,6 +206,54 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     ui.setCamera(centerOn(ui.camera, rect, viewportRef.current));
   }, []);
 
+  // Grow a card into the focus sheet, from where it is drawn now (root
+  // coordinates, so the sheet starts exactly on top of it).
+  const onOpenSheet = useCallback((key: string, el: HTMLElement) => {
+    const root = rootRef.current;
+    const at = key.indexOf(':');
+    if (!root || at <= 0) return;
+    const r = el.getBoundingClientRect();
+    const o = root.getBoundingClientRect();
+    useAtlasUiStore
+      .getState()
+      .openSheet(key.slice(0, at) as AtlasCardModel['kind'], key.slice(at + 1), {
+        x: r.left - o.left,
+        y: r.top - o.top,
+        width: r.width,
+        height: r.height,
+      });
+  }, []);
+
+  // The sheet is this view's: leaving Atlas (a scope switch, a page) closes
+  // it, so it never springs open on the next visit.
+  useEffect(() => () => useAtlasUiStore.getState().closeSheet(), []);
+
+  // The root's two keys (rule 18: not global shortcuts, so not commands).
+  // Escape closes the sheet, and claims the key (preventDefault) so the item
+  // panel's window listener leaves an open item alone; with no sheet it does
+  // nothing and the panel keeps its own Escape. Enter on a focused card grows
+  // it into the sheet (a row's Enter is the row's, and stops there). Neither
+  // acts from a text field, from a key someone else already took (a Radix
+  // menu claims Escape at the document), or from a portal outside the root.
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented || e.altKey || e.metaKey || e.ctrlKey) return;
+    const t = e.target as HTMLElement;
+    if (!rootRef.current?.contains(t)) return;
+    if (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
+    if (e.key === 'Escape') {
+      if (!useAtlasUiStore.getState().sheet) return;
+      e.preventDefault();
+      useAtlasUiStore.getState().closeSheet();
+      return;
+    }
+    if (e.key === 'Enter' && !e.shiftKey && t.matches('[data-atlas-card]')) {
+      const key = t.getAttribute('data-atlas-card');
+      if (!key) return;
+      e.preventDefault();
+      onOpenSheet(key, t);
+    }
+  };
+
   // A card (or a row in it) taking focus pans it on screen, as Tab walks the map.
   const onFocus = (e: FocusEvent) => {
     if (pointerDown.current) return;
@@ -220,6 +279,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
       role="region"
       aria-label={ATLAS_COPY.canvasLabel}
       onFocus={onFocus}
+      onKeyDown={onKeyDown}
       onPointerDownCapture={() => {
         pointerDown.current = true;
       }}
@@ -232,7 +292,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
       className="relative min-h-0 flex-1 outline-none"
       style={{ overflow: 'clip' }}
     >
-      <AtlasSurface rootRef={rootRef}>
+      <AtlasSurface rootRef={rootRef} inert={sheetOpen}>
         {cards.map((card) => {
           const at = ready ? places[card.key] : undefined;
           if (!at) return null;
@@ -247,10 +307,18 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
               onMove={onMove}
               onToggleExpanded={onToggleExpanded}
               onCenter={onCenter}
+              onOpenSheet={onOpenSheet}
             />
           );
         })}
       </AtlasSurface>
+      <AtlasFocusSheet
+        cards={cards}
+        viewport={viewport}
+        todayStr={todayStr}
+        milestoneIds={milestoneIds}
+        rootRef={rootRef}
+      />
       {cards.length === 0 && (
         <p
           data-testid="atlas-empty"
