@@ -76,7 +76,10 @@ function atlasCardUnderPointer(args: Parameters<CollisionDetection>[0]) {
   if (typeof document.elementsFromPoint === 'function') {
     const top = document
       .elementsFromPoint(p.x, p.y)
-      .find((el) => !el.closest('[data-testid="drag-ghost"]'));
+      // The ghost is under the pointer, and so is DragOverlay's own positioned
+      // wrapper round it, which is not inside the ghost: skip both (anything
+      // that holds the ghost is the overlay or an ancestor far below a card).
+      .find((el) => !el.closest('[data-testid="drag-ghost"]') && !el.querySelector('[data-testid="drag-ghost"]'));
     const card = top?.closest('[data-atlas-card]');
     pick = card ? hits.find((c) => card.contains(c.node?.current ?? null)) : undefined;
     if (!pick) return [];

@@ -181,6 +181,21 @@ describe('plannerCollision: Atlas cards (PR4)', () => {
     expect(run(rects, at(200, 150), { x: 200, y: 150 }, { [A]: a.drop })).toEqual([A]);
   });
 
+  it("DragOverlay's wrapper round the ghost is looked through too", () => {
+    board();
+    const a = card('a');
+    // dnd-kit's DragOverlay renders its own positioned div round our ghost.
+    const wrapper = document.createElement('div');
+    const ghost = document.createElement('div');
+    ghost.setAttribute('data-testid', 'drag-ghost');
+    wrapper.appendChild(ghost);
+    document.body.appendChild(wrapper);
+    stubStack([ghost, wrapper, a.el]);
+    expect(run(rects, at(200, 150), { x: 200, y: 150 }, { [A]: a.drop })).toEqual([A]);
+    stubStack([wrapper, a.el]);
+    expect(run(rects, at(200, 150), { x: 200, y: 150 }, { [A]: a.drop })).toEqual([A]);
+  });
+
   it('a card under the minimap (or an overlay) is not a target, even alone', () => {
     board();
     const a = card('a');
