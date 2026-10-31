@@ -34,8 +34,11 @@ ios/Dsul/Today/GhostFold.swift (the fold, its rows and sheet).
   rails at reduced opacity. The title is muted ink. **No lime in a ghost row**:
   a low priority's bars are lime, so the priority glyph is drawn `muted` (never
   faded through opacity), and arrive's fade composites no accent. The box is a
-  **dashed outline, no fill**, that closes into a solid box with a Plus on hover
-  (never on a box that cannot keep, e.g. inside a project block); the
+  **dashed outline, no fill**, that closes into a solid box with a muted Check
+  on hover, and it is a checkbox: a click marks the item done
+  (`toggleTaskStatus(id, 'completed')`, a one-off's scalar status, with the
+  usual undo and confetti), because plenty of leftovers were done and never
+  ticked (Kirby, 2026-10-31; until then the box was Keep for today); the
   item's original weekday ("Thu") sits in the start-time slot, its full date in
   the tooltip. Clicking the title opens the item (`openEditFor`) and writes
   nothing.
@@ -53,13 +56,22 @@ ios/Dsul/Today/GhostFold.swift (the fold, its rows and sheet).
 
   | Verb | Control | Store action | Label prefix |
   |---|---|---|---|
-  | Keep for today | Plus (and the box) | `moveTaskToDate(id, today)` | `Move task to` |
+  | Mark done | the box | `toggleTaskStatus(id, 'completed')` | the tick's |
+  | Keep for today | Plus | `moveTaskToDate(id, today)` | `Move task to` |
   | Move to tomorrow | Redo2 | `moveTaskToDate(id, tomorrow)` | `Move task to` |
   | Reschedule | RescheduleControl | `moveTaskToDate(id, picked)` | `Move task to` |
   | Send to sidebar | ArrowLeftToLine | `unscheduleTask(id)` | `Unschedule task:` |
   | Let it go | X ("Kept in history") | `letGoItems([id])` | `Let go:` |
   | Keep all | caption | `moveTasksToDate(ids, today)` | `Move all tasks` |
   | Send all to sidebar | caption | `unscheduleTasks(ids)` | `Unschedule task:` |
+
+  **Right-click** (pointer only, as every row's) opens the item menu,
+  `ItemContextMenu` drawn on the ghost's own day, with the fold's verbs first
+  under the title (its `lead` rows: Keep for today, Move to tomorrow, Send to
+  sidebar, Let it go) and the menu's Move to next day and Move to braindump left
+  out (`omit`), since they say the same in other words. Mark done, Reschedule,
+  Copy and Delete are the menu's own. Opening the menu counts as acting in the
+  fold, so clearing the last ghost from it shows the sorted line.
 
   Each control is gated by lib/row-moves.ts on the ghost's own day (and Let it
   go by the type's `allowedStatuses`), so a control never no-ops. Keep all is
@@ -189,7 +201,8 @@ the same once-a-day shape.
   reads a missing field as true, so a server one version behind still shows the
   fold; the phone has no switch of its own (the web's Rituals pane is it).
 - **Rows.** The real row's geometry, muted: a dashed box in the secondary ink
-  where the tick is (a tap is Keep for today), the title in the secondary ink,
+  where the tick is (a tap marks it done, `markGhostDone`: `toggleRow` on the
+  ghost's day, as the web's box does), the title in the secondary ink,
   and the ghost's weekday ("Thu", `ghostWeekday`) where the time is. No lime
   anywhere in a ghost row, so nothing lime is ever under arrive's or breathe's
   opacity.

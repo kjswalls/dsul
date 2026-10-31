@@ -138,6 +138,13 @@ export interface ItemContextMenuProps {
   occurrence?: OccurrenceState | 'absent';
   /** Extra rows the surface owns (the console's "Remove from Mornings"). */
   extra?: ReactNode;
+  /**
+   * Rows the surface puts first, under the title: the ghost fold's own verbs
+   * (Keep for today, Let it go), which say what the row is for.
+   */
+  lead?: ReactNode;
+  /** Shared verbs the surface's `lead` rows already offer, left out below. */
+  omit?: readonly VerbId[];
   /** Replaces "Open" — the console cannot host the item panel over itself. */
   openHref?: boolean;
   /**
@@ -148,7 +155,7 @@ export interface ItemContextMenuProps {
   children: ReactElement;
 }
 
-export function ItemContextMenu({ item, date, occurrence, extra, openHref, renameInPlace, children }: ItemContextMenuProps) {
+export function ItemContextMenu({ item, date, occurrence, extra, lead, omit, openHref, renameInPlace, children }: ItemContextMenuProps) {
   const isMobile = useIsMobile();
   const coarse = useMediaQuery('(pointer: coarse)');
 
@@ -172,7 +179,7 @@ export function ItemContextMenu({ item, date, occurrence, extra, openHref, renam
         data-item-id={item.id}
         onCloseAutoFocus={keepFocusTaken}
       >
-        <MenuBody item={item as Item} date={date} occurrence={occurrence} extra={extra} openHref={openHref} renameInPlace={renameInPlace} />
+        <MenuBody item={item as Item} date={date} occurrence={occurrence} extra={extra} lead={lead} omit={omit} openHref={openHref} renameInPlace={renameInPlace} />
       </ContextMenuContent>
     </ContextMenu>
   );
@@ -232,7 +239,7 @@ function returnFocusToOpener() {
 
 /* ── the body: one item, or the selection it belongs to ────────────────── */
 
-function MenuBody({ item, date, occurrence, extra, openHref, renameInPlace }: Omit<ItemContextMenuProps, 'children'>) {
+function MenuBody({ item, date, occurrence, extra, lead, omit, openHref, renameInPlace }: Omit<ItemContextMenuProps, 'children'>) {
   const selectedIds = useSelectionStore((s) => s.selectedIds);
   const items = usePlannerStore((s) => s.items);
   const many = selectedIds.size > 1 && selectedIds.has(item!.id);
@@ -242,7 +249,7 @@ function MenuBody({ item, date, occurrence, extra, openHref, renameInPlace }: Om
   }
   // Re-read: the row was painted from a snapshot, and may be a legacy projection.
   const live = items.find((i) => i.id === item!.id) ?? (item as Item);
-  return <SingleBody item={live} date={date} occurrence={occurrence} extra={extra} openHref={openHref} renameInPlace={renameInPlace} />;
+  return <SingleBody item={live} date={date} occurrence={occurrence} extra={extra} lead={lead} omit={omit} openHref={openHref} renameInPlace={renameInPlace} />;
 }
 
 /**
@@ -326,6 +333,8 @@ function SingleBody({
   date,
   occurrence,
   extra,
+  lead,
+  omit,
   openHref,
   renameInPlace,
 }: {
@@ -333,6 +342,8 @@ function SingleBody({
   date?: Date | 'today';
   occurrence?: OccurrenceState | 'absent';
   extra?: ReactNode;
+  lead?: ReactNode;
+  omit?: readonly VerbId[];
   openHref?: boolean;
   renameInPlace?: boolean;
 }) {
@@ -355,7 +366,7 @@ function SingleBody({
     // Drawn on this day means it falls on it; the surface may know better.
     occurrence: occurrence ?? drawnState(item, dateStr, todayStr),
   };
-  const can = (id: VerbId) => ITEM_VERBS[id].eligible(item, ctx);
+  const can = (id: VerbId) => !omit?.includes(id) && ITEM_VERBS[id].eligible(item, ctx);
   const run = (id: VerbId, arg?: string) => () => ITEM_VERBS[id].run(item, ctx, arg);
   const label = (id: VerbId) => ITEM_VERBS[id].label(item, ctx);
   // "today" in a label is only true on today.
@@ -465,6 +476,8 @@ function SingleBody({
       <ContextMenuLabel className="text-muted-foreground max-w-60 truncate px-2 py-1 text-2xs font-normal">
         {item.title}
       </ContextMenuLabel>
+      {lead}
+      {lead && <ContextMenuSeparator />}
       {openHref ? (
         <Row icon={<Maximize2 className="size-3.5" />} label="Open item" testId="item-menu-open-page" onSelect={() => router.push(`/item/${item.id}`)} />
       ) : (

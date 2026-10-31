@@ -194,6 +194,31 @@ import Testing
         #expect(planner.banner == nil)
     }
 
+    /// The box marks a ghost done where it was: a `complete` on its own day,
+    /// the status flipped at once, and the fold empty with the sorted line.
+    @Test func theBoxMarksItDone() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [parcelRow], goals: [])))
+        await server.on(itemRoute(parcel), .status(200, ok))
+        let planner = await loaded(server)
+        let before = try #require(planner.item(parcel))
+        #expect(planner.ghostDoneEmptiesFold(parcel))
+
+        planner.markGhostDone(parcel)
+        #expect(planner.item(parcel)?.status == "completed")
+        #expect(planner.item(parcel)?.startDate == before.startDate)
+        #expect(planner.ghostRows.isEmpty)
+        #expect(planner.showsGhostsSorted)
+        await drain(planner)
+
+        let posts = await server.requests.filter { $0.route == itemRoute(parcel) }
+        #expect(posts.count == 1)
+        let body = try #require(posts.first?.body)
+        let sent = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        #expect(sent["action"] as? String == "complete")
+        #expect(sent["date"] as? String == ghostDay(before))
+    }
+
     /// A server older than `letGo` never offers it; the other verbs stay.
     @Test func anOlderServerOffersNoLetGo() async throws {
         let server = FakeServer()

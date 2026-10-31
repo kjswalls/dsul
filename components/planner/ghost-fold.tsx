@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeftToLine, CalendarDays, ChevronDown, MoreHorizontal, Plus, Redo2, X } from 'lucide-react';
+import { ArrowLeftToLine, CalendarDays, Check, ChevronDown, MoreHorizontal, Plus, Redo2, X } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { usePlannerLoaded } from '@/lib/planner-ready';
 import { useMorningStore } from '@/lib/morning-store';
@@ -14,6 +14,7 @@ import { canMoveToNextDay, canReschedule, canSendToBraindump, formatTargetDay } 
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { openEditFor } from '@/lib/ui-store';
 import { parseDay } from '@/lib/collections';
+import { ItemContextMenu, ItemMenuRow } from '@/components/planner/item-context-menu';
 import { RowControl, RowControlGroup } from '@/components/primitives/row-control';
 import { RescheduleControl } from '@/components/primitives/reschedule-control';
 import { MetaText, PriorityGlyph, TagDot, formatDuration } from '@/components/primitives/pills';
@@ -21,6 +22,7 @@ import { BUCKET_LABEL_INK } from '@/components/primitives/bucket-card';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import type { VerbId } from '@/lib/item-verbs';
 import type { Task, TaskItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -90,6 +92,7 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
   const unscheduleTask = usePlannerStore((s) => s.unscheduleTask);
   const unscheduleTasks = usePlannerStore((s) => s.unscheduleTasks);
   const letGoItems = usePlannerStore((s) => s.letGoItems);
+  const toggleTaskStatus = usePlannerStore((s) => s.toggleTaskStatus);
   const goals = usePlannerStore((s) => s.goals);
   const isMobile = useIsMobile();
 
@@ -171,6 +174,14 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
   const moveTo = act((t: TaskItem, day: string) => moveTaskToDate(t.id, day));
   const toSidebar = act((t: TaskItem) => unscheduleTask(t.id));
   const letGo = act((t: TaskItem) => letGoItems([t.id]));
+  // A ghost never repeats (selectOverdue), so its done is the scalar status, as
+  // a one-off row's tick is: no date, the usual undo, and the confetti.
+  const markDone = act((t: TaskItem) => toggleTaskStatus(t.id, 'completed'));
+  // The right-click menu's own rows (Mark done, Reschedule) run the shared
+  // verbs, which this fold cannot wrap; opening the menu counts as acting here.
+  const noteActing = () => {
+    acted.current = true;
+  };
 
   // One gesture, one history entry, one undo. moveTasksToDate keeps each item's
   // own bucket and drops stale clock times (its contract); it already refuses
@@ -247,6 +258,8 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
               picking={picking === t.id}
               onPickingChange={(o) => setPicking(o ? t.id : null)}
               onKeep={() => keep(t)}
+              onDone={() => markDone(t)}
+              onMenu={noteActing}
               onTomorrow={() => toTomorrow(t)}
               onMoveTo={(d) => {
                 setPicking(null);
@@ -288,12 +301,17 @@ interface GhostRowProps {
   picking: boolean;
   onPickingChange: (open: boolean) => void;
   onKeep: () => void;
+  onDone: () => void;
+  onMenu: () => void;
   onTomorrow: () => void;
   onMoveTo: (day: string) => void;
   onSidebar: () => void;
   onLetGo: () => void;
   onOpenSheet: () => void;
 }
+
+/** The shared menu verbs a ghost's own lead rows already say, in its own words. */
+const GHOST_MENU_OMIT: readonly VerbId[] = ['nextDay', 'braindump'];
 
 function GhostRow({
   item: t,
@@ -305,6 +323,8 @@ function GhostRow({
   picking,
   onPickingChange,
   onKeep,
+  onDone,
+  onMenu,
   onTomorrow,
   onMoveTo,
   onSidebar,
@@ -320,132 +340,159 @@ function GhostRow({
   const letGoOk = canLetGo(t);
   const type = getItemTypeConfig(itemTypeName(t));
 
+  // Right-click: the menu every row has, drawn on the ghost's own day, with the
+  // fold's verbs first in the fold's words. Its Move to next day and Move to
+  // braindump would say the same as Keep for today and Send to sidebar in
+  // other words, so they are left out (GHOST_MENU_OMIT).
+  const lead = (
+    <>
+      {keepOk && <ItemMenuRow icon={<Plus className="size-3.5" />} label="Keep for today" testId="ghost-menu-keep" onSelect={onKeep} />}
+      {tomorrowOk && (
+        <ItemMenuRow
+          icon={<Redo2 className="size-3.5" />}
+          label="Move to tomorrow"
+          detail={formatTargetDay(tomorrow)}
+          testId="ghost-menu-tomorrow"
+          onSelect={onTomorrow}
+        />
+      )}
+      {sidebarOk && (
+        <ItemMenuRow icon={<ArrowLeftToLine className="size-3.5" />} label="Send to sidebar" testId="ghost-menu-sidebar" onSelect={onSidebar} />
+      )}
+      {letGoOk && (
+        <ItemMenuRow icon={<X className="size-3.5" />} label="Let it go" detail="Kept in history" testId="ghost-menu-let-go" onSelect={onLetGo} />
+      )}
+    </>
+  );
+
   return (
-    <div
-      data-testid="ghost-row"
-      data-ghost-row
-      data-item-id={t.id}
-      // The stagger for arrive and breathe (app/globals.css); capped so a long
-      // pile's last rows do not wait seconds to appear.
-      style={{ ['--ghost-i' as string]: Math.min(index, 8) }}
-      data-ghost-arrive
-      className="group relative flex w-full cursor-default items-center gap-3 rounded-[5px] px-2 py-1.5 hover:bg-accent"
-    >
-      {/* The box is the keep: a dashed outline, no fill, that closes into a
-          solid box with a Plus on hover. Same 16px column as TaskRow's tick. */}
-      <button
-        type="button"
-        aria-label="Keep for today"
-        data-testid="ghost-box"
-        disabled={!keepOk}
-        onClick={onKeep}
-        className="ghost-box relative z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[5px] text-muted-foreground"
+    <ItemContextMenu item={t} date={parseDay(day)} lead={lead} omit={GHOST_MENU_OMIT}>
+      <div
+        onContextMenu={onMenu}
+        data-testid="ghost-row"
+        data-ghost-row
+        data-item-id={t.id}
+        // The stagger for arrive and breathe (app/globals.css); capped so a long
+        // pile's last rows do not wait seconds to appear.
+        style={{ ['--ghost-i' as string]: Math.min(index, 8) }}
+        data-ghost-arrive
+        className="group relative flex w-full cursor-default items-center gap-3 rounded-[5px] px-2 py-1.5 hover:bg-accent"
       >
-        {/* No Plus on a box that cannot keep: it would promise a no-op. */}
-        {keepOk && (
-          <Plus className="h-2.5 w-2.5 opacity-0 transition-opacity group-hover:opacity-100" strokeWidth={2.5} />
-        )}
-      </button>
-
-      {/* Opens the item, as a real row's click does. */}
-      <button
-        type="button"
-        data-testid="ghost-title"
-        data-row-title="muted"
-        onClick={() => openEditFor(t as unknown as Task, 'task')}
-        className="min-w-0 flex-1 cursor-pointer text-left font-content text-content text-muted-foreground transition-colors line-clamp-1 group-hover:text-foreground/80 focus-visible:outline-none"
-      >
-        {t.title}
-      </button>
-
-      <div className="relative flex flex-shrink-0 items-center gap-3">
-        {!isMobile && (
-          <span
-            className={cn(
-              'pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100',
-              picking && 'pointer-events-auto opacity-100'
-            )}
-          >
-            <RowControlGroup>
-              {keepOk && <RowControl icon={Plus} label="Keep for today" testId="ghost-keep" onClick={onKeep} />}
-              {tomorrowOk && (
-                <RowControl
-                  icon={Redo2}
-                  label="Move to tomorrow"
-                  detail={formatTargetDay(tomorrow)}
-                  testId="ghost-tomorrow"
-                  onClick={onTomorrow}
-                />
-              )}
-              {rescheduleOk && (
-                <RescheduleControl
-                  open={picking}
-                  onOpenChange={onPickingChange}
-                  todayStr={todayStr}
-                  value={day}
-                  label="Reschedule"
-                  onPick={onMoveTo}
-                  testId="ghost-reschedule"
-                  popoverTestId="ghost-reschedule-popover"
-                />
-              )}
-              {sidebarOk && (
-                <RowControl icon={ArrowLeftToLine} label="Send to sidebar" testId="ghost-sidebar" onClick={onSidebar} />
-              )}
-              {letGoOk && (
-                <RowControl icon={X} label="Let it go" detail="Kept in history" testId="ghost-let-go" onClick={onLetGo} />
-              )}
-            </RowControlGroup>
-          </span>
-        )}
-
-        {/* Where the start time sits on a real row: the day it was for. */}
-        <MetaText
-          testId="ghost-day"
-          className="hidden w-[44px] text-right text-muted-foreground/70 md:inline"
-          tooltip={{ label: 'Planned for', detail: formatTargetDay(day) }}
+        {/* The box is a checkbox, as on every row: a dashed outline, no fill,
+            that closes into a solid box with a muted check on hover, and a click
+            marks the item done. Plenty of leftovers were done and never ticked.
+            Keep for today is the capsule's first verb. Same 16px column as
+            TaskRow's tick, and no lime: nothing in a ghost row is lime. */}
+        <button
+          type="button"
+          aria-label="Mark done"
+          data-testid="ghost-box"
+          onClick={onDone}
+          className="ghost-box relative z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[5px] text-muted-foreground"
         >
-          {ghostWeekday(day)}
-        </MetaText>
-        {/* The day-dots column, reserved where TaskRow reserves it. */}
-        <span aria-hidden className="hidden w-[59px] flex-shrink-0 lg:@min-[640px]/canvas:block" />
-        {t.project ? (
-          <TagDot
-            name={t.project}
-            color={getProjectColor(t.project)}
-            label={type.form.containerLabel}
-            className="w-1.5 opacity-60 lg:@min-[540px]/canvas:w-24"
-            nameClassName="hidden lg:@min-[540px]/canvas:block"
-          />
-        ) : (
-          <span aria-hidden className="w-1.5 flex-shrink-0 lg:@min-[540px]/canvas:w-24" />
-        )}
-        {/* Muted bars, never faded through opacity: a low priority's bars are
-            lime (--priority-low), and the accent is never dimmed by a parent.
-            So no lime is drawn in a ghost row at all, and arrive has none to
-            composite. */}
-        <span className="flex w-9 flex-shrink-0 items-center">
-          {t.priority && <PriorityGlyph priority={t.priority} muted />}
-        </span>
-        <MetaText className="w-12 flex-shrink-0 text-right opacity-60">
-          {t.duration ? formatDuration(t.duration) : ''}
-        </MetaText>
+          <Check className="h-2.5 w-2.5 opacity-0 transition-opacity group-hover:opacity-100" strokeWidth={2.5} />
+        </button>
 
-        {/* Touch: no hover, so the same trailing ellipsis a real row shows. */}
-        {isMobile && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground"
-            aria-label="Actions"
-            data-testid="ghost-actions-button"
-            onClick={onOpenSheet}
+        {/* Opens the item, as a real row's click does. */}
+        <button
+          type="button"
+          data-testid="ghost-title"
+          data-row-title="muted"
+          onClick={() => openEditFor(t as unknown as Task, 'task')}
+          className="min-w-0 flex-1 cursor-pointer text-left font-content text-content text-muted-foreground transition-colors line-clamp-1 group-hover:text-foreground/80 focus-visible:outline-none"
+        >
+          {t.title}
+        </button>
+
+        <div className="relative flex flex-shrink-0 items-center gap-3">
+          {!isMobile && (
+            <span
+              className={cn(
+                'pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100',
+                picking && 'pointer-events-auto opacity-100'
+              )}
+            >
+              <RowControlGroup>
+                {keepOk && <RowControl icon={Plus} label="Keep for today" testId="ghost-keep" onClick={onKeep} />}
+                {tomorrowOk && (
+                  <RowControl
+                    icon={Redo2}
+                    label="Move to tomorrow"
+                    detail={formatTargetDay(tomorrow)}
+                    testId="ghost-tomorrow"
+                    onClick={onTomorrow}
+                  />
+                )}
+                {rescheduleOk && (
+                  <RescheduleControl
+                    open={picking}
+                    onOpenChange={onPickingChange}
+                    todayStr={todayStr}
+                    value={day}
+                    label="Reschedule"
+                    onPick={onMoveTo}
+                    testId="ghost-reschedule"
+                    popoverTestId="ghost-reschedule-popover"
+                  />
+                )}
+                {sidebarOk && (
+                  <RowControl icon={ArrowLeftToLine} label="Send to sidebar" testId="ghost-sidebar" onClick={onSidebar} />
+                )}
+                {letGoOk && (
+                  <RowControl icon={X} label="Let it go" detail="Kept in history" testId="ghost-let-go" onClick={onLetGo} />
+                )}
+              </RowControlGroup>
+            </span>
+          )}
+
+          {/* Where the start time sits on a real row: the day it was for. */}
+          <MetaText
+            testId="ghost-day"
+            className="hidden w-[44px] text-right text-muted-foreground/70 md:inline"
+            tooltip={{ label: 'Planned for', detail: formatTargetDay(day) }}
           >
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        )}
+            {ghostWeekday(day)}
+          </MetaText>
+          {/* The day-dots column, reserved where TaskRow reserves it. */}
+          <span aria-hidden className="hidden w-[59px] flex-shrink-0 lg:@min-[640px]/canvas:block" />
+          {t.project ? (
+            <TagDot
+              name={t.project}
+              color={getProjectColor(t.project)}
+              label={type.form.containerLabel}
+              className="w-1.5 opacity-60 lg:@min-[540px]/canvas:w-24"
+              nameClassName="hidden lg:@min-[540px]/canvas:block"
+            />
+          ) : (
+            <span aria-hidden className="w-1.5 flex-shrink-0 lg:@min-[540px]/canvas:w-24" />
+          )}
+          {/* Muted bars, never faded through opacity: a low priority's bars are
+              lime (--priority-low), and the accent is never dimmed by a parent.
+              So no lime is drawn in a ghost row at all, and arrive has none to
+              composite. */}
+          <span className="flex w-9 flex-shrink-0 items-center">
+            {t.priority && <PriorityGlyph priority={t.priority} muted />}
+          </span>
+          <MetaText className="w-12 flex-shrink-0 text-right opacity-60">
+            {t.duration ? formatDuration(t.duration) : ''}
+          </MetaText>
+
+          {/* Touch: no hover, so the same trailing ellipsis a real row shows. */}
+          {isMobile && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground"
+              aria-label="Actions"
+              data-testid="ghost-actions-button"
+              onClick={onOpenSheet}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
-    </div>
+    </ItemContextMenu>
   );
 }
 

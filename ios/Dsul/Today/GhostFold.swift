@@ -21,6 +21,7 @@ enum GhostCopy {
     static let caption = "From earlier"
     static let keepAll = "Keep all"
     static let sendAll = "Send all to sidebar"
+    static let done = "Mark done"
     static let keep = "Keep for today"
     static let tomorrow = "Move to tomorrow"
     static let reschedule = "Reschedule"
@@ -259,8 +260,7 @@ struct GhostFold: View {
     private func row(_ ghost: SampleItem, index: Int) -> some View {
         let settled = rowsAtRest
         return GhostRow(item: ghost, index: index,
-                        canKeep: planner.ghostOffers(.keep, ghost),
-                        onKeep: { settle(ghost.id, .keep) },
+                        onDone: { markDone(ghost.id) },
                         onOpen: { planner.activeSheet = .ghost(ghost.id) },
                         actions: GhostVerb.allCases.filter { planner.ghostOffers($0, ghost) && $0 != .reschedule },
                         onAction: { settle(ghost.id, $0) })
@@ -319,6 +319,12 @@ struct GhostFold: View {
         announceIfSorted()
     }
 
+    private func markDone(_ id: UUID) {
+        let still = reduceMotion || planner.ghostDoneEmptiesFold(id)
+        withAnimation(still ? nil : .snappy) { planner.markGhostDone(id) }
+        announceIfSorted()
+    }
+
     private func settleAll(_ verb: GhostVerb) {
         let still = reduceMotion || planner.ghostBulkEmptiesFold(verb)
         withAnimation(still ? nil : .snappy) { planner.settleAllGhosts(verb) }
@@ -333,15 +339,14 @@ struct GhostFold: View {
 }
 
 /// One ghost: the real row's geometry, muted. A dashed box where the tick
-/// would be (a tap keeps it for today), the title in the secondary ink, and
+/// would be (a tap marks it done, as a row's tick does), the title in the secondary ink, and
 /// the ghost's own weekday ("Thu") where the time would be. A tap on the rest
 /// opens its sheet. To VoiceOver it is one element that opens the sheet, with
 /// each verb as a named action.
 struct GhostRow: View {
     var item: SampleItem
     var index: Int
-    var canKeep: Bool
-    var onKeep: () -> Void
+    var onDone: () -> Void
     var onOpen: () -> Void
     /// The verbs VoiceOver offers in place of the swipes, in the sheet's order.
     var actions: [GhostVerb]
@@ -352,14 +357,13 @@ struct GhostRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Button(action: onKeep) {
+            Button(action: onDone) {
                 GhostBox()
                     .opacity(breathing ? GhostMotion.breatheLow : 1)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(PressScaleStyle())
-            .disabled(!canKeep)
             .padding(-7)
             .onAppear {
                 guard !reduceMotion else { return }
@@ -396,6 +400,7 @@ struct GhostRow: View {
         .accessibilityHint("Opens choices")
         .accessibilityAction { onOpen() }
         .accessibilityActions {
+            Button(GhostCopy.done) { onDone() }
             ForEach(actions, id: \.self) { verb in
                 Button(GhostCopy.word(verb)) { onAction(verb) }
             }

@@ -69,6 +69,24 @@ extension SamplePlanner {
         }
     }
 
+    /// The box: marks the ghost done where it was, as a row's tick does
+    /// (`toggleRow` on the ghost's own day; a ghost never repeats, so that is
+    /// its one-off status), ungated as the web's checkbox is
+    /// (ghost-fold.tsx `markDone`). Plenty of leftovers were done and never
+    /// ticked; Keep for today is the swipe and the sheet's first row.
+    func markGhostDone(_ id: UUID) {
+        noteSorted {
+            guard let ghost = item(id), let day = DayString(ghostDay(ghost)) else { return }
+            toggleRow(id, on: day)
+        }
+    }
+
+    /// Would marking `id` done take the fold from its last ghost to none?
+    func ghostDoneEmptiesFold(_ id: UUID) -> Bool {
+        let ghosts = ghostRows
+        return ghosts.count == 1 && ghosts.first?.id == id
+    }
+
     /// Would `verb` on `id` take the fold from its last ghost to none? The
     /// views send that change with no animation, so "All sorted, you got
     /// this" and its lime dot arrive at once (a List would fade the new row
