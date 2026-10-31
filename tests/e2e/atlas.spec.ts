@@ -69,6 +69,29 @@ async function dragOntoCard(page: Page, source: Locator, card: Locator) {
   }
 }
 
+/**
+ * Zoom in about the middle of `cards` until the board is at least 70%. A Fit on
+ * the suite's crowded shared board can land under 60%, where the cards fold
+ * flat into the far zoom's handoff and their rows are no longer something to
+ * pick up.
+ */
+async function zoomToRows(page: Page, ...cards: Locator[]) {
+  for (let i = 0; i < 12; i++) {
+    const pct = parseInt((await page.getByTestId('atlas-zoom').textContent()) ?? '', 10);
+    if (pct >= 70) break;
+    const boxes = (await Promise.all(cards.map((c) => c.boundingBox()))).filter((b) => b !== null);
+    if (boxes.length === 0) break;
+    const x = boxes.reduce((a, b) => a + b.x + b.width / 2, 0) / boxes.length;
+    const y = boxes.reduce((a, b) => a + b.y + b.height / 2, 0) / boxes.length;
+    await page.mouse.move(x, y);
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -120);
+    await page.keyboard.up('Control');
+    await page.waitForTimeout(120);
+  }
+  await page.waitForTimeout(700);
+}
+
 test.describe('atlas', () => {
   test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
@@ -439,6 +462,7 @@ test.describe('atlas', () => {
       await expect(to).toBeVisible();
       await page.getByRole('button', { name: 'Fit every card on screen' }).click();
       await page.waitForTimeout(700);
+      await zoomToRows(page, from, to);
 
       const row = from.locator(`[data-testid="atlas-row"][data-item-id="${stepId}"]`);
       await expect(row).toBeVisible();
