@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
 import { ChevronRight, Pencil, Plus, Split, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
+import { RelayRow } from '@/components/ai/ai-work-badge';
 import { Input } from '@/components/ui/input';
 import { usePlannerStore } from '@/lib/planner-store';
 import { answerAgentQuestion } from '@/lib/agent-question';
@@ -480,7 +481,9 @@ export function AgentStatus({ item }: { item: Item }) {
     <div data-testid="agent-status">
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
-          <AskMark className="size-3.5" />
+          {/* A live run plays the relay where the mark sits (Kirby,
+              2026-10-31): the rows no longer move, so the open item does. */}
+          {view?.active && !view.stalled ? <RelayRow size="big" aria-hidden /> : <AskMark className="size-3.5" />}
           {/* assigneeLabel, not CSS capitalize: a stored `beacon` (from before
               the AI lost its name) has to read as "AI", and the stored value is
               a contract that is never rewritten. */}
