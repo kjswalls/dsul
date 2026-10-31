@@ -48,6 +48,12 @@ public struct ItemCaps: Sendable, Hashable {
     public var dateAnchored: Bool
     /// `dateAddressable`: the item may be carried to another day.
     public var dateAddressable: Bool
+    /// `carryForwardEligible`: a past-due one-off may come forward (the
+    /// ghost rows, lib/overdue.ts `selectOverdue`). Habits never do.
+    public var carryForwardEligible: Bool
+    /// `allowedStatuses.includes('cancelled')`: the item may be let go
+    /// (planner-store `letGoItems`, the ghost rows' Let it go). Habits may not.
+    public var cancellable: Bool
     /// `skippable`: an occurrence may be skipped (`isSkippable` adds recurrence).
     public var skippable: Bool
     /// `pausable` (`isPausable` adds the subtask rule).
@@ -119,7 +125,9 @@ public struct ItemCaps: Sendable, Hashable {
         containerKind: String? = "projects",
         containerRequired: Bool = false,
         titlePlaceholder: String = "",
-        deleteNamesHistory: Bool = false
+        deleteNamesHistory: Bool = false,
+        carryForwardEligible: Bool = true,
+        cancellable: Bool = true
     ) {
         self.label = label
         self.doneStatus = doneStatus
@@ -144,6 +152,8 @@ public struct ItemCaps: Sendable, Hashable {
         self.containerRequired = containerRequired
         self.titlePlaceholder = titlePlaceholder
         self.deleteNamesHistory = deleteNamesHistory
+        self.carryForwardEligible = carryForwardEligible
+        self.cancellable = cancellable
     }
 
     /// `ITEM_TYPES.task`.
@@ -164,7 +174,8 @@ public struct ItemCaps: Sendable, Hashable {
         hasPriority: false, hasNotes: true, hasDuration: true,
         allowedFrequencies: ["daily", "weekdays", "weekends", "monthly", "custom"],
         containerKind: "projects", containerRequired: false,
-        titlePlaceholder: "What habit to track?", deleteNamesHistory: true
+        titlePlaceholder: "What habit to track?", deleteNamesHistory: true, carryForwardEligible: false,
+        cancellable: false
     )
 
     /// `buildCustomTypeConfig({ name, label })`: task-shaped in every respect

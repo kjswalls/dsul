@@ -25,6 +25,8 @@ private struct TypeCase: Decodable, Sendable {
     let defaultBlockMinutes: Int
     let dateAnchored: Bool
     let dateAddressable: Bool
+    let carryForwardEligible: Bool
+    let cancellable: Bool
     let skippable: Bool
     let pausable: Bool
     let remindable: Bool
@@ -122,6 +124,8 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
             #expect(c.defaultBlockMinutes == t.defaultBlockMinutes, "\(t.name): defaultBlockMinutes")
             #expect(c.dateAnchored == t.dateAnchored, "\(t.name): dateAnchored")
             #expect(c.dateAddressable == t.dateAddressable, "\(t.name): dateAddressable")
+            #expect(c.carryForwardEligible == t.carryForwardEligible, "\(t.name): carryForwardEligible")
+            #expect(c.cancellable == t.cancellable, "\(t.name): cancellable")
             #expect(c.skippable == t.skippable, "\(t.name): skippable")
             #expect(c.pausable == t.pausable, "\(t.name): pausable")
             #expect(c.remindable == t.remindable, "\(t.name): remindable")

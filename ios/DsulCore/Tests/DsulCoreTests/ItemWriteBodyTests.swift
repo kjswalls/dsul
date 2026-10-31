@@ -135,6 +135,10 @@ private let autumn = "00000000-0000-4000-8000-00000000053d"
         #expect(unschedule == JSONValue.object(["action": .string("unschedule")]))
         #expect(phoneBody(unschedule) == .unschedule)
         #expect(phoneBody(.object(["action": .string("unschedule"), "date": .string("2026-10-02")])) == nil)
+        // Let it go: the action alone, too.
+        let letGo = try json(ItemWriteBody.letGo)
+        #expect(letGo == JSONValue.object(["action": .string("letGo")]))
+        #expect(phoneBody(letGo) == .letGo)
 
         let high = try json(ItemWriteBody.edit(ItemEdit.priority("high")))
         #expect(high == JSONValue.object(["action": .string("priority"), "priority": .string("high")]))
@@ -232,6 +236,8 @@ private let autumn = "00000000-0000-4000-8000-00000000053d"
         #expect(String(decoding: reset, as: UTF8.self) == #"{"action":"resetStreak"}"#)
         let unschedule = try encoder.encode(ItemWriteBody.unschedule)
         #expect(String(decoding: unschedule, as: UTF8.self) == #"{"action":"unschedule"}"#)
+        let letGo = try encoder.encode(ItemWriteBody.letGo)
+        #expect(String(decoding: letGo, as: UTF8.self) == #"{"action":"letGo"}"#)
 
         let bodies: [(ItemEdit, String)] = [
             (.priority("high"), #"{"action":"priority","priority":"high"}"#),
@@ -290,6 +296,7 @@ private let autumn = "00000000-0000-4000-8000-00000000053d"
         #expect(ItemWriteBody.addSubtask(id: eggs, title: "Eggs").action == "addSubtask")
         #expect(ItemWriteBody.resetStreak.action == "resetStreak")
         #expect(ItemWriteBody.unschedule.action == "unschedule")
+        #expect(ItemWriteBody.letGo.action == "letGo")
         #expect(ItemEdit.title("A").action == "title")
         #expect(ItemEdit.notes("B").action == "notes")
         #expect(ItemWriteBody.edit(ItemEdit.priority("low")).action == "priority")

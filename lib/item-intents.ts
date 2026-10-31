@@ -393,6 +393,25 @@ export async function applyUnschedule(ctx: WriteContext, hooks: IntentHooks = {}
   return { ok: true, changed: true };
 }
 
+/**
+ * `letGo`: Let it go, from the leftovers on Today (memory/plans/ghost-rows.md),
+ * the store's letGoItems (lib/planner-store.ts) for one item: status
+ * 'cancelled', so it stays in history and leaves every surface. The store's
+ * own filter, asked of the row: a pending one-off whose type takes
+ * 'cancelled' (a habit does not). Already cancelled is 200 with no write, so
+ * a retry that lands twice writes once; anything else is 409 `not_let_go`.
+ * Nothing else is written, as the store writes only the status.
+ */
+export async function applyLetGo(ctx: WriteContext, hooks: IntentHooks = {}): Promise<IntentResult> {
+  const { config, row } = ctx;
+  if (!config.allowedStatuses.includes('cancelled')) return refuse('not_let_go', 409);
+  if (row.status === 'cancelled') return { ok: true, changed: false };
+  if (row.status !== 'pending' || ctx.recurring) return refuse('not_let_go', 409);
+  await hooks.beforeWrite?.();
+  await update(ctx, { status: 'cancelled' } as Partial<Task>);
+  return { ok: true, changed: true };
+}
+
 /** fetchGoals' missing-table codes (lib/db.ts `unavailable`): migration 036 not applied. */
 const isMissingTable = (error: { code?: string }) => error.code === '42P01' || error.code === 'PGRST205';
 

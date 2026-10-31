@@ -63,10 +63,12 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.writes == [
             "complete", "schedule", "skip", "move", "pause", "title", "notes", "delete", "addSubtask", "resetStreak",
             "priority", "timesPerDay", "reminder", "time", "repeat", "project", "collect", "snooze", "unschedule",
+            "letGo",
         ])
-        // Move to Braindump's body names the action the route lists last
-        // (Week and blocks PR 3), so `canWrite` finds it.
-        #expect(p.writes?.last == ItemWriteBody.unschedule.action)
+        // Move to Braindump's body and Let it go's (ghost rows phase 3) name
+        // actions the route lists, so `canWrite` finds them.
+        #expect(p.writes?.contains(ItemWriteBody.unschedule.action) == true)
+        #expect(p.writes?.last == ItemWriteBody.letGo.action)
         // The Trash's two routes (lib/app-containers.ts TRASH_WRITES, O14).
         #expect(p.trashWrites == ["list", "restore"])
         #expect(TrashRoutes.offered(p.trashWrites))

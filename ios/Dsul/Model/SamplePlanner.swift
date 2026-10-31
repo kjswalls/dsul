@@ -43,6 +43,9 @@ enum PlannerSheet: Identifiable, Hashable, Sendable {
     /// `SamplePlanner.open`, and closed by `apply` or `restore` when the item
     /// is gone.
     case item(UUID, day: SheetDay)
+    /// (Ghost rows phase 3) A leftover's five verbs, from a tap on its row in
+    /// the fold at the top of Today (`GhostSheet`).
+    case ghost(UUID)
     /// Delete account, from the avatar menu (signed in only): here so it rides
     /// the one slot and both hosts, the braindump sheet's too. A deletion
     /// drops the planner, and the sheet with it.
@@ -53,6 +56,7 @@ enum PlannerSheet: Identifiable, Hashable, Sendable {
         case .capture: return "capture"
         case .datePicker: return "datePicker"
         case .item(let id, _): return "item-" + id.uuidString.lowercased()
+        case .ghost(let id): return "ghost-" + id.uuidString.lowercased()
         case .deleteAccount: return "deleteAccount"
         }
     }
@@ -150,6 +154,15 @@ final class SamplePlanner {
     /// Signed in: why the first fetch failed, for the empty state.
     private(set) var loadError: String? = nil
     var banner: PlannerBanner? = nil
+    /// (Ghost rows phase 3) When the person's own verb last emptied the
+    /// leftovers fold (`settleGhost`, `settleAllGhosts`), for its "All sorted,
+    /// you got this" line. A pile emptied any other way (a fetch, a pause, a
+    /// change on another device) leaves it alone, so it goes quietly.
+    var ghostsSortedAt: Date? = nil
+    /// (Ghost rows phase 3) The fold's arrive has played: once for this
+    /// planner, whichever layout showed the leftovers first. A layout switch
+    /// brings the rows in at rest.
+    var ghostsHaveArrived = false
     /// The signed-in user; nil for the sample.
     let userId: UUID?
     /// The clock: what `refreshToday` reads, and a pause's stamp and "today".

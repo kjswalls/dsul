@@ -463,7 +463,8 @@ faded in one fold at the top of Today until a verb is picked (`lib/ghost-rows.ts
 and recurring items never ghost; today only. The `morning_check_enabled` switch ("Leftovers on Today")
 draws it, on by default for a new account (086). It replaced the dock's waiting line and the end of day
 review (phase 2: modal, dock line, push and `rituals.eodTime` gone; `review.saved` now fires when the fold is
-cleared by hand). The iPhone still plans the review until phase 3, so `rituals.eod` stays as its off switch. Read it before touching either.
+cleared by hand). Phase 3 drew the fold on the iPhone (`ios/Dsul/Today/GhostFold.swift`, the payload's
+`leftoversOnToday`, the `letGo` item write) and retired its review, `rituals.eod` with it. Read it before touching either.
 [mods.md](memory/plans/mods.md) is the plan for **mods and recipes** (Kirby's pick,
 2026-10-03; decisions 2026-10-07): private, sandboxed mods (QuickJS-in-WASM behind a
 capability broker, host-drawn UI, never CSS), no-code recipes over `ITEM_VERBS`, and

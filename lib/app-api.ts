@@ -36,6 +36,7 @@ import {
 } from './db';
 import {
   applyComplete,
+  applyLetGo,
   applyMove,
   applySkip,
   applyUnschedule,
@@ -282,6 +283,9 @@ const ItemWriteActions = z.discriminatedUnion('action', [
   // Move to Braindump (week-and-blocks PR 3): off every day, back to the
   // braindump. No keys: the row says everything, and a key beside it is a 400.
   z.object({ action: z.literal('unschedule') }).strict(),
+  // Let it go, from the leftovers on Today (ghost rows phase 3): cancelled,
+  // kept in history. No keys, as unschedule.
+  z.object({ action: z.literal('letGo') }).strict(),
 ]);
 
 export const ItemWriteSchema = ItemWriteActions.superRefine((body, ctx) => {
@@ -882,6 +886,8 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
  *   snooze       a notification's Snooze (/api/reminders/act's snooze), held to its day
  *   unschedule   Move to Braindump (unscheduleTask), behind lib/row-moves.ts canSendToBraindump
  *                and a live goal's milestones (lib/item-intents.ts applyUnschedule)
+ *   letGo        Let it go (letGoItems), from the leftovers on Today: cancelled, kept in history
+ *                (lib/item-intents.ts applyLetGo)
  *
  * The row is read first, under RLS, and a missing one is a 404. That read is
  * load-bearing, not politeness: set_item_completion, set_item_skip,
@@ -1026,6 +1032,8 @@ async function dispatchItemWrite(ctx: WriteContext, body: ItemWrite, opts: AppWr
         return await snooze(ctx, body);
       case 'unschedule':
         return await unschedule(ctx);
+      case 'letGo':
+        return answer(await applyLetGo(ctx));
     }
   } catch (err) {
     return dbErrorResponse(err, 'app/items/:id');

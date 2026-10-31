@@ -43,7 +43,8 @@
     "project",
     "collect",
     "snooze",
-    "unschedule"
+    "unschedule",
+    "letGo"
   ],
   "trashWrites": [
     "list",

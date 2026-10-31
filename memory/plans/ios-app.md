@@ -202,6 +202,14 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   Week and blocks' PR 7 adds `BlockMoves.swift` (← `lib/block-moves.ts`:
   `planBlockDrop`, `startTimeOf`), checked against
   `tests/fixtures/day/block-moves.json` (BlockMovesFixtureTests).
+  Ghost rows phase 3 adds `Overdue.swift` (← `lib/overdue.ts`:
+  `selectOverdue`, `daysOverdue`, `recentOverdueDays`) and `GhostRows.swift`
+  (← `lib/ghost-rows.ts`: `selectGhostRows`, `ghostPileThreshold`,
+  `ghostFoldStartsCollapsed`, `ghostWeekday`; and ghost-fold.tsx's gates as
+  `ghostVerbAllowed`, with `canLetGo` / `lettingGo` ← the store's
+  `letGoItems`), checked against `tests/fixtures/day/ghost-rows.json`
+  (GhostRowsFixtureTests); `carryForwardEligible` and `cancellable` on
+  `ItemCaps` (caps.json); and `.letGo` on `ItemWriteBody`.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -296,8 +304,22 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   Ask; a compact rendering for the `.inline` placement. The drag probe moved
   from Today's toolbar into the avatar menu.
 
-## Week
-Week PRs 1 and 2 of the shared folder's `ios-app/week-and-blocks/design.md`
+## Leftovers on Today (ghost rows phase 3)
+The web's fold, on the phone (memory/plans/ghost-rows.md has the design and
+the phase 3 notes). `Today/GhostFold.swift` draws it as the first section of
+List (after the chips) and the first card of Buckets and Schedule (above
+Anytime, three rows then a scroll, the caption alone while the braindump
+sheet is up), in Day on today only, never in Week. `Model/GhostRowsModel.swift`
+is the planner's side: `ghostRows` (DsulCore `selectGhostRows`, at TODAY, held
+back until the first fetch, with `leftoversOnToday` off and while the goals
+are unread), `ghostOffers` (the fold's gate plus `canWrite`), `settleGhost` /
+`settleAllGhosts` over the existing `move` and `unschedule`, and `letGo`, the
+one new write (`PlannerSync.Write.letGo`, `APIClient.letGo`, the route's
+`letGo` action). A tap on a row opens `GhostSheet` through the planner's
+sheet slot (`PlannerSheet.ghost`). `ghostsSortedAt` is stamped only when the
+person's own verb empties the fold, and clears itself after four seconds.
+
+ of the shared folder's `ios-app/week-and-blocks/design.md`
 (which has every decision, W1 to W17, and the PR plan); the builders' notes
 are in `week/w1/`. PR 1 is the data, PR 2 List and Buckets in Week. Week ×
 Schedule is the design's PR 10; until then Schedule draws Day.

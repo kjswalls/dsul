@@ -43,7 +43,10 @@ import Foundation
 // - `{"action":"unschedule"}`, Move to Braindump, nothing beside it: the
 //   server writes the store's `UNSCHEDULE_TASK_PATCH` behind its own copy of
 //   `canSendToBraindump`, and answers 409 `not_unschedulable` for a row the
-//   web's gate refuses (a subtask too).
+//   web's gate refuses (a subtask too);
+// - `{"action":"letGo"}`, the ghost rows' Let it go, nothing beside it: the
+//   server writes `{status:'cancelled'}` behind the web's `letGoItems` gate
+//   and answers 409 `not_let_go` for a row it refuses.
 // Every action is `.strict()` there, so a key the route doesn't name is a 400,
 // and `encode(to:)` is written out by hand rather than synthesized, so it
 // writes exactly these keys. Checked against the web by ItemWriteBodyTests,
@@ -73,6 +76,9 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
     /// (Week and blocks PR 3) Move to Braindump: `{"action":"unschedule"}`,
     /// off every day. It names no field, so it is no `ItemEdit`.
     case unschedule
+    /// (Ghost rows phase 3) Let it go: `{"action":"letGo"}`, the item
+    /// cancelled and kept in history. It names no field, so it is no `ItemEdit`.
+    case letGo
 
     /// The route's `action`, which is also the name `writes` lists.
     public var action: String {
@@ -83,6 +89,7 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
         case .resetStreak: "resetStreak"
         case .collect: "collect"
         case .unschedule: "unschedule"
+        case .letGo: "letGo"
         }
     }
 
@@ -171,7 +178,7 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
             try c.encode(kind.rawValue, forKey: .kind)
             try c.encode(containerId.lowercased(), forKey: .containerId)
             try c.encode(member, forKey: .member)
-        case .delete, .resetStreak, .unschedule:
+        case .delete, .resetStreak, .unschedule, .letGo:
             break
         }
     }

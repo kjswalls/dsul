@@ -37,6 +37,15 @@ struct ScheduleView: View {
         @Bindable var planner = planner
         let day = planner.daySchedule(on: planner.selectedDay, fieldWidth: fieldWidth)
         VStack(spacing: 0) {
+            // Leftovers on Today, above Anytime as on the web. Three rows,
+            // then they scroll, so the hours keep their room; the caption
+            // alone while the braindump sheet is up, as the band shows its
+            // header alone.
+            if planner.showsGhostFold {
+                GhostFold(host: .card, rowCap: 3, rowsHidden: planner.showBraindumpSheet)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+            }
             AnytimeBand(schedule: day, sheetUp: planner.showBraindumpSheet)
             ScheduleGrid(position: $position, day: day, nowMin: planner.isOnToday ? nowMin : nil,
                          fieldWidth: $fieldWidth)

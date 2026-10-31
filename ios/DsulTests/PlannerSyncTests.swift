@@ -268,7 +268,7 @@ enum PlannerJSON {
     /// for). `unschedule` is Move to Braindump (Week and blocks PR 3).
     static let allWrites = ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete",
                             "addSubtask", "resetStreak", "priority", "timesPerDay", "reminder", "time", "repeat",
-                            "project", "collect", "unschedule"]
+                            "project", "collect", "unschedule", "letGo"]
 
     /// What POST /api/app/containers/:kind/:id takes (lib/app-containers.ts
     /// `CONTAINER_WRITES`: O8a's states, O8b's fields, O9's rename, icon and
@@ -406,7 +406,7 @@ enum PlannerJSON {
                         extra: [String] = [], projects: [String] = [], routines: [String] = [],
                         seasons: [String] = [], organizeEnabled: Bool? = nil, goalsEnabled: Bool? = nil,
                         goals: [String]? = nil, trashWrites: [String]? = nil,
-                        containerWrites: String? = nil) -> String {
+                        containerWrites: String? = nil, leftoversOnToday: Bool? = nil) -> String {
         let status = groceriesDone ? "completed" : "pending"
         let zone: String = timezone.map { "\"\($0)\"" } ?? "null"
         let groceriesRow: String =
@@ -433,8 +433,9 @@ enum PlannerJSON {
         let reminders: String = remindersEnabled.map { ",\"remindersEnabled\":\($0)" } ?? ""
         let organize: String = organizeEnabled.map { ",\"organizeEnabled\":\($0)" } ?? ""
         let goalsSwitch: String = goalsEnabled.map { ",\"goalsEnabled\":\($0)" } ?? ""
+        let leftovers: String = leftoversOnToday.map { ",\"leftoversOnToday\":\($0)" } ?? ""
         json += "\"settings\":{\"timezone\":\(zone),\"showCompletedTasks\":true\(streaks)\(reminders)"
-            + "\(organize)\(goalsSwitch)},"
+            + "\(organize)\(goalsSwitch)\(leftovers)},"
         if let writes {
             let quoted: [String] = writes.map { "\"\($0)\"" }
             json += "\"writes\":[" + quoted.joined(separator: ",") + "],"
@@ -1398,6 +1399,7 @@ final class DragFlag {
             .edit(id: id, .project(id: PlannerJSON.work, name: "Work")),
             .resetStreak(id: id),
             .unschedule(id: id),
+            .letGo(id: id),
         ]
         for write in writes {
             #expect(write.subjects == own)

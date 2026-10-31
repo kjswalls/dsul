@@ -5,13 +5,16 @@ the person says what happens to each one. Designed with Kirby over three mockup
 rounds and a playground (2026-10-30 to 2026-10-31; handoff in
 `/mnt/project-files/handoffs/evening-ghost-rows.md`). It replaces two rituals:
 the dock's waiting notice (phase 1) and the end of day review (phase 2).
-Both are gone from the web and the server; the iPhone's review goes in phase 3.
+Both are gone everywhere, the iPhone's own review included (phase 3).
 
 Code: [lib/ghost-rows.ts](../../lib/ghost-rows.ts) (which items, in what order),
 [components/planner/ghost-fold.tsx](../../components/planner/ghost-fold.tsx) (the
 fold, its rows and the phone's sheet), [hooks/use-overdue-today.ts](../../hooks/use-overdue-today.ts)
 (the predicate's inputs), the `[data-ghost-row]`
-rules in [app/globals.css](../../app/globals.css) beside the row rules.
+rules in [app/globals.css](../../app/globals.css) beside the row rules. On the
+iPhone: ios/DsulCore `Overdue.swift` and `GhostRows.swift` (the ports),
+ios/Dsul/Model/GhostRowsModel.swift (the planner's side) and
+ios/Dsul/Today/GhostFold.swift (the fold, its rows and sheet).
 
 ## Decisions
 
@@ -113,9 +116,9 @@ rules in [app/globals.css](../../app/globals.css) beside the row rules.
    the waiting notice stood down.
 2. **Retire the evening review and the tray (done).** What went, what stayed
    and why is below.
-3. **iPhone.** Port lib/ghost-rows.ts to ios/DsulCore and draw the fold in the
-   SwiftUI day view, and retire the iPhone's own end of day review (the leftovers
-   listed under "Kept for phase 3").
+3. **iPhone (done).** lib/ghost-rows.ts and lib/overdue.ts ported to
+   ios/DsulCore, the fold drawn in the SwiftUI day views, and the iPhone's own
+   end of day review retired. Notes below.
 
 ## Phase 2: what was removed
 
@@ -131,7 +134,7 @@ rules in [app/globals.css](../../app/globals.css) beside the row rules.
   lib/eod-store.ts, lib/eod-link.ts and AppShell's `?eod=` handler (an old
   notification's `/?eod=<day>` now just opens home), the dock's "Today's review
   is waiting" line, the ⌘K `rituals.eod` and `settings.eodReview` commands, the
-  `rituals.eodTime` settings record (`rituals.eod` stays, below), the Devices list's
+  `rituals.eodTime` settings record (`rituals.eod` stayed until phase 3), the Devices list's
   "End-of-day review" switch, Ask home's "N free" (it counted to the review's
   hour; there is no day end now), and the rituals nudge's review half (it now
   introduces the leftovers alone). The `dsul-eod-store` blob is removed by
@@ -145,7 +148,8 @@ rules in [app/globals.css](../../app/globals.css) beside the row rules.
 - **Ids.** No shortcut id was involved. Command and settings ids are not
   frozen, so the ⌘K `rituals.eod` and the rest are deleted rather than
   repointed, and `eod` became an alias of `goto.overdue`, so /eod lands on the
-  leftovers. The settings record `rituals.eod` is kept under its own id (below).
+  leftovers. The settings record `rituals.eod` was kept under its own id until
+  phase 3 removed it with the iPhone's review.
 - **Columns stay**: `eod_review_enabled`, `eod_review_time`,
   `last_eod_notified_date`, `last_eod_review_date`,
   `morning_check_dismissed_date`, `morning_check_time`. settings-service still
@@ -166,36 +170,87 @@ leftover on Today is sorted" in a mod's hooks, and Make's prompt describes the
 moment. The review's Done raised it only when the reviewed date moved; this is
 the same once-a-day shape.
 
-## Kept for phase 3 (the iPhone still plans the review locally)
+## Phase 3: the iPhone
 
-The Swift port mirrors these, and tests/fixtures/day/ (copy.json,
-notification-plan.json) and tests/fixtures/app/planner-response.json hold both
-sides, so they stay until the iPhone drops its review:
+- **Where.** The first section of List (below the filter chips, which never
+  filter it), the first card of Buckets, and a card above Anytime in Schedule,
+  in Day on today only (`isOnToday`, the user's zone). Not in Week, as the
+  web's week views have none. Schedule shows three rows, then they scroll, so
+  the hours keep their room; while the braindump sheet is up it shows the
+  caption alone, as the Anytime band does.
+- **When.** `SamplePlanner.ghostRows` is DsulCore `selectGhostRows` at TODAY,
+  over `inactiveItemIdsOn` and `milestoneItemIds`, and answers none before the
+  first fetch lands, with `leftoversOnToday` off, and while the goals are
+  unread (`milestoneIds` nil, a server that couldn't read them): a milestone
+  must never ghost, and failing closed hides the fold rather than risk one.
+- **The switch.** The payload carries `settings.leftoversOnToday`, the
+  account's `morning_check_enabled` (lib/app-api.ts: the row's value, true with
+  no row, matching the new-account default). Swift decodes it leniently and
+  reads a missing field as true, so a server one version behind still shows the
+  fold; the phone has no switch of its own (the web's Rituals pane is it).
+- **Rows.** The real row's geometry, muted: a dashed box in the secondary ink
+  where the tick is (a tap is Keep for today), the title in the secondary ink,
+  and the ghost's weekday ("Thu", `ghostWeekday`) where the time is. No lime
+  anywhere in a ghost row, so nothing lime is ever under arrive's or breathe's
+  opacity.
+- **Motion.** Arrive: opacity 0 and a 2.5pt blur to rest over 1.1s on the web's
+  curve, staggered 120ms, once per planner (`ghostsHaveArrived`, so a layout
+  switch draws the rows at rest). Breathe: the box alone, 1 to 0.6 and back
+  over 8s (4s each way, autoreversed), staggered. Both off under Reduce Motion.
+- **Gestures.** Swipe right is Keep for today, swipe left Move to tomorrow:
+  List's own `swipeActions` (full swipe runs it), and a horizontal-only drag
+  (`GhostSwipe`, 80pt) in Buckets and Schedule, which have no List row to hang
+  them on. A side whose verb the gate refuses doesn't move. A tap on the row
+  opens `GhostSheet` (through the planner's one sheet slot, `PlannerSheet.ghost`):
+  the title, "Planned for Thu, Oct 15", then Keep for today (the ink primary),
+  Move to tomorrow (with today's tomorrow beside it), Reschedule (DayPickSheet
+  over the sheet, "Move to …"), Send to sidebar and Let it go ("Kept in
+  history"), each only where it lands, the drawer's order. VoiceOver hears each
+  row as one element ("Call the bank, from Tuesday") with the verbs as named
+  actions.
+- **Caption.** "From earlier", the muted count and a chevron; Keep all and Send
+  all to sidebar always on screen (touch has no hover). Over five ghosts the
+  fold starts collapsed, decided at first sight, as on the web.
+- **Writes.** Every verb is a write the phone already made, asked through the
+  same gates the web's fold asks on the ghost's own day (DsulCore
+  `ghostVerbAllowed`, checked against ghost-rows.json) plus `canWrite`: Keep,
+  Move to tomorrow and Reschedule are `move` (`moveTaskToDate`), Send to
+  sidebar is `unschedule` (`unscheduleTask`). Let it go had no phone route, so
+  POST /api/app/items/:id gained `letGo` (lib/item-intents.ts `applyLetGo`:
+  `{status:'cancelled'}` behind `letGoItems`' filter, 409 `not_let_go`, 200 and
+  no write for a row already cancelled) and the payload's `writes` lists it,
+  so a server without it never shows the verb.
+- **Keep all differs from the web on one point.** The phone has no bulk item
+  route, so Keep all is one `move` per ghost, which keeps each item's clock
+  time, where the web's `moveTasksToDate` drops a stale one. Each lands on
+  today in its own bucket either way. A bulk route that drops the time is the
+  fix if it matters.
+- **"All sorted, you got this"** with the one lime dot, at full strength and
+  with no transition, for four seconds (`ghostsSortedAt`, stamped only when the
+  person's own verb or bulk verb took the fold from some to none). A fetch, a
+  pause, or a change on another device that empties it goes quietly. The phone
+  raises no `review.saved`: recipes and mods run on the web.
 
-- lib/eod.ts, trimmed to `minutesOfDay` (ReminderPlan.swift `eodMinutesOfDay`)
-  and `isEodOwed` (its "owed" rule). `reviewedDay`, `shouldShowEodNotice`,
-  `eodLinkDay` and `nowMinutesIn` went; plan.ts and ReminderPlan.swift still
-  name `reviewedDay` in comments.
-- lib/reminders/plan.ts's review (`EOD_IDENTIFIER`, `eodIdentifiers`, the
-  `eod` input and requests) and lib/reminders/copy.ts `EOD_COPY`.
-- lib/app-api.ts's planner payload `eodReviewEnabled` / `eodReviewTime` /
-  `lastEodReviewDate` (an iPhone contract), the `eod` NudgeKind / CueLogKind /
-  `dayKey('eod')` / push channel entry, `DeviceSendKind` 'eod' in @dsul/types,
-  lib/devices/select.ts's LOCAL_KINDS, and electron/lib/notify.cjs's key
-  pattern and `/?eod=` path (harmless: it opens home).
-- Nothing on the web writes `last_eod_review_date` any more, so an iPhone with
-  the review on keeps ringing it nightly until phase 3 removes it there.
-- **The off switch for that nightly notification.** The iPhone reads
-  `eodReviewEnabled` from the planner payload and has no switch of its own, so
-  the settings record `rituals.eod` (permanent id) stays in the Rituals pane as
-  "Evening nudge on iPhone", writing `eod_review_enabled` through
-  lib/reminder-store.ts (`iphoneEveningNudge`, hydrated by the provider). It is
-  drawn, and found by search, only for an account whose value was on when its
-  settings landed (`shownWhen`, a new SettingRecord field read by the settings
-  page and search); turning it off keeps it on screen for the visit. The
-  server-side alternative (app-api reporting `eodReviewEnabled: false`) was not
-  taken: it changes an iPhone contract and a fixture, which is Kirby's call.
-  Phase 3 removes the row with the iPhone's review.
+## Phase 3: what went with the iPhone's review
+
+- lib/eod.ts (and its test), lib/reminders/plan.ts's review (`EOD_IDENTIFIER`,
+  `EOD_CATEGORY`, `eodIdentifiers`, the `eod` input and requests),
+  lib/reminders/copy.ts `EOD_COPY`, and their Swift mirrors in
+  ReminderPlan.swift and ReminderCopy.swift; the fixtures were regenerated
+  without them.
+- The planner payload's `eodReviewEnabled` / `eodReviewTime` /
+  `lastEodReviewDate`, replaced by `leftoversOnToday`.
+- The `eod` NudgeKind, CueLogKind, `dayKey('eod')`, push channel entry,
+  `DeviceSendKind` 'eod' and LOCAL_KINDS entry. Stored data still names it, so
+  `DevicePrefsSchema.kinds` keeps accepting an `eod` key (a parse failure would
+  drop a device's mute and quiet hours), a `cue_log` row of kind `eod` is still
+  closed `not_wanted`, and electron's key pattern still reads one.
+- The settings record `rituals.eod` ("Evening nudge on iPhone"),
+  reminder-store's `iphoneEveningNudge`, and the `shownWhen` SettingRecord
+  field it alone used.
+- On the phone: the `DSUL_EOD` category (only the cue's is registered now), and
+  NotificationScheduler removes any pending or delivered `dsul-eod` /
+  `dsul-eod#…` request an older build left, and never presents one.
 
 ## Open question
 

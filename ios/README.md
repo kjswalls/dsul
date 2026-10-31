@@ -154,6 +154,11 @@ The phone talks to production, so it can only sign in once `/auth/ios` and
 - **Writes** show at once and are sent one at a time, in order. If the server
   refuses one, a banner says so and the app reloads your day; if it can't be
   reached at all, the change is undone.
+- **Leftovers on Today**: what was left undone on an earlier day waits, faded,
+  in a "From earlier" fold at the top of today (List, Buckets and Schedule).
+  Swipe right to keep it for today, left to move it to tomorrow, or tap it for
+  Reschedule, Send to sidebar and Let it go. The web's Settings → Rituals →
+  Leftovers on Today switches it off.
 - **The app icon** follows Settings → Look → App icon on the web: pick Lime
   there and the iPhone swaps to the Lime icon the next time it loads your day
   (iOS shows a one-line alert each time an app changes its icon). The web
@@ -1049,8 +1054,9 @@ by push yet.
    dsul at 9:10: it rings once, now. Open it again at 9:20: nothing.
 7. In front: with dsul open, tick the habit on the web just before its cue
    (no refresh on the phone). The banner doesn't show.
-8. The review: with the end-of-day review on, it rings at its hour; reviewed
-   on the web before then and dsul opened, it doesn't.
+8. The review is gone: after updating from a build that had it on, nothing
+   rings at the old review hour, and an old review notification in
+   Notification Center is cleared the next time dsul opens.
 9. Signing out takes every pending dsul notification and every one in
    Notification Center with it.
 10. Over a few days without opening dsul (Background App Refresh on): a habit
