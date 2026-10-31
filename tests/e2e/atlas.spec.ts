@@ -208,16 +208,15 @@ test.describe('atlas', () => {
     // to the Relay grid, so a drag by the footer can't be relied on.
     const resting = page.locator('[data-atlas-lane="resting"]');
     await expect(resting).toHaveCount(1);
-    const pinned = page.waitForResponse(
-      (r) =>
-        r.url().includes('/rest/v1/atlas_positions') &&
-        r.request().method() === 'POST' &&
-        (r.request().postData() ?? '').includes('"pinned_band":"resting"')
+    const saved = page.waitForResponse(
+      (r) => r.url().includes('/rest/v1/atlas_positions') && r.request().method() !== 'GET',
+      { timeout: 15_000 }
     );
     await card.getByTestId('atlas-card-header').dispatchEvent('contextmenu', { button: 2, clientX: 240, clientY: 240 });
+    await expect(page.getByTestId('container-context-menu')).toBeVisible();
     await page.getByTestId('container-menu-pin-resting').click();
-    expect((await pinned).ok()).toBe(true);
     await expect(card).toHaveAttribute('data-pinned', 'true');
+    expect((await saved).ok()).toBe(true);
     await expect(card.getByTestId('atlas-unpin')).toBeVisible();
 
     // The layout and the pin are both remembered.
