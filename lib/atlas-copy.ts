@@ -19,7 +19,9 @@ export const ATLAS_COPY = {
   layoutMap: 'Your map',
   /** Palette rows. */
   switchTo: 'Switch to Atlas',
-  switchToDescription: 'Your projects, routines, seasons and goals as cards on one map',
+  // Neutral: Goals starts off and routines and seasons can be unavailable, so
+  // the palette never names a kind the account may not have.
+  switchToDescription: 'Your projects and more as cards on one map',
   switchToKeywords: 'atlas map board canvas projects cards overview',
   /** `v` from Atlas goes back to Day (design 1.6). */
   toggleFromAtlas: 'Switch to Day view',
@@ -34,6 +36,9 @@ export const ATLAS_COPY = {
   expand: 'Show every open step',
   collapse: 'Show just the next step',
   centerHere: 'Center here',
+  /** The row's tick box, when the verb gives no label of its own. */
+  markDone: 'Mark complete',
+  markOpen: 'Mark incomplete',
   moreTiles: (n: number) => `+${n}`,
   /** "3 of 7": lit out of lit and open. */
   count: (lit: number, total: number) => `${lit} of ${total}`,
@@ -45,10 +50,27 @@ export const ATLAS_COPY = {
   restingSince: (day: string) => `resting since ${day}`,
   pausedTill: (day: string) => `paused till ${day}`,
   paused: 'paused',
+  /** An auto season past its last day. */
+  seasonEnded: (day: string) => `ended ${day}`,
+  /** A goal that is finished; never "failed" or "abandoned". */
+  achievedOn: (day: string) => `achieved ${day}`,
+  achieved: 'achieved',
+  setAside: 'set aside',
   usually: (time: string) => `usually ${time}`,
   target: (day: string) => `by ${day}`,
-  /** The empty map. */
-  empty: 'Nothing on the map yet. Projects, routines, seasons and goals show up here as cards.',
+  /**
+   * The empty map, naming only the kinds this account has (Goals starts off;
+   * routines and seasons need their tables), so it never advertises an
+   * extension that is off.
+   */
+  empty: (collections: boolean, goals: boolean) =>
+    collections && goals
+      ? 'Nothing on the map yet. Projects, routines, seasons and goals show up here as cards.'
+      : collections
+        ? 'Nothing on the map yet. Projects, routines and seasons show up here as cards.'
+        : goals
+          ? 'Nothing on the map yet. Projects and goals show up here as cards.'
+          : 'Nothing on the map yet. Projects show up here as cards.',
   /** Accessible names. */
   cardLabel: (name: string, kind: string) => `${name}, ${kind}`,
   canvasLabel: 'Atlas map',
@@ -63,6 +85,9 @@ export function atlasCopyStrings(): string[] {
       // Sample each template with plausible arguments.
       out.push(String((v as (...a: unknown[]) => string)(3, 7)));
       out.push(String((v as (...a: unknown[]) => string)('Sep 30', 'Nov 4')));
+      out.push(String((v as (...a: unknown[]) => string)(false, false)));
+      out.push(String((v as (...a: unknown[]) => string)(true, false)));
+      out.push(String((v as (...a: unknown[]) => string)(false, true)));
     }
   }
   return out;

@@ -8,6 +8,14 @@ import { panBy, zoomAt } from '@/lib/atlas-camera';
 const DOT_PITCH = 32;
 /** Ctrl+wheel (a trackpad pinch) zoom speed. */
 const WHEEL_ZOOM = 0.01;
+/**
+ * The most one wheel event may zoom, in pixel-delta terms: a mouse notch
+ * (deltaY 100 to 120) zooms about 1.5x, while a pinch's small deltas pass
+ * untouched.
+ */
+const WHEEL_ZOOM_STEP = 40;
+/** Pixels per line, for a wheel that reports lines (Firefox's mouse wheel). */
+const WHEEL_LINE_PX = 16;
 
 /**
  * The pan and zoom surface: the dot grid, the pointer pans, the wheel, and
@@ -45,11 +53,23 @@ export function AtlasSurface({
     const up = (e: KeyboardEvent) => {
       if (e.code === 'Space') space.current = false;
     };
+    // A keyup that lands in another window or tab never reaches us; a held
+    // Space must not outlive the focus, or every press would pan.
+    const drop = () => {
+      space.current = false;
+    };
+    const hidden = () => {
+      if (document.visibilityState !== 'visible') drop();
+    };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
+    window.addEventListener('blur', drop);
+    document.addEventListener('visibilitychange', hidden);
     return () => {
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', drop);
+      document.removeEventListener('visibilitychange', hidden);
     };
   }, []);
 
@@ -59,14 +79,19 @@ export function AtlasSurface({
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const { camera, setCamera } = useAtlasUiStore.getState();
+      // Lines (Firefox's mouse wheel) and pages become pixels first.
+      const k = e.deltaMode === 1 ? WHEEL_LINE_PX : e.deltaMode === 2 ? el.clientHeight || 1 : 1;
+      const deltaX = e.deltaX * k;
+      const deltaY = e.deltaY * k;
       if (e.ctrlKey || e.metaKey) {
         const r = el.getBoundingClientRect();
-        setCamera(zoomAt(camera, { x: e.clientX - r.left, y: e.clientY - r.top }, Math.exp(-e.deltaY * WHEEL_ZOOM)));
+        const d = Math.max(-WHEEL_ZOOM_STEP, Math.min(WHEEL_ZOOM_STEP, deltaY));
+        setCamera(zoomAt(camera, { x: e.clientX - r.left, y: e.clientY - r.top }, Math.exp(-d * WHEEL_ZOOM)));
         return;
       }
       // Shift turns a mouse wheel's vertical scroll sideways, as everywhere.
-      const dx = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
-      const dy = e.shiftKey && e.deltaX === 0 ? 0 : e.deltaY;
+      const dx = e.shiftKey && deltaX === 0 ? deltaY : deltaX;
+      const dy = e.shiftKey && deltaX === 0 ? 0 : deltaY;
       setCamera(panBy(camera, -dx, -dy));
     };
     el.addEventListener('wheel', onWheel, { passive: false });

@@ -3,6 +3,8 @@ import {
   ATLAS_TILE_CAP,
   buildAtlasCards,
   memberStateOn,
+  sameAtlasCard,
+  createAtlasCardSharer,
   type AtlasModelInput,
 } from '@/lib/atlas-model';
 import { projectColorToken } from '@/lib/accent-colors';
@@ -298,5 +300,106 @@ describe('buildAtlasCards', () => {
     const cards = buildAtlasCards(input({ items, projects: [project('Work')], routines: [routine('r', ['h'])] }));
     expect(cardOf(cards, 'routine:r').members[0].todayState).toBe('skipped');
     expect(cardOf(cards, 'project:p-Work').members[0].todayState).toBeUndefined();
+  });
+
+  it('offers a routine member its schedule does not draw today, rather than All done over an open tile', () => {
+    const items = [task({ id: 'undated' })];
+    const card = cardOf(buildAtlasCards(input({ items, routines: [routine('r', ['undated'])] })), 'routine:r');
+    expect(card.tiles).toEqual(['open']);
+    expect(card.next?.item.id).toBe('undated');
+    expect(card.openRows.map((m) => m.item.id)).toEqual(['undated']);
+    expect(card.allDone).toBe(false);
+  });
+
+  it('puts the run order first, then open members the day does not draw', () => {
+    const items = [habit({ id: 'a' }), task({ id: 'loose' }), habit({ id: 'b' })];
+    const card = cardOf(buildAtlasCards(input({ items, routines: [routine('r', ['loose', 'a', 'b'])] })), 'routine:r');
+    expect(card.next?.item.id).toBe('a');
+    expect(card.openRows.map((m) => m.item.id)).toEqual(['a', 'b', 'loose']);
+  });
+
+  it('never reads All done on a paused container or an empty one', () => {
+    const paused = cardOf(
+      buildAtlasCards(
+        input({
+          items: [habit({ id: 'h' })],
+          routines: [routine('r', ['h'], { pausedAt: '2026-03-01T00:00:00Z', pausedUntil: '2026-04-04' })],
+        })
+      ),
+      'routine:r'
+    );
+    expect(paused.allDone).toBe(false);
+    const offSeason = cardOf(
+      buildAtlasCards(input({ items: [habit({ id: 'h' })], seasons: [season('s', { state: 'paused', itemIds: ['h'] })] })),
+      'season:s'
+    );
+    expect(offSeason.allDone).toBe(false);
+    const empty = cardOf(buildAtlasCards(input({ items: [], projects: [project('Work')] })), 'project:p-Work');
+    expect(empty.allDone).toBe(false);
+  });
+
+  it('reads an auto season past its last day as ended, not paused for ever', () => {
+    const card = cardOf(
+      buildAtlasCards(
+        input({
+          items: [habit({ id: 'h' })],
+          seasons: [season('s', { state: 'auto', startsOn: '2026-01-01', endsOn: '2026-02-28', itemIds: ['h'] })],
+        })
+      ),
+      'season:s'
+    );
+    expect(card.touch).toEqual({ kind: 'ended', reason: 'seasonOver', on: '2026-02-28' });
+    expect(card.resting).toBe(true);
+    expect(card.allDone).toBe(false);
+    expect(card.next).toBeNull();
+  });
+
+  it('puts achieved and set-aside goals after live ones, with no next step', () => {
+    const items = [task({ id: 't1' }), task({ id: 't2' }), task({ id: 't3' })];
+    const goals = [
+      goal('done', { state: 'achieved', achievedAt: '2026-03-01T10:00:00Z', memberIds: ['t1'] }),
+      goal('aside', { state: 'abandoned', memberIds: ['t2'] }),
+      goal('live', { memberIds: ['t3'] }),
+    ];
+    const cards = buildAtlasCards(input({ items, goals })).filter((c) => c.kind === 'goal');
+    expect(cards.map((c) => c.id)).toEqual(['live', 'done', 'aside']);
+    const [live, done, aside] = cards;
+    expect(live.next?.item.id).toBe('t3');
+    expect(done.next).toBeNull();
+    expect(done.openRows).toEqual([]);
+    expect(done.touch).toEqual({ kind: 'ended', reason: 'achieved', on: '2026-03-01' });
+    expect(done.resting).toBe(true);
+    expect(done.allDone).toBe(false);
+    expect(aside.next).toBeNull();
+    expect(aside.touch).toEqual({ kind: 'ended', reason: 'setAside' });
+  });
+
+  it('collects a project by its folded name, as containerMemberIds does', () => {
+    const items = [task({ id: 'a', project: 'work' }), task({ id: 'b', project: 'Work' }), task({ id: 'c', project: 'Home' })];
+    const card = cardOf(buildAtlasCards(input({ items, projects: [project('Work')] })), 'project:p-Work');
+    expect(card.members.map((m) => m.item.id)).toEqual(['a', 'b']);
+  });
+
+  it('sameAtlasCard: a rebuild from the same items says the same, a tick does not', () => {
+    const items = [task({ id: 'a', project: 'Work' }), task({ id: 'b', project: 'Home' })];
+    const projects = [project('Work'), project('Home')];
+    const first = buildAtlasCards(input({ items, projects }));
+    const again = buildAtlasCards(input({ items, projects }));
+    first.forEach((c, i) => expect(sameAtlasCard(c, again[i])).toBe(true));
+    const ticked = [{ ...items[0], status: 'completed' } as Item, items[1]];
+    const after = buildAtlasCards(input({ items: ticked, projects }));
+    expect(sameAtlasCard(cardOf(first, 'project:p-Work'), cardOf(after, 'project:p-Work'))).toBe(false);
+    expect(sameAtlasCard(cardOf(first, 'project:p-Home'), cardOf(after, 'project:p-Home'))).toBe(true);
+  });
+
+  it('the sharer keeps an unchanged card object, so a tick re-renders one card', () => {
+    const items = [task({ id: 'a', project: 'Work' }), task({ id: 'b', project: 'Home' })];
+    const projects = [project('Work'), project('Home')];
+    const share = createAtlasCardSharer();
+    const first = share(buildAtlasCards(input({ items, projects })));
+    const ticked = [{ ...items[0], status: 'completed' } as Item, items[1]];
+    const after = share(buildAtlasCards(input({ items: ticked, projects })));
+    expect(cardOf(after, 'project:p-Home')).toBe(cardOf(first, 'project:p-Home'));
+    expect(cardOf(after, 'project:p-Work')).not.toBe(cardOf(first, 'project:p-Work'));
   });
 });

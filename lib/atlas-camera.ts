@@ -36,6 +36,12 @@ export interface Viewport {
 export const ATLAS_MIN_ZOOM = 0.25;
 export const ATLAS_MAX_ZOOM = 2;
 
+/**
+ * The lowest zoom the automatic first fit goes to: below it card A's type is
+ * unreadable. The toolbar's Fit, an explicit request, keeps the full range.
+ */
+export const ATLAS_FIT_FLOOR = 0.6;
+
 export const IDENTITY_CAMERA: AtlasCamera = { x: 0, y: 0, z: 1 };
 
 /** Clamp a zoom to the range; a non-finite or non-positive one reads as 1. */
@@ -91,12 +97,16 @@ export function boundsOf(rects: readonly Rect[]): Rect | null {
  * The camera that shows every rect, centred, with `pad` screen pixels around.
  * Never zooms past 1 (a single card is not blown up to fill the screen).
  * Returns `fallback` for a zero-size viewport or no rects.
+ *
+ * With a `floor`, never zooms out past it either; when the floor binds, the
+ * bounds' top-left corner sits at (pad, pad) instead of the centre.
  */
 export function fitBounds(
   rects: readonly Rect[],
   viewport: Viewport,
   pad = 48,
   fallback: AtlasCamera = IDENTITY_CAMERA,
+  floor?: number,
 ): AtlasCamera {
   const b = boundsOf(rects);
   if (!b || viewport.w <= 0 || viewport.h <= 0) return fallback;
@@ -104,6 +114,10 @@ export function fitBounds(
   const availH = Math.max(1, viewport.h - pad * 2);
   const fit = Math.min(availW / Math.max(1, b.w), availH / Math.max(1, b.h), 1);
   const z = clampZoom(fit);
+  if (floor !== undefined && z < floor) {
+    const f = clampZoom(floor);
+    return { x: pad - b.x * f, y: pad - b.y * f, z: f };
+  }
   return {
     x: viewport.w / 2 - (b.x + b.w / 2) * z,
     y: viewport.h / 2 - (b.y + b.h / 2) * z,

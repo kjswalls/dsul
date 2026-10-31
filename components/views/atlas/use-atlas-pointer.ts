@@ -42,19 +42,29 @@ export function useAtlasPointer({
 
   const onPointerDown = useCallback((e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
+    // A click still owed to an earlier drag (one that never came: a cancel, a
+    // capture that sent it elsewhere) must not eat this press's click.
+    swallowClick.current = false;
     // A Mac's Ctrl+click is a right-click: the menu's, never a drag.
     if (e.ctrlKey) return;
     const target = e.target as Element | null;
     if (target?.closest?.(INTERACTIVE)) return;
+    // No stopPropagation: document-level outside-press listeners (the omnibar
+    // panel, Radix layers) must still hear it, and the surface already refuses
+    // to pan from a press on a card.
     press.current = { x: e.clientX, y: e.clientY, id: e.pointerId, active: false };
-    // The surface must not pan from a press that belongs to a card.
-    e.stopPropagation();
   }, []);
 
   const onPointerMove = useCallback(
     (e: ReactPointerEvent<HTMLElement>) => {
       const p = press.current;
       if (!p || p.id !== e.pointerId) return;
+      // A press whose up this card never heard (Space+drag handed it to the
+      // surface's pan): a mouse moving with no button down is not a drag.
+      if (e.pointerType === 'mouse' && e.buttons === 0) {
+        press.current = null;
+        return;
+      }
       const dx = e.clientX - p.x;
       const dy = e.clientY - p.y;
       if (!p.active) {
@@ -78,7 +88,8 @@ export function useAtlasPointer({
       if (!p || p.id !== e.pointerId) return;
       press.current = null;
       if (!p.active) return;
-      swallowClick.current = true;
+      // Only a pointerup is followed by a click; a pointercancel is not.
+      if (commit) swallowClick.current = true;
       const z = zoomNow();
       const to = { x: at.x + (e.clientX - p.x) / z, y: at.y + (e.clientY - p.y) / z };
       setDrag(null);

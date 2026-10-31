@@ -15,11 +15,11 @@ import {
   seasonResumeDate,
   formatDay,
 } from './active';
-import { goalProgress, lastDoneOn, nextMilestone } from './goals';
+import { goalProgress, isGoalActive, lastDoneOn, nextMilestone, sortGoalsForDisplay } from './goals';
 import { isCancelled, isDoneOn, occurrenceOn } from './verb-gates';
 import { isRecurring } from './recurrence';
 import { accentColorForName, projectColorToken } from './accent-colors';
-import { CONTAINER_KINDS } from './container-registry';
+import { CONTAINER_KINDS, foldContainerName } from './container-registry';
 import { toDateOnly } from './overdue';
 
 /**
@@ -62,12 +62,14 @@ export function memberStateOn(
   todayStr: string,
   inactive: ReadonlySet<string>,
   tz: string,
+  /** `occurrenceOn(item, todayStr, todayStr, tz)`, when the caller already has it. */
+  occurrence: OccurrenceState | 'absent' | undefined = occurrenceOn(item, todayStr, todayStr, tz),
 ): MemberState | null {
   if (!isRecurring(item) && isCancelled(item)) return null;
   if (isDoneOn(item, todayStr)) return 'lit';
   if (!isOpenLoopOn(item, todayStr)) return 'quiet';
   if (inactive.has(item.id)) return 'quiet';
-  if (occurrenceOn(item, todayStr, todayStr, tz) === 'absent') return 'quiet';
+  if (occurrence === 'absent') return 'quiet';
   return 'open';
 }
 
@@ -88,7 +90,12 @@ export type AtlasTouch =
   | { kind: 'unknown' }
   | { kind: 'touched'; on: string; days: number }
   | { kind: 'resting'; since: string }
-  | { kind: 'paused'; until?: string };
+  | { kind: 'paused'; until?: string }
+  /**
+   * Finished as a container: a goal achieved or set aside, or an auto season
+   * past its last day. Drawn resting (hollow), never "All done".
+   */
+  | { kind: 'ended'; reason: 'achieved' | 'setAside' | 'seasonOver'; on?: string };
 
 export interface AtlasMilestone {
   id: string;
@@ -122,7 +129,11 @@ export interface AtlasCard {
   next: AtlasMember | null;
   /** Every open member, next first: the expanded card's rows. */
   openRows: AtlasMember[];
-  /** Nothing open: the dashed edge and "All done. What's next?". */
+  /**
+   * Nothing open on a live container that has members: the dashed edge and
+   * "All done. What's next?". Never on an empty, paused or ended one (rule 13:
+   * "All done" is a claim about finished work; the footer carries the rest).
+   */
   allDone: boolean;
   /**
    * Whether "Put next step on Today" may be offered for `next` (rule 4): never
@@ -132,7 +143,7 @@ export interface AtlasCard {
    */
   nextOffersToday: boolean;
   touch: AtlasTouch;
-  /** Known old touch, or paused/off: the hollow square. */
+  /** Known old touch, paused/off, or ended: the hollow square. */
   resting: boolean;
   usualTime?: string;
   /** Goal: its target day. */
@@ -237,9 +248,10 @@ export function buildAtlasCards(input: AtlasModelInput): AtlasCard[] {
       const item = itemsById.get(id);
       if (!item) continue;
       if ((item as { parentItemId?: string }).parentItemId) continue;
-      const state = memberStateOn(item, todayStr, inactive, tz);
+      const todayState = occurrenceOn(item, todayStr, todayStr, tz);
+      const state = memberStateOn(item, todayStr, inactive, tz, todayState);
       if (!state) continue;
-      out.push({ item, state, todayState: occurrenceOn(item, todayStr, todayStr, tz) });
+      out.push({ item, state, todayState });
     }
     return out;
   };
@@ -284,20 +296,25 @@ export function buildAtlasCards(input: AtlasModelInput): AtlasCard[] {
       ...strip(members),
       next,
       openRows: next ? [next, ...openRows.filter((m) => m !== next)] : openRows,
-      allDone: !next,
+      allDone: !next && members.length > 0 && touch.kind !== 'paused' && touch.kind !== 'ended',
       nextOffersToday,
       touch,
-      resting: touch.kind === 'resting' || touch.kind === 'paused',
+      resting: touch.kind === 'resting' || touch.kind === 'paused' || touch.kind === 'ended',
       ...extra,
     };
   };
 
-  /* Goals first: they head the left column of the seeded map. */
-  for (const goal of goals) {
+  /*
+   * Goals first: they head the left column of the seeded map. Live goals
+   * before achieved or set-aside ones (sortGoalsForDisplay, as every goal
+   * list), and an ended goal offers no next step.
+   */
+  for (const goal of sortGoalsForDisplay(goals)) {
+    const live = isGoalActive(goal);
     const ids = containerMemberIds({ kind: 'goal', goal }, items, routines);
     const members = membersOf(ids);
     const feeders = members.filter((m) => !goal.milestoneIds.includes(m.item.id));
-    const open = feeders.filter((m) => m.state === 'open').sort(byDatedThenOrder);
+    const open = live ? feeders.filter((m) => m.state === 'open').sort(byDatedThenOrder) : [];
     const progress = goalProgress(goal, itemsById);
     const nextMs = nextMilestone(goal, itemsById);
     const milestones: AtlasMilestone[] = [];
@@ -318,7 +335,11 @@ export function buildAtlasCards(input: AtlasModelInput): AtlasCard[] {
       members,
       open[0] ?? null,
       open,
-      touchOf(latest(lastDone(members), dayOf(goal.achievedAt)), todayStr, null),
+      live
+        ? touchOf(latest(lastDone(members), dayOf(goal.achievedAt)), todayStr, null)
+        : goal.state === 'achieved'
+          ? { kind: 'ended', reason: 'achieved', on: dayOf(goal.achievedAt) }
+          : { kind: 'ended', reason: 'setAside' },
       {
         targetOn: goal.targetOn ? toDateOnly(goal.targetOn) : undefined,
         milestones,
@@ -331,9 +352,21 @@ export function buildAtlasCards(input: AtlasModelInput): AtlasCard[] {
     cards.push(card);
   }
 
+  // Project membership by folded name, built once: asking containerMemberIds
+  // per project would fold every item's name once per project. Same fold, same
+  // answer (container-registry's foldContainerName).
+  const byProject = new Map<string, string[]>();
+  for (const item of items) {
+    const name = (item as { project?: string }).project;
+    if (!name) continue;
+    const key = foldContainerName('project', name);
+    const list = byProject.get(key);
+    if (list) list.push(item.id);
+    else byProject.set(key, [item.id]);
+  }
+
   for (const project of input.projects) {
-    const ids = containerMemberIds({ kind: 'project', project }, items, routines);
-    const members = membersOf(ids);
+    const members = membersOf(byProject.get(foldContainerName('project', project.name)) ?? []);
     const open = members.filter((m) => m.state === 'open').sort(byDatedThenOrder);
     const head = base('project', project.id, project.name, projectColorToken(project.name, input.projects));
     cards.push(finish(head, members, open[0] ?? null, open, touchOf(lastDone(members), todayStr, null)));
@@ -362,10 +395,15 @@ export function buildAtlasCards(input: AtlasModelInput): AtlasCard[] {
       const run = todayInOrder(schedule, routine.itemIds, todayStr);
       const byId = new Map(members.map((m) => [m.item.id, m]));
       const nextMember = run.nextId ? byId.get(run.nextId) : undefined;
-      const next = nextMember && nextMember.state === 'open' ? nextMember : null;
-      const open = run.rows
+      const runOpen = run.rows
         .map((r) => byId.get(r.itemId))
         .filter((m): m is AtlasMember => !!m && m.state === 'open');
+      // The day's run order first; then any open member today's schedule
+      // doesn't draw (an undated one-off, one dated another day), in the
+      // routine's own order, so an open tile never sits beside "All done".
+      const inRun = new Set(runOpen);
+      const open = [...runOpen, ...members.filter((m) => m.state === 'open' && !inRun.has(m))];
+      const next = nextMember && nextMember.state === 'open' ? nextMember : (open[0] ?? null);
       const standing = routineStandingOn(routine, seasons, todayStr, tz);
       const paused = standing.effectiveOn
         ? null
@@ -386,15 +424,20 @@ export function buildAtlasCards(input: AtlasModelInput): AtlasCard[] {
       const ids = containerMemberIds({ kind: 'season', season }, items, routines);
       const members = membersOf(ids);
       const open = members.filter((m) => m.state === 'open').sort(byDatedThenOrder);
-      const paused = isSeasonActiveOn(season, todayStr) ? null : { until: seasonResumeDate(season, todayStr) };
+      const active = isSeasonActiveOn(season, todayStr);
+      const endsOn = season.endsOn ? toDateOnly(season.endsOn) : undefined;
+      const over = !active && season.state === 'auto' && !!endsOn && endsOn < toDateOnly(todayStr);
+      const paused = active || over ? null : { until: seasonResumeDate(season, todayStr) };
       const head = base('season', season.id, season.name, season.color ?? accentColorForName(season.name));
       cards.push(
         finish(
           head,
           members,
-          open[0] ?? null,
-          open,
-          touchOf(latest(lastDone(members), dayOf(season.updatedAt)), todayStr, paused),
+          over ? null : (open[0] ?? null),
+          over ? [] : open,
+          over
+            ? { kind: 'ended', reason: 'seasonOver', on: endsOn }
+            : touchOf(latest(lastDone(members), dayOf(season.updatedAt)), todayStr, paused),
           { routineIds: season.routineIds },
         ),
       );
@@ -408,5 +451,64 @@ export function buildAtlasCards(input: AtlasModelInput): AtlasCard[] {
 export function touchDay(touch: AtlasTouch): string | undefined {
   if (touch.kind === 'resting') return formatDay(touch.since);
   if (touch.kind === 'paused' && touch.until) return formatDay(touch.until);
+  if (touch.kind === 'ended' && touch.on) return formatDay(touch.on);
   return undefined;
+}
+
+/**
+ * Whether a rebuilt card says exactly what the previous one did: the same
+ * item objects in the same states, and the same head, counts and touch. The
+ * hook hands back the previous object when it does, so `memo(AtlasCard)` skips
+ * every card a change didn't touch.
+ */
+export function sameAtlasCard(a: AtlasCard, b: AtlasCard): boolean {
+  if (a === b) return true;
+  if (
+    a.key !== b.key ||
+    a.name !== b.name ||
+    a.kindLabel !== b.kindLabel ||
+    a.color !== b.color ||
+    a.lit !== b.lit ||
+    a.total !== b.total ||
+    a.moreTiles !== b.moreTiles ||
+    a.allDone !== b.allDone ||
+    a.resting !== b.resting ||
+    a.nextOffersToday !== b.nextOffersToday ||
+    a.usualTime !== b.usualTime ||
+    a.targetOn !== b.targetOn ||
+    a.feeds !== b.feeds ||
+    a.next?.item !== b.next?.item ||
+    a.members.length !== b.members.length ||
+    a.openRows.length !== b.openRows.length ||
+    JSON.stringify(a.touch) !== JSON.stringify(b.touch) ||
+    JSON.stringify(a.milestones) !== JSON.stringify(b.milestones) ||
+    a.routineIds !== b.routineIds
+  )
+    return false;
+  for (let i = 0; i < a.members.length; i += 1) {
+    const x = a.members[i];
+    const y = b.members[i];
+    if (x.item !== y.item || x.state !== y.state || x.todayState !== y.todayState) return false;
+  }
+  for (let i = 0; i < a.openRows.length; i += 1) {
+    if (a.openRows[i].item !== b.openRows[i].item) return false;
+  }
+  return true;
+}
+
+/**
+ * A function that hands back, for each freshly built card, the object it
+ * handed back last time when {@link sameAtlasCard} says nothing changed. One
+ * per mounted Atlas (use-atlas-cards.ts keeps it in state).
+ */
+export function createAtlasCardSharer(): (built: AtlasCard[]) => AtlasCard[] {
+  let last = new Map<string, AtlasCard>();
+  return (built) => {
+    const out = built.map((c) => {
+      const old = last.get(c.key);
+      return old && sameAtlasCard(old, c) ? old : c;
+    });
+    last = new Map(out.map((c) => [c.key, c]));
+    return out;
+  };
 }

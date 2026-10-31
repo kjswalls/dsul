@@ -97,4 +97,22 @@ describe('seedPlaces', () => {
       expect(Number.isFinite(p.y)).toBe(true);
     }
   });
+
+  it('keeps a map with goals in a sensible block, not a narrow strip', () => {
+    const many = [
+      card('goal', 'g1', ['a']),
+      card('goal', 'g2', ['b']),
+      ...Array.from({ length: 38 }, (_, i) => card('project', `p${i}`, [`x${i}`])),
+    ];
+    const out = seedPlaces(many, {}, VIEW);
+    noOverlaps(out);
+    const xs = Object.values(out).map((p) => p.x);
+    const ys = Object.values(out).map((p) => p.y);
+    const w = Math.max(...xs) + ATLAS_CARD_W - Math.min(...xs);
+    const h = Math.max(...ys) + ATLAS_CARD_H - Math.min(...ys);
+    expect(w / h).toBeGreaterThanOrEqual(1);
+    expect(w / h).toBeLessThanOrEqual(3);
+    // The free grid starts under the goal block, at the left edge.
+    expect(out['project:p0']).toEqual({ x: 0, y: 2 * (ATLAS_CARD_H + 40) });
+  });
 });

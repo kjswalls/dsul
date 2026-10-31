@@ -82,9 +82,14 @@ test.describe('atlas', () => {
     await setScope(page, 'Atlas');
     await page.setViewportSize({ width: 390, height: 844 });
     await reloadApp(page);
-    // The phone's router is day-only and has no Scope menu at all.
-    await expect(page.getByTestId('view-root')).toHaveAttribute('data-view-scope', 'day');
+    // The phone's router hardcodes its scope and has no Scope menu, so assert
+    // what could actually leak: the Atlas tree itself, a card, or an "Atlas"
+    // tab or menu row anywhere on the page.
+    await expect(page.getByTestId('view-root')).toBeVisible();
+    await expect(page.getByTestId('atlas-view')).toHaveCount(0);
+    await expect(page.locator('[data-atlas-card]')).toHaveCount(0);
     await expect(page.getByRole('menuitem', { name: 'Atlas' })).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: 'Atlas' })).toHaveCount(0);
     await page.setViewportSize({ width: 1280, height: 800 });
     await reloadApp(page);
     await setScope(page, 'Day');

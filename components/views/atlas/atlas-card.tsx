@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, Crosshair, ExternalLink } from 'lucide-react';
 import { ContainerContextMenu } from '@/components/planner/container-context-menu';
@@ -9,13 +9,16 @@ import { AtlasRow } from '@/components/views/atlas/atlas-row';
 import { AtlasTileStrip } from '@/components/views/atlas/atlas-tile-strip';
 import { useAtlasPointer } from '@/components/views/atlas/use-atlas-pointer';
 import { ATLAS_COPY } from '@/lib/atlas-copy';
-import { touchDay, type AtlasCard as AtlasCardModel } from '@/lib/atlas-model';
+import { touchDay, type AtlasCard as AtlasCardModel, type AtlasMember } from '@/lib/atlas-model';
 import { ATLAS_CARD_W } from '@/lib/atlas-seed';
 import { formatDay } from '@/lib/active';
 import { formatCueTime, type TimeFormat } from '@/lib/reminders/copy';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Point, Rect } from '@/lib/atlas-camera';
 import { cn } from '@/lib/utils';
+
+/** How long a ticked row stays where it was before the card re-picks. */
+const TICK_HOLD_MS = 1500;
 
 /**
  * Card design A: a 9px square in the container's colour, the name and kind, a
@@ -52,8 +55,17 @@ export const AtlasCard = memo(function AtlasCard({
   const commit = useCallback((to: Point) => onMove(card.key, to), [onMove, card.key]);
   const { pos, dragging, handlers } = useAtlasPointer({ at, onCommit: commit });
 
-  const rows = expanded ? card.openRows : card.next ? [card.next] : [];
-  const rowIds = rows.map((m) => m.item.id);
+  const held = useTickHold(card);
+  const rows = useMemo(() => {
+    const base = expanded ? card.openRows : card.next ? [card.next] : [];
+    if (!held.member) return base;
+    // The ticked row stays in its slot, drawn with its new state, so a second
+    // click lands on it and never on the next item's box.
+    if (!expanded) return [held.member];
+    const rest = base.filter((m) => m.item.id !== held.member!.item.id);
+    return [...rest.slice(0, held.index), held.member, ...rest.slice(held.index)];
+  }, [expanded, card.openRows, card.next, held.member, held.index]);
+  const rowIds = useMemo(() => rows.map((m) => m.item.id), [rows]);
   const footerLeft =
     card.kind === 'goal'
       ? [ATLAS_COPY.milestones(card.lit, card.total), ATLAS_COPY.feeds(card.feeds ?? 0)].join(' · ')
@@ -82,11 +94,17 @@ export const AtlasCard = memo(function AtlasCard({
       tabIndex={0}
       aria-label={ATLAS_COPY.cardLabel(card.name, card.kindLabel)}
       {...handlers}
+      onPointerEnter={held.onEnter}
+      onPointerLeave={held.onLeave}
       className={cn(
         'group/card absolute left-0 top-0 flex flex-col rounded-2xl border bg-card text-card-foreground outline-none',
         'focus-visible:ring-2 focus-visible:ring-ring',
         card.allDone ? 'border-dashed border-muted-foreground/60' : 'border-border',
-        dragging ? 'z-10 cursor-grabbing shadow-[var(--shadow-elev-panel)]' : 'cursor-grab shadow-[var(--shadow-elev-sm)]'
+        // Seeding leaves room for a collapsed card; an expanded, hovered or
+        // focused one is lifted so the card below never paints over it.
+        dragging
+          ? 'z-20 cursor-grabbing shadow-[var(--shadow-elev-panel)]'
+          : cn('cursor-grab shadow-[var(--shadow-elev-sm)] hover:z-[5] focus-within:z-[5]', expanded && 'z-10')
       )}
       style={{ width: ATLAS_CARD_W, transform: `translate(${pos.x}px, ${pos.y}px)` }}
     >
@@ -116,7 +134,7 @@ export const AtlasCard = memo(function AtlasCard({
           <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{card.name}</span>
           <span className="flex-none text-2xs text-muted-foreground">
             {card.kindLabel}
-            {card.targetOn ? ` · ${formatDay(card.targetOn)}` : ''}
+            {card.targetOn ? ` · ${ATLAS_COPY.target(formatDay(card.targetOn))}` : ''}
           </span>
           {card.openRows.length > 1 && (
             <button
@@ -134,8 +152,13 @@ export const AtlasCard = memo(function AtlasCard({
       </ContainerContextMenu>
 
       {/* The hover bar: shown on hover or focus within, by visibility, never
-          by opacity. Focus (the sheet) joins it in PR1c. */}
-      <div className="invisible absolute -top-8 right-1.5 flex gap-0.5 rounded-[10px] border border-border bg-card p-0.5 shadow-[var(--shadow-elev-sm)] group-hover/card:visible group-focus-within/card:visible">
+          by opacity. Its transparent `after:` block bridges the gap down to
+          the card, so the pointer keeps the card hovered on its way up. Focus
+          (the sheet) joins it in PR1c. */}
+      <div
+        data-testid="atlas-card-hoverbar"
+        className="invisible absolute -top-8 right-1.5 flex gap-0.5 rounded-[10px] border border-border bg-card p-0.5 shadow-[var(--shadow-elev-sm)] after:absolute after:inset-x-0 after:top-full after:h-2 group-hover/card:visible group-focus-within/card:visible"
+      >
         <Link
           href={`/${card.kind}/${card.id}`}
           data-testid="atlas-card-open-page"
@@ -159,11 +182,12 @@ export const AtlasCard = memo(function AtlasCard({
                 cardRowIds={rowIds}
                 todayStr={todayStr}
                 milestoneIds={milestoneIds}
+                onTicked={held.hold}
               />
             ))}
           </div>
         ) : (
-          card.members.length > 0 && (
+          card.allDone && (
             <p
               data-testid="atlas-card-all-done"
               className="rounded-lg border border-dashed border-muted-foreground/60 px-2 py-1.5 text-xs text-muted-foreground"
@@ -198,8 +222,57 @@ function touchLine(card: AtlasCardModel, timeFormat: TimeFormat): string {
   if (t.kind === 'touched') parts.push(t.days === 0 ? ATLAS_COPY.touchedToday : ATLAS_COPY.touchedAgo(t.days));
   else if (t.kind === 'resting' && day) parts.push(ATLAS_COPY.restingSince(day));
   else if (t.kind === 'paused') parts.push(day ? ATLAS_COPY.pausedTill(day) : ATLAS_COPY.paused);
+  else if (t.kind === 'ended') {
+    if (t.reason === 'setAside') parts.push(ATLAS_COPY.setAside);
+    else if (t.reason === 'achieved') parts.push(day ? ATLAS_COPY.achievedOn(day) : ATLAS_COPY.achieved);
+    else if (day) parts.push(ATLAS_COPY.seasonEnded(day));
+  }
   if (card.usualTime) parts.push(ATLAS_COPY.usually(formatCueTime(card.usualTime, timeFormat)));
   return parts.join(' · ');
+}
+
+/**
+ * Holds a row ticked on this card in its slot until TICK_HOLD_MS has passed
+ * and the pointer has left the card, whichever is later. The member is
+ * re-resolved from the card's current members, so it draws its new state.
+ */
+function useTickHold(card: AtlasCardModel) {
+  const [heldId, setHeldId] = useState<{ id: string; index: number } | null>(null);
+  const inside = useRef(false);
+  const timeUp = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  const hold = useCallback(
+    (id: string) => {
+      const list = card.openRows;
+      const at = Math.max(0, list.findIndex((m) => m.item.id === id));
+      setHeldId({ id, index: at });
+      timeUp.current = false;
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        timeUp.current = true;
+        if (!inside.current) setHeldId(null);
+      }, TICK_HOLD_MS);
+    },
+    [card.openRows]
+  );
+  const onEnter = useCallback(() => {
+    inside.current = true;
+  }, []);
+  const onLeave = useCallback(() => {
+    inside.current = false;
+    if (timeUp.current) setHeldId(null);
+  }, []);
+
+  const member: AtlasMember | null = heldId
+    ? (card.members.find((m) => m.item.id === heldId.id) ?? null)
+    : null;
+  return { member, index: heldId?.index ?? 0, hold, onEnter, onLeave };
 }
 
 /** A goal's milestones as diamonds with their dates. Information only. */

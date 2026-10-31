@@ -19,6 +19,7 @@ import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { getSnapshotEpoch } from '@/lib/planner-snapshot';
 import { getItemNotesEpoch, useItemNotesStore } from '@/lib/item-notes-store';
+import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore, SIDEBAR_DEFAULT_WIDTH } from '@/lib/sidebar-store';
 import { recordReleased, releasedOn } from '@/lib/sweep-grace';
@@ -310,6 +311,29 @@ describe('the item notes store', () => {
     before = getItemNotesEpoch();
     expect(adoptLocalState(USER_B)).toBe(true);
     expect(getItemNotesEpoch()).toBeGreaterThan(before);
+  });
+});
+
+/**
+ * Atlas's memory-only UI state is keyed by container ids and remembers that the
+ * map was fitted; the next account's first Atlas must fit to its own cards.
+ */
+describe('the Atlas UI store', () => {
+  it('is in RAW_CLEARERS: a sign-out and an account switch both reset it', () => {
+    adoptLocalState(USER_A);
+    const dirty = () =>
+      useAtlasUiStore.setState({ fitted: true, camera: { x: 40, y: 9, z: 0.5 }, seeded: { 'project:p1': { x: 0, y: 0 } } });
+
+    dirty();
+    clearUserScopedLocalState();
+    expect(useAtlasUiStore.getState().fitted).toBe(false);
+    expect(useAtlasUiStore.getState().seeded).toEqual({});
+
+    adoptLocalState(USER_A);
+    dirty();
+    expect(adoptLocalState(USER_B)).toBe(true);
+    expect(useAtlasUiStore.getState().fitted).toBe(false);
+    expect(useAtlasUiStore.getState().camera).toEqual({ x: 0, y: 0, z: 1 });
   });
 });
 

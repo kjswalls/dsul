@@ -9,7 +9,12 @@ import type { Point, Viewport } from './atlas-camera';
  * - each card that feeds a goal (most of its members are that goal's items)
  *   beside its goal, on the goal's row;
  * - a season's routines beside the season;
- * - everything else in a grid to the right.
+ * - everything else in a grid under the goal block (from the top when there
+ *   are no goals), as wide as the seed viewport or as a roughly 16:9 block,
+ *   whichever is wider.
+ *
+ * Goals arrive live first (lib/atlas-model.ts sorts them as every goal list
+ * does), so an achieved or set-aside goal never takes the top rows.
  *
  * Cards snap to a cell grid, and a cell is free only when its card rect would
  * overlap no placed card and no card seeded before it, so nothing lands on
@@ -122,15 +127,26 @@ export function seedPlaces(
     }
   }
 
-  // 3. The rest in a grid to the right of the goal area.
-  const startCol = hasGoals ? 1 + FEEDER_COLS : 0;
-  const fit = Math.floor(Math.max(0, viewport.w) / CELL_W) - startCol;
-  const cols = Math.max(3, Number.isFinite(fit) ? fit : 3);
+  // 3. The rest in a grid under the goal block. Its width comes from the room
+  // the seed viewport has, or from the count for a roughly 16:9 block (cells
+  // are 300x230, so c = sqrt(1.4n) columns), whichever is wider.
+  let startRow = 0;
+  if (hasGoals) {
+    for (const c of cards) {
+      if (c.kind !== 'goal' && !feedsGoal.has(c.key)) continue;
+      const p = placed[c.key] ?? out[c.key];
+      if (p) startRow = Math.max(startRow, Math.floor((p.y + ATLAS_CARD_H) / CELL_H) + 1);
+    }
+  }
+  const rest = cards.filter((c) => unplaced(c)).length;
+  const fit = Math.floor(Math.max(0, viewport.w) / CELL_W);
+  const cols = Math.max(3, Number.isFinite(fit) ? fit : 3, Math.ceil(Math.sqrt(1.4 * rest)));
+  const startCol = 0;
   const routinesById = new Map(cards.filter((c) => c.kind === 'routine').map((c) => [c.id, c]));
 
   for (const c of cards) {
     if (!unplaced(c) || c.kind === 'routine') continue;
-    const at = takeAlong(c.key, 0, startCol, cols);
+    const at = takeAlong(c.key, startRow, startCol, cols);
     if (c.kind === 'season') {
       // Its routines beside it, on its row.
       for (const rid of c.routineIds ?? []) {
@@ -140,7 +156,7 @@ export function seedPlaces(
     }
   }
   for (const c of cards) {
-    if (unplaced(c)) takeAlong(c.key, 0, startCol, cols);
+    if (unplaced(c)) takeAlong(c.key, startRow, startCol, cols);
   }
 
   return out;

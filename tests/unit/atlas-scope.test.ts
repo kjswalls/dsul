@@ -163,14 +163,22 @@ describe('the registry', () => {
     }
   });
 
-  it('adds a task to today from atlas, not the hidden selected date', () => {
+  it('adds a task from atlas exactly as from day: undated, organizers shown', () => {
     useViewStore.setState({ scope: 'atlas' });
     cmd('create.task').run(ctx);
     const dialog = useUIStore.getState().activeDialog as { type: string; date?: Date } | null;
     expect(dialog?.type).toBe('add');
-    expect(dialog?.date).toBeInstanceOf(Date);
+    expect(dialog?.date).toBeUndefined();
     useViewStore.setState({ scope: 'day' });
     cmd('create.task').run(ctx);
     expect((useUIStore.getState().activeDialog as { date?: Date }).date).toBeUndefined();
+  });
+
+  it('setScope(atlas) moves the hidden selected day to today, so palette verbs and the status bar act on today', () => {
+    usePlannerStore.setState({ selectedDate: new Date(2020, 0, 2, 12) });
+    useViewStore.getState().setScope('atlas');
+    const sel = usePlannerStore.getState().selectedDate;
+    expect(Math.abs(sel.getTime() - Date.now())).toBeLessThan(5000);
+    useViewStore.getState().setScope('day');
   });
 });

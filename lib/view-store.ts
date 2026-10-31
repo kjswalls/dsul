@@ -336,7 +336,16 @@ export const useViewStore = create<ViewStore>()(
         // server, every device reads it back (the phone too), and planner-store's
         // ViewMode stays 'day' | 'week'. This device still reopens on Atlas,
         // because `scope` persists in dsul-view.
-        if (scope === 'atlas') return;
+        //
+        // Atlas has no day of its own and its rows act on today, so the hidden
+        // selected day follows: the palette's item verbs, the status bar's
+        // counts and every other selectedDate reader then agree with the cards
+        // (design rule 4). Going back to Day lands on today, which is what a
+        // date command from Atlas already means.
+        if (scope === 'atlas') {
+          usePlannerStore.getState().setSelectedDate(new Date());
+          return;
+        }
         // Legacy mirror + user-settings sync (planner-store persists default_view)
         usePlannerStore.getState().setViewMode(scope);
       },

@@ -5,7 +5,16 @@ import { AtlasSurface } from '@/components/views/atlas/atlas-surface';
 import { AtlasCard } from '@/components/views/atlas/atlas-card';
 import { useAtlasCards } from '@/components/views/atlas/use-atlas-cards';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
-import { centerOn, ensureVisible, fitBounds, type Point, type Rect, type Viewport } from '@/lib/atlas-camera';
+import {
+  ATLAS_FIT_FLOOR,
+  centerOn,
+  ensureVisible,
+  fitBounds,
+  type Point,
+  type Rect,
+  type Viewport,
+} from '@/lib/atlas-camera';
+import { usePlannerPreviewing, usePlannerSettled } from '@/lib/planner-ready';
 import { ATLAS_CARD_H, ATLAS_CARD_W, seedPlaces } from '@/lib/atlas-seed';
 import { ATLAS_COPY } from '@/lib/atlas-copy';
 import type { AtlasCard as AtlasCardModel } from '@/lib/atlas-model';
@@ -32,7 +41,12 @@ const SEED_VIEWPORT: Viewport = { w: 1600, h: 900 };
  */
 export function AtlasView({ activeId }: { activeId?: string | null }) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const { cards, todayStr, milestoneIds } = useAtlasCards();
+  const { cards, todayStr, milestoneIds, collectionsShown, goalsShown } = useAtlasCards();
+  const settled = usePlannerSettled();
+  const previewing = usePlannerPreviewing();
+  // A press inside the map focuses what it lands on; that focus must not pan
+  // (the card would move out from under the press). Only keyboard focus pans.
+  const pointerDown = useRef(false);
   const moved = useAtlasUiStore((s) => s.moved);
   const expanded = useAtlasUiStore((s) => s.expanded);
   const fitToken = useAtlasUiStore((s) => s.fitToken);
@@ -78,13 +92,18 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     return () => ro.disconnect();
   }, []);
 
-  // First mount: fit to the cards, once per session.
+  // First mount: fit to the cards, once per session, on the settled load (a
+  // cached preview's cards would set `fitted` before the real ones arrive).
+  // Never below a readable zoom: a big map opens at its top-left corner,
+  // where the goals sit, instead of as a field of unreadable cards. The
+  // toolbar's Fit keeps the full range.
   useEffect(() => {
     const ui = useAtlasUiStore.getState();
+    if (!settled || previewing) return;
     if (ui.fitted || viewport.w <= 0 || viewport.h <= 0 || cards.length === 0) return;
-    ui.setCamera(fitBounds(rects(cards), viewport, 48, ui.camera));
+    ui.setCamera(fitBounds(rects(cards), viewport, 48, ui.camera, ATLAS_FIT_FLOOR));
     ui.markFitted();
-  }, [viewport, cards, rects]);
+  }, [viewport, cards, rects, settled, previewing]);
 
   // The toolbar's Fit.
   const lastFit = useRef(fitToken);
@@ -108,6 +127,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
 
   // A card (or a row in it) taking focus pans it on screen, as Tab walks the map.
   const onFocus = (e: FocusEvent) => {
+    if (pointerDown.current) return;
     const card = (e.target as Element).closest?.('[data-atlas-card]');
     const key = card?.getAttribute('data-atlas-card');
     const p = key ? places[key] : undefined;
@@ -130,6 +150,15 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
       role="region"
       aria-label={ATLAS_COPY.canvasLabel}
       onFocus={onFocus}
+      onPointerDownCapture={() => {
+        pointerDown.current = true;
+      }}
+      onPointerUpCapture={() => {
+        pointerDown.current = false;
+      }}
+      onPointerCancelCapture={() => {
+        pointerDown.current = false;
+      }}
       className="relative min-h-0 flex-1 outline-none"
       style={{ overflow: 'clip' }}
     >
@@ -157,7 +186,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
           data-testid="atlas-empty"
           className="pointer-events-none absolute inset-x-0 top-1/3 mx-auto max-w-sm px-4 text-center text-sm text-muted-foreground"
         >
-          {ATLAS_COPY.empty}
+          {ATLAS_COPY.empty(collectionsShown, goalsShown)}
         </p>
       )}
     </div>

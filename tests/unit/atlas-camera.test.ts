@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ATLAS_FIT_FLOOR,
   ATLAS_MAX_ZOOM,
   ATLAS_MIN_ZOOM,
   centerOn,
@@ -84,5 +85,17 @@ describe('atlas camera', () => {
     const c = worldToScreen(cam, { x: 1130, y: 1100 });
     expect(c.x).toBeCloseTo(400);
     expect(c.y).toBeCloseTo(300);
+  });
+
+  it('fitBounds with a floor stops there and anchors the top-left corner at the pad', () => {
+    const rects = [{ x: 100, y: 50, w: 6000, h: 3000 }];
+    const cam = fitBounds(rects, { w: 1100, h: 760 }, 48, undefined, ATLAS_FIT_FLOOR);
+    expect(cam.z).toBe(ATLAS_FIT_FLOOR);
+    expect(worldToScreen(cam, { x: 100, y: 50 })).toEqual({ x: 48, y: 48 });
+    // Without one, the same bounds go all the way down.
+    expect(fitBounds(rects, { w: 1100, h: 760 }, 48).z).toBe(ATLAS_MIN_ZOOM);
+    // A map that fits above the floor is centred as before.
+    const small = [{ x: 0, y: 0, w: 500, h: 300 }];
+    expect(fitBounds(small, { w: 1100, h: 760 }, 48, undefined, ATLAS_FIT_FLOOR)).toEqual(fitBounds(small, { w: 1100, h: 760 }, 48));
   });
 });

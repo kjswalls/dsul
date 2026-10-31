@@ -9,6 +9,7 @@ import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { setHoveredItemRef } from '@/lib/hovered-item';
 import { formatShort } from '@/lib/collections';
 import type { AtlasMember } from '@/lib/atlas-model';
+import { ATLAS_COPY } from '@/lib/atlas-copy';
 import type { HabitItem, Task } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -32,6 +33,7 @@ export const AtlasRow = memo(function AtlasRow({
   cardRowIds,
   todayStr,
   milestoneIds,
+  onTicked,
 }: {
   member: AtlasMember;
   cardKey: string;
@@ -39,6 +41,12 @@ export const AtlasRow = memo(function AtlasRow({
   cardRowIds: readonly string[];
   todayStr: string;
   milestoneIds: ReadonlySet<string>;
+  /**
+   * Called just before the tick runs, so the card can hold this row where it
+   * is while the model re-picks (a ticked row leaving at once would put the
+   * next item's box under a second click).
+   */
+  onTicked?: (itemId: string) => void;
 }) {
   const { item, state, todayState } = member;
   const boxRef = useRef<HTMLButtonElement>(null);
@@ -61,9 +69,19 @@ export const AtlasRow = memo(function AtlasRow({
       return;
     }
     if (e.shiftKey) {
-      // rangeIds walks every row in the document; keep only this card's.
-      const mine = new Set(cardRowIds);
-      selection.selectRange(rangeIds(selection.anchorId, item.id).filter((id) => mine.has(id)));
+      // With the anchor on this card, the range runs along this card's own
+      // rows: rangeIds walks the document and counts an item once, at its
+      // first row, so an item that also shows on an earlier card would bend
+      // the range out of this one. With the anchor elsewhere, the document
+      // range is clipped to this card's rows.
+      const a = selection.anchorId ? cardRowIds.indexOf(selection.anchorId) : -1;
+      const t = cardRowIds.indexOf(item.id);
+      if (a !== -1 && t !== -1) {
+        selection.selectRange(cardRowIds.slice(Math.min(a, t), Math.max(a, t) + 1));
+      } else {
+        const mine = new Set(cardRowIds);
+        selection.selectRange(rangeIds(selection.anchorId, item.id).filter((id) => mine.has(id)));
+      }
       return;
     }
     open();
@@ -102,12 +120,14 @@ export const AtlasRow = memo(function AtlasRow({
           type="button"
           role="checkbox"
           aria-checked={done}
-          aria-label={verbs.tick?.label ?? (done ? 'Mark incomplete' : 'Mark complete')}
+          aria-label={verbs.tick?.label ?? (done ? ATLAS_COPY.markOpen : ATLAS_COPY.markDone)}
           disabled={!verbs.tick}
           data-testid="atlas-row-check"
           onClick={(e) => {
             e.stopPropagation();
-            if (!verbs.tick) return;
+            // The second click of a double click is not a second tick.
+            if (!verbs.tick || e.detail > 1) return;
+            onTicked?.(item.id);
             animateItemCheck(boxRef.current, done);
             verbs.tick.run();
           }}

@@ -5,8 +5,9 @@ import type { AtlasKind } from './atlas-model';
 /**
  * Atlas's memory-only UI state (design D3): the camera, the focus sheet, which
  * cards are expanded, and, in PR1a, where cards have been dragged this
- * session. Not persisted and not registered with lib/local-state.ts: nothing
- * here outlives the tab, and none of it says anything about the account.
+ * session. Not persisted: nothing here outlives the tab. It is still keyed by
+ * container ids and remembers whether the map was fitted, so lib/local-state.ts
+ * clears it with the account (a raw clearer, {@link clearAtlasUiState}).
  *
  * The focus sheet lives here, never in ui-store's `activeDialog`: that slot is
  * one slot and the open item lives in it, so a sheet there would close the
@@ -80,3 +81,8 @@ export const useAtlasUiStore = create<AtlasUiStore>()((set) => ({
     set((s) => (Object.keys(places).length === 0 ? s : { seeded: { ...s.seeded, ...places } })),
   reset: () => set({ ...INITIAL }),
 }));
+
+/** lib/local-state.ts's raw clearer: sign-out, an account switch, another tab's switch. */
+export function clearAtlasUiState(): void {
+  useAtlasUiStore.getState().reset();
+}

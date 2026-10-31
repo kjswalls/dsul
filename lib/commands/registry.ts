@@ -272,11 +272,10 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'new create todo',
     aliases: ['task'],
     shortcut: { id: 'new_task', keys: ['n'] },
-    // On Atlas the selected date is hidden, so a new task lands on today.
-    run: () => openAddDialog('task', undefined, onAtlas() ? new Date() : undefined),
+    run: () => openAddDialog('task'),
     // Over a grid slot or an add row, the key adds right there.
     runFromShortcut: () => {
-      if (!openHoveredSlot()) openAddDialog('task', undefined, onAtlas() ? new Date() : undefined);
+      if (!openHoveredSlot()) openAddDialog('task');
     },
   },
   {
