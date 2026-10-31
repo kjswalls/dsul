@@ -3019,6 +3019,35 @@ button[data-ai-chip]:focus-visible {
   outline-offset: 1px;
 }
 
+/* A row's AI marks under its hover buttons (Kirby's pick C, 2026-10-31). The
+   buttons appear where the chip sits, and the title's fade never reached the
+   chip, so it peeked out as "Cl". Now, while the buttons are up (hover, a
+   focused control, or the date picker held open), the row's own marks step
+   aside and [data-row-ai-dot] waits just left of the buttons with the status in
+   its tooltip. Direct children only: the dot lives inside the buttons'
+   cluster and must not fold with them. Hidden, never faded: these are lime
+   marks, and lime never goes through an opacity. */
+[data-row-ai-fold]:is(:hover, :has(:focus-visible), [data-row-ai-fold='held'])
+  > :is([data-ai-chip], [data-agent-chip], [data-ai-relay]) {
+  visibility: hidden;
+}
+[data-row-ai-dot] {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+}
+[data-row-ai-dot] [data-ai-dot] {
+  margin-inline: 0;
+}
+[data-ai-dot='quiet'],
+.dark [data-ai-dot='quiet'] {
+  background: none;
+  box-shadow: inset 0 0 0 1.5px var(--muted-foreground);
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-ai-relay] > i {
     animation: none;
