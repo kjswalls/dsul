@@ -105,9 +105,13 @@ describe('087_atlas_positions.sql', () => {
     expect(flat).toContain('revoke all on function public.atlas_positions_cap() from public, anon, authenticated');
   });
 
-  it('forgets a container when its row is deleted, on all four tables, as the invoker', () => {
+  it('forgets a container when its row is deleted, on all four tables, as the definer', () => {
     const forget = fn('atlas_positions_forget');
-    expect(forget).toContain('security invoker');
+    // Delete account: GoTrue's cascade from auth.users fires these triggers as
+    // supabase_auth_admin, which has no grant on atlas_positions. As the
+    // invoker the delete fails and rolls the account deletion back.
+    expect(forget).toContain('security definer');
+    expect(forget).not.toContain('security invoker');
     expect(forget).toContain("set search_path = ''");
     expect(forget).toContain('container_kind = tg_argv[0]');
     expect(forget).toContain('container_id = old.id');
@@ -124,6 +128,8 @@ describe('087_atlas_positions.sql', () => {
       );
     }
     expect(flat).toContain('revoke all on function public.atlas_positions_forget() from public, anon, authenticated');
+    // The trigger's filter is the primary key; a second index by container is never used.
+    expect(flat).not.toMatch(/create index[^;]*atlas_positions/);
   });
 
   it('adds the far-zoom paper column once, nullable, with no CHECK', () => {

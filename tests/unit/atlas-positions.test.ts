@@ -113,7 +113,39 @@ describe('fetch', () => {
   });
 });
 
+describe('fetch paging', () => {
+  it('pages past the API row limit in key order, up to the cap', async () => {
+    const row = (i: number) => ({ container_kind: 'project', container_id: `p${i}`, x: i, y: i });
+    const full = Array.from({ length: 1000 }, (_, i) => row(i));
+    const { db, calls } = fakeDb([{ data: full }, { data: [row(1000), row(1001)] }]);
+    const got = await fetchAtlasPlaces(db);
+    expect(got).not.toBe('unavailable');
+    expect((got as AtlasPlace[]).length).toBe(1002);
+    expect(calls).toHaveLength(2);
+    expect(calls[0].ops.find((o) => o[0] === 'range')).toEqual(['range', 0, 999]);
+    expect(calls[1].ops.find((o) => o[0] === 'range')).toEqual(['range', 1000, 1999]);
+    expect(calls[0].ops.filter((o) => o[0] === 'order').map((o) => o[1])).toEqual(['container_kind', 'container_id']);
+  });
+
+  it('stops after one short page', async () => {
+    const { db, calls } = fakeDb([{ data: [] }]);
+    expect(await fetchAtlasPlaces(db)).toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
+});
+
 describe('upsert', () => {
+  it('insertOnly is ON CONFLICT DO NOTHING (ignoreDuplicates); the default updates', async () => {
+    const { db, calls } = fakeDb([{}, {}]);
+    await upsertAtlasPlaces([place()], db, 'xy', { insertOnly: true });
+    await upsertAtlasPlaces([place()], db, 'xy');
+    expect(calls[0].ops.find((o) => o[0] === 'upsert')![2]).toEqual({
+      onConflict: 'user_id,container_kind,container_id',
+      ignoreDuplicates: true,
+    });
+    expect(calls[1].ops.find((o) => o[0] === 'upsert')![2]).toEqual({ onConflict: 'user_id,container_kind,container_id' });
+  });
+
   it('sends no user_id and conflicts on the primary key', async () => {
     const { db, calls } = fakeDb([{}]);
     expect(await upsertAtlasPlaces([place({ band: 'now' })], db)).toBe('ok');

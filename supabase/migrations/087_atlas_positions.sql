@@ -74,8 +74,9 @@ begin
   end if;
 end$$;
 
-create index if not exists atlas_positions_container_idx
-  on public.atlas_positions (container_kind, container_id);
+-- No index beyond the primary key: the only reader by container is the forget
+-- trigger below, and it filters on (user_id, container_kind, container_id),
+-- which is the key itself. Nothing reads this table across users.
 
 drop trigger if exists atlas_positions_updated_at on public.atlas_positions;
 create trigger atlas_positions_updated_at
@@ -137,14 +138,21 @@ create trigger atlas_positions_cap
   for each row execute function public.atlas_positions_cap();
 
 -- ── A container that is deleted takes its place with it ──────────────────────
--- SECURITY INVOKER: a user's own Delete forever runs under RLS and may delete
--- only their own rows (the policy and the delete grant allow exactly that); the
--- purge cron and account deletion run as a role that bypasses RLS.
+-- SECURITY DEFINER (owned by postgres, as 076's items_request_wake), because
+-- of Delete account. auth.admin.deleteUser deletes from auth.users as
+-- supabase_auth_admin; the cascade into projects/routines/seasons/goals queues
+-- these AFTER triggers, and they run at the end of GoTrue's statement under
+-- supabase_auth_admin, which holds no grant on atlas_positions. As the invoker
+-- the delete below would fail with "permission denied" and roll the whole
+-- account deletion back. It is safe as definer: it deletes only the row whose
+-- owner, kind and id match the container row just deleted, a delete that
+-- already passed that table's own RLS, and a trigger function cannot be
+-- called directly (EXECUTE is revoked as well).
 
 create or replace function public.atlas_positions_forget()
 returns trigger
 language plpgsql
-security invoker
+security definer
 set search_path = ''
 as $$
 begin

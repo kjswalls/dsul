@@ -91,14 +91,35 @@ export function coercePlace(raw: unknown): AtlasPlace | null {
 const coerceAll = (rows: unknown): AtlasPlace[] =>
   Array.isArray(rows) ? rows.map(coercePlace).filter((p): p is AtlasPlace => p !== null) : [];
 
-/** Every place the account has; 'unavailable' while 087 is missing. Throws on any other error. */
+/** 087's cap: the most rows one account can hold. */
+export const ATLAS_ROW_CAP = 2000;
+/** One read's page. PostgREST's max_rows (Supabase's default is 1,000) truncates a longer answer silently. */
+export const ATLAS_PAGE = 1000;
+
+/**
+ * Every place the account has; 'unavailable' while 087 is missing. Throws on
+ * any other error. Paged in key order, because the cap is above the API's row
+ * limit and a truncated answer would re-seed the cards it left out.
+ */
 export async function fetchAtlasPlaces(db?: Db): Promise<AtlasPlace[] | 'unavailable'> {
-  const { data, error } = await (db ?? createClient()).from(ATLAS_TABLE).select(ATLAS_COLUMNS);
-  if (error) {
-    if (isMissingTable(error)) return 'unavailable';
-    throw Object.assign(new Error(error.message ?? 'atlas positions: read failed'), { code: error.code });
+  const client = db ?? createClient();
+  const out: AtlasPlace[] = [];
+  for (let from = 0; from < ATLAS_ROW_CAP; from += ATLAS_PAGE) {
+    const { data, error } = await client
+      .from(ATLAS_TABLE)
+      .select(ATLAS_COLUMNS)
+      .order('container_kind')
+      .order('container_id')
+      .range(from, from + ATLAS_PAGE - 1);
+    if (error) {
+      if (isMissingTable(error)) return 'unavailable';
+      throw Object.assign(new Error(error.message ?? 'atlas positions: read failed'), { code: error.code });
+    }
+    const rows: unknown[] = Array.isArray(data) ? data : [];
+    out.push(...coerceAll(rows));
+    if (rows.length < ATLAS_PAGE) break;
   }
-  return coerceAll(data);
+  return out;
 }
 
 /** The row an upsert sends: never user_id (087 grants no write of it; its default is auth.uid()). */
@@ -117,18 +138,25 @@ function rowFor(p: AtlasPlace, fields: AtlasFields): Record<string, unknown> {
  * Write places in one upsert. `fields` picks the columns sent, and PostgREST's
  * upsert updates only the columns it is sent, so a drag ('xy') never clears a
  * pin another device set, and a pin ('band') never moves a card.
+ *
+ * `insertOnly` is ON CONFLICT DO NOTHING, for writes whose contract is "a place
+ * the server lacks" (seeds, the one-time device upload): they never land over
+ * a place another tab or device has put since this one read.
  */
 export async function upsertAtlasPlaces(
   places: readonly AtlasPlace[],
   db?: Db,
-  fields: AtlasFields = 'all'
+  fields: AtlasFields = 'all',
+  opts: { insertOnly?: boolean } = {}
 ): Promise<AtlasWrite> {
   const rows = places
     .filter((p) => KINDS.includes(p.kind) && typeof p.id === 'string' && p.id !== '')
     .map((p) => rowFor(p, fields));
   if (rows.length === 0) return 'ok';
   try {
-    const { error } = await (db ?? createClient()).from(ATLAS_TABLE).upsert(rows, { onConflict: ATLAS_CONFLICT });
+    const { error } = await (db ?? createClient())
+      .from(ATLAS_TABLE)
+      .upsert(rows, { onConflict: ATLAS_CONFLICT, ...(opts.insertOnly ? { ignoreDuplicates: true } : {}) });
     if (!error) return 'ok';
     if (isMissingTable(error)) return 'unavailable';
     if ((error.message ?? '').includes('atlas_positions_limit')) return 'full';

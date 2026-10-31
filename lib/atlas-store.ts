@@ -46,7 +46,16 @@ import type { AtlasKind } from './atlas-model';
  *   - Every await re-checks that the account (and the store's generation) is
  *     the one it started for.
  *   - No debounce: a drag calls `place` once, on pointerup. Writes go out in
- *     order on one chain, so two quick drags of one card land in order.
+ *     order on one chain (the one-time upload too), so two quick drags of one
+ *     card land in order and a drag never races the upload. A queued write
+ *     re-checks the account before it starts, so nothing queued for one
+ *     account is sent under the next one's session.
+ *   - Seeds and the upload are insert-only: they fill places the server lacks
+ *     and never land over a place another tab or device has put since.
+ *   - Device-mode writes are read-modify-write by key against the blob, never a
+ *     replace from this tab's memory, so a second tab (or a write after a
+ *     first read that threw, when memory holds none of the blob) never wipes
+ *     places.
  */
 
 export type AtlasMode = 'unknown' | 'account' | 'device';
@@ -84,6 +93,13 @@ const index = (list: readonly AtlasPlace[]): Record<string, AtlasPlace> => {
   return out;
 };
 
+/** The entries of `from` whose keys are in `keys`. */
+const pick = (from: Record<string, AtlasPlace>, keys: Record<string, unknown>): Record<string, AtlasPlace> => {
+  const out: Record<string, AtlasPlace> = {};
+  for (const k of Object.keys(keys)) if (from[k]) out[k] = from[k];
+  return out;
+};
+
 const finite = (n: number) => typeof n === 'number' && Number.isFinite(n);
 
 /** Bumped by reset(), so an answer for a store that was reset is dropped. */
@@ -95,9 +111,12 @@ let fullToastShown = false;
 let pending = 0;
 
 /**
- * One write after another. With nothing in flight the request leaves at once
- * (in this tick, so a tab closed right after a drop still sent it); otherwise
- * it waits for the one ahead, so two quick drags of a card land in order.
+ * One write after another. With nothing in flight the request leaves at once;
+ * otherwise it waits for the one ahead, so two quick drags of a card land in
+ * order. There is no pagehide flush (design 1.3 asked for one): a write queued
+ * behind one in flight, or a fetch the browser cancels on unload, is lost if
+ * the tab closes at that moment, and the card shows at its last saved place.
+ * That is the accepted cost (pr1b-notes.md, Review outcome).
  */
 const enqueue = (job: () => Promise<void>): Promise<void> => {
   pending += 1;
@@ -117,7 +136,7 @@ const enqueue = (job: () => Promise<void>): Promise<void> => {
   return run;
 };
 
-/** Resolves when every write sent so far has answered (tests; there is nothing queued to flush). */
+/** Resolves when every write sent so far has answered (tests). */
 export function atlasWritesSettled(): Promise<void> {
   return chain;
 }
@@ -131,24 +150,51 @@ function sayFull() {
 export const useAtlasStore = create<AtlasStore>()((set, get) => {
   const current = (userId: string, gen: number) => get().userId === userId && generation === gen;
 
-  /** Into device mode for the rest of the session, with every place in the blob. */
+  /**
+   * Into device mode for the rest of the session. The blob is merged under
+   * memory, never replaced by it: after a first read that threw, memory holds
+   * none of the blob, and a replace would keep only what was placed since.
+   */
   const latchDevice = (userId: string) => {
-    set({ mode: 'device' });
-    writeLocalPlaces(userId, Object.values(get().places));
+    const merged = { ...index(readLocalPlaces(userId)), ...get().places };
+    set({ mode: 'device', places: merged });
+    writeLocalPlaces(userId, Object.values(merged));
+  };
+
+  /**
+   * One device-mode write, by key against what the blob holds now (another tab
+   * may have written since this one read). `insertOnly` keeps a key the blob
+   * already has, and memory takes the blob's value for it.
+   */
+  const writeDevice = (
+    userId: string,
+    changed: readonly AtlasPlace[],
+    opts: { insertOnly?: boolean; drop?: string } = {}
+  ) => {
+    const stored = index(readLocalPlaces(userId));
+    const mine = index(changed);
+    const merged = opts.insertOnly ? { ...mine, ...stored } : { ...stored, ...mine };
+    if (opts.drop) delete merged[opts.drop];
+    writeLocalPlaces(userId, Object.values(merged));
+    if (opts.insertOnly) {
+      const kept = pick(stored, mine);
+      if (Object.keys(kept).length > 0) set((s) => ({ places: { ...s.places, ...kept } }));
+    }
   };
 
   /** Send what changed to wherever places live now. */
-  const send = (changed: readonly AtlasPlace[], fields: AtlasFields) => {
+  const send = (changed: readonly AtlasPlace[], fields: AtlasFields, opts: { insertOnly?: boolean } = {}) => {
     const { userId, mode } = get();
     // No account (signed out, a test): the places live in memory only.
     if (!userId || changed.length === 0) return;
     if (mode === 'device') {
-      writeLocalPlaces(userId, Object.values(get().places));
+      writeDevice(userId, changed, opts);
       return;
     }
     const gen = generation;
     void enqueue(async () => {
-      const res = await upsertAtlasPlaces(changed, undefined, fields);
+      if (!current(userId, gen)) return;
+      const res = await upsertAtlasPlaces(changed, undefined, fields, opts);
       if (!current(userId, gen)) return;
       if (res === 'unavailable') latchDevice(userId);
       else if (res === 'full') sayFull();
@@ -160,11 +206,12 @@ export const useAtlasStore = create<AtlasStore>()((set, get) => {
     const { userId, mode } = get();
     if (!userId) return;
     if (mode === 'device') {
-      writeLocalPlaces(userId, Object.values(get().places));
+      writeDevice(userId, [], { drop: atlasPlaceKey(kind, id) });
       return;
     }
     const gen = generation;
     void enqueue(async () => {
+      if (!current(userId, gen)) return;
       const res = await deleteAtlasPlace(kind, id);
       if (!current(userId, gen)) return;
       if (res === 'unavailable') latchDevice(userId);
@@ -209,12 +256,18 @@ export const useAtlasStore = create<AtlasStore>()((set, get) => {
       clearAtlasLocalState();
       return;
     }
-    const res = await upsertAtlasPlaces(upload, undefined, 'all');
-    if (!current(userId, gen)) return;
-    if (res === 'ok') clearAtlasLocalState();
-    else if (res === 'unavailable') latchDevice(userId);
-    else if (res === 'full') sayFull();
-    // 'failed': the blob stays, and the next page load uploads it again.
+    // On the write chain, so a drag made while it is in flight queues behind
+    // it; insert-only, so it never lands over a place the server already has
+    // (another tab's upload and a drag made after it, say).
+    await enqueue(async () => {
+      if (!current(userId, gen)) return;
+      const res = await upsertAtlasPlaces(upload, undefined, 'all', { insertOnly: true });
+      if (!current(userId, gen)) return;
+      if (res === 'ok') clearAtlasLocalState();
+      else if (res === 'unavailable') latchDevice(userId);
+      else if (res === 'full') sayFull();
+      // 'failed': the blob stays, and the next page load uploads it again.
+    });
   };
 
   return {
@@ -258,7 +311,9 @@ export const useAtlasStore = create<AtlasStore>()((set, get) => {
       }
       if (changed.length === 0) return;
       set({ places });
-      send(changed, 'xy');
+      // Insert-only: a seed fills a place the server lacks and never replaces
+      // one another tab or device put since this tab read.
+      send(changed, 'xy', { insertOnly: true });
     },
 
     pin: (kind, id, band) => {

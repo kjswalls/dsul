@@ -89,6 +89,7 @@ describe('load', () => {
     expect(io.upsert).toHaveBeenCalledTimes(1);
     expect(io.upsert.mock.calls[0][0]).toEqual([P('b', 2, 2)]);
     expect(io.upsert.mock.calls[0][2]).toBe('all');
+    expect(io.upsert.mock.calls[0][3]).toEqual({ insertOnly: true });
     expect(localStorage.getItem(ATLAS_LOCAL_KEY)).toBeNull();
     // The server wins where both have the card.
     expect(store().places['project:a']).toEqual(P('a', 9, 9));
@@ -202,6 +203,8 @@ describe('writes', () => {
     store().placeMany([P('a'), P('b', 3, 4), P('c', null as never, null as never)]);
     expect(io.upsert).toHaveBeenCalledTimes(1);
     expect(io.upsert.mock.calls[0][0]).toEqual([P('a'), P('b', 3, 4)]);
+    // A seed never lands over a place another tab or device put.
+    expect(io.upsert.mock.calls[0][3]).toEqual({ insertOnly: true });
   });
 
   it("a write answering 'unavailable' latches device mode and writes the blob", async () => {
@@ -286,5 +289,86 @@ describe('writes', () => {
     store().pin('project', 'a', null);
     expect(store().places['project:a']).toEqual(P('a', 1, 1));
     expect(io.del).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('review fixes (PR1b)', () => {
+  it('a write after a first read that threw latches device mode WITHOUT wiping the blob', async () => {
+    writeLocalPlaces('u1', [P('a'), P('b'), P('c')]);
+    io.fetch.mockRejectedValue(new Error('network'));
+    await store().load('u1');
+    io.upsert.mockResolvedValueOnce('unavailable');
+    store().place('project', 'x', 9, 9);
+    await atlasWritesSettled();
+    expect(store().mode).toBe('device');
+    expect(readLocalPlaces('u1').map((p) => p.id).sort()).toEqual(['a', 'b', 'c', 'x']);
+    expect(store().places['project:a']).toEqual(P('a'));
+  });
+
+  it('the upload is on the write chain: a drag made during it lands after it', async () => {
+    writeLocalPlaces('u1', [P('a', 1, 1)]);
+    io.fetch.mockResolvedValue([]);
+    const held = deferred<'ok'>();
+    const order: string[] = [];
+    io.upsert
+      .mockImplementationOnce(async () => {
+        await held.promise;
+        order.push('upload');
+        return 'ok';
+      })
+      .mockImplementationOnce(async () => {
+        order.push('drag');
+        return 'ok';
+      });
+    const loading = store().load('u1');
+    await vi.waitFor(() => expect(io.upsert).toHaveBeenCalledTimes(1));
+    store().place('project', 'a', 50, 50);
+    expect(io.upsert).toHaveBeenCalledTimes(1);
+    held.resolve('ok');
+    await loading;
+    await atlasWritesSettled();
+    expect(order).toEqual(['upload', 'drag']);
+    expect(store().places['project:a']).toMatchObject({ x: 50, y: 50 });
+  });
+
+  it('a write still queued at sign-out is never sent under the next session', async () => {
+    io.fetch.mockResolvedValue([]);
+    await store().load('u1');
+    const held = deferred<'ok'>();
+    io.upsert.mockImplementationOnce(() => held.promise);
+    store().place('project', 'a', 1, 1);
+    store().place('project', 'b', 2, 2);
+    store().reset();
+    await store().load('u2');
+    held.resolve('ok');
+    await atlasWritesSettled();
+    expect(io.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('device writes merge by key with what another tab wrote since', async () => {
+    io.fetch.mockResolvedValue('unavailable');
+    await store().load('u1');
+    // Another tab seeds c after this one read.
+    writeLocalPlaces('u1', [P('c', 7, 7)]);
+    store().place('project', 'x', 1, 1);
+    expect(readLocalPlaces('u1').map((p) => p.id).sort()).toEqual(['c', 'x']);
+  });
+
+  it('a device seed keeps the place the blob already has, and memory takes it', async () => {
+    io.fetch.mockResolvedValue('unavailable');
+    await store().load('u1');
+    writeLocalPlaces('u1', [P('a', 7, 7)]);
+    store().placeMany([P('a', 1, 1)]);
+    expect(readLocalPlaces('u1')).toEqual([P('a', 7, 7)]);
+    expect(store().places['project:a']).toEqual(P('a', 7, 7));
+  });
+
+  it('a device forget removes only its key from the blob', async () => {
+    io.fetch.mockResolvedValue('unavailable');
+    await store().load('u1');
+    store().pin('project', 'a', 'now');
+    writeLocalPlaces('u1', [...readLocalPlaces('u1'), P('c', 7, 7)]);
+    store().pin('project', 'a', null);
+    expect(readLocalPlaces('u1')).toEqual([P('c', 7, 7)]);
   });
 });
