@@ -42,6 +42,7 @@ vi.mock('@/lib/db', () => ({
   deleteGoal: vi.fn(async () => {}),
   restoreGoal: vi.fn(async () => {}),
 }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), usePathname: () => '/' }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 vi.mock('@/lib/ui-store', async (orig) => {
@@ -186,10 +187,32 @@ describe('the verbs are the store’s own', () => {
     expect(rows().map((r) => r.getAttribute('data-item-id'))).toEqual(['mon']);
   });
 
-  it('the dashed box keeps it too', () => {
+  it('the dashed box marks it done, where it was, as one undoable step', () => {
     render(<GhostFold dateStr={TODAY} />);
-    fireEvent.click(within(row('mon')).getByTestId('ghost-box'));
-    expect(taskById('mon').startDate).toBe(TODAY);
+    const box = within(row('mon')).getByTestId('ghost-box');
+    expect(box).toHaveAccessibleName('Mark done');
+    fireEvent.click(box);
+    expect(taskById('mon').status).toBe('completed');
+    expect(taskById('mon').startDate).not.toBe(TODAY);
+    expect(rows().map((r) => r.getAttribute('data-item-id'))).toEqual(['thu']);
+    act(() => store().undo());
+    expect(taskById('mon').status).toBe('pending');
+  });
+
+  it('right-click opens the item menu with the fold’s verbs first', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    fireEvent.contextMenu(row('thu'), { clientX: 5, clientY: 5 });
+    const menu = screen.getByTestId('item-context-menu');
+    for (const id of ['ghost-menu-keep', 'ghost-menu-tomorrow', 'ghost-menu-sidebar', 'ghost-menu-let-go']) {
+      expect(within(menu).getByTestId(id)).toBeInTheDocument();
+    }
+    // Said once, in the fold's words: the shared Move to next day and Move to
+    // braindump are left out.
+    expect(within(menu).queryByTestId('item-menu-next-day')).toBeNull();
+    expect(within(menu).queryByTestId('item-menu-braindump')).toBeNull();
+    expect(within(menu).getByTestId('item-menu-tick')).toBeInTheDocument();
+    fireEvent.click(within(menu).getByTestId('ghost-menu-keep'));
+    expect(taskById('thu').startDate).toBe(TODAY);
   });
 
   it('Move to tomorrow', () => {
@@ -409,7 +432,7 @@ describe('a ghost inside a project block', () => {
     await load([task('blocked', '2026-07-10', { inProjectBlock: true }), task('free', '2026-07-09')]);
   });
 
-  it('offers only Let it go, and its box neither keeps nor shows a Plus', () => {
+  it('offers only Let it go and done', () => {
     render(<GhostFold dateStr={TODAY} />);
     const r = row('blocked');
     for (const id of ['ghost-keep', 'ghost-tomorrow', 'ghost-reschedule', 'ghost-sidebar']) {
@@ -417,8 +440,9 @@ describe('a ghost inside a project block', () => {
     }
     expect(within(r).getByTestId('ghost-let-go')).toBeInTheDocument();
     const box = within(r).getByTestId('ghost-box');
-    expect(box).toBeDisabled();
-    expect(box.querySelector('svg')).toBeNull();
+    expect(box).toBeEnabled();
+    fireEvent.click(box);
+    expect(taskById('blocked').status).toBe('completed');
   });
 
   it('is skipped by Keep all and by Send all to sidebar', () => {
