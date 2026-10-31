@@ -194,6 +194,18 @@ final class APIClient {
         _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.unschedule))
     }
 
+    /// POST /api/app/items/:id `letGo` (ghost rows phase 3): Let it go, from
+    /// the leftovers on Today, as DsulCore's `ItemWriteBody.letGo` sends it,
+    /// `{"action":"letGo"}` and nothing beside it. The server writes
+    /// `{status:'cancelled'}` behind the web's `letGoItems` gate and answers
+    /// 409 `not_let_go` for a row it refuses (a habit, a series, a finished
+    /// one); a row already let go is answered 200 with nothing written. An
+    /// older server answers 400 `invalid`; the fold hides the verb until
+    /// `writes` lists it.
+    func letGo(id: UUID) async throws {
+        _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.letGo))
+    }
+
     /// POST /api/app/items/:id `collect`: one membership row, the item added
     /// to one routine or season (last in a routine's order) or taken out of
     /// it, by the container's id. Never a list, so a toggle from another

@@ -35,6 +35,7 @@ import {
   isPausable,
   isRemindable,
   isSkippable,
+  itemTypeName,
   type ItemTypeConfig,
 } from '@/lib/item-registry';
 import {
@@ -46,6 +47,8 @@ import {
   nextDayTarget,
 } from '@/lib/row-moves';
 import { reminderNeedsDate } from '@/lib/bulk-edit';
+import { daysOverdue, selectOverdue } from '@/lib/overdue';
+import { GHOST_PILE_THRESHOLD, ghostFoldStartsCollapsed, ghostWeekday, selectGhostRows } from '@/lib/ghost-rows';
 import { cadenceLabel } from '@/lib/cadence';
 import { membershipSummary } from '@/lib/item-bands';
 import {
@@ -60,9 +63,9 @@ import {
   streakOf,
   wantsDoingOn,
 } from '@/lib/reminders/due';
-import { EOD_COPY, formatCueTime, lastCallCopy, reminderCopy, streakPhrase, type TimeFormat } from '@/lib/reminders/copy';
+import { formatCueTime, lastCallCopy, reminderCopy, streakPhrase, type TimeFormat } from '@/lib/reminders/copy';
 import { NEVER_SCOLDS } from './support/copy-contract';
-import { isCompletedOnDate } from '@/lib/recurrence';
+import { isCompletedOnDate, isRecurring } from '@/lib/recurrence';
 import { projectItems } from '@/lib/planner-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_STREAKS } from '@/lib/extension-registry';
@@ -1612,6 +1615,10 @@ type TypeCaps = {
   defaultBlockMinutes: number;
   dateAnchored: boolean;
   dateAddressable: boolean;
+  /** `carryForwardEligible`: a past-due one-off may come forward (lib/overdue.ts). */
+  carryForwardEligible: boolean;
+  /** `allowedStatuses.includes('cancelled')`: Let it go (`letGoItems`). */
+  cancellable: boolean;
   skippable: boolean;
   pausable: boolean;
   remindable: boolean;
@@ -1702,6 +1709,8 @@ function buildCaps(): CapsFixture {
       defaultBlockMinutes: c.schedule.defaultBlockMinutes,
       dateAnchored: c.dateAnchored,
       dateAddressable: c.dateAddressable,
+      carryForwardEligible: c.carryForwardEligible,
+      cancellable: c.allowedStatuses.includes('cancelled'),
       skippable: c.skippable,
       pausable: c.pausable,
       remindable: c.remindable,
@@ -2109,7 +2118,6 @@ type CopyFixture = {
   streakPhrase: StreakPhraseCase[];
   reminderCopy: ReminderCopyCase[];
   lastCallCopy: LastCallCopyCase[];
-  eodCopy: Copy;
 };
 
 /**
@@ -2194,7 +2202,6 @@ function buildCopy(): CopyFixture {
         ['a streak of one', named(['Reading'], [1])],
       ] as [string, Item[]][]
     ).map(([name, items]) => ({ name, items, expected: lastCallCopy(items) })),
-    eodCopy: { ...EOD_COPY },
   };
 }
 
@@ -2261,6 +2268,138 @@ function buildScheduleCopy(): ScheduleCopyFixture {
   };
 }
 
+// ── Ghost rows (lib/overdue.ts, lib/ghost-rows.ts → Overdue.swift, GhostRows.swift) ──
+
+interface GhostRowsFixture {
+  threshold: number;
+  worlds: {
+    name: string;
+    items: Item[];
+    days: {
+      name: string;
+      today: string;
+      inactiveIds: string[];
+      milestoneIds: string[];
+      /** selectOverdue's ids, in its order. */
+      overdue: string[];
+      /** selectGhostRows' ids, in its order. */
+      ghosts: string[];
+      /** daysOverdue for every item, by id. */
+      daysOverdue: Record<string, number>;
+    }[];
+  }[];
+  /** ghost-fold.tsx's gates for each verb, on the ghost's own day. */
+  verbs: { name: string; item: Item; milestoneIds: string[]; expected: Record<string, boolean> }[];
+  weekdays: { name: string; date: string; expected: string }[];
+  collapsed: { name: string; count: number; expected: boolean }[];
+}
+
+function buildGhostRows(): GhostRowsFixture {
+  const items: Item[] = [
+    task(1, 'Yesterday’s call', { startDate: '2026-10-14' }),
+    task(2, 'Two days back', { startDate: '2026-10-13', startTime: '09:00' }),
+    // Same day as 1, later in the store: ties keep store order.
+    task(3, 'Also yesterday', { startDate: '2026-10-14', timeBucket: 'evening' }),
+    // The boundary: 7 days is recent, 8 is the earlier tail.
+    task(4, 'A week back', { startDate: '2026-10-08' }),
+    task(5, 'Eight days back', { startDate: '2026-10-07' }),
+    task(6, 'A month back', { startDate: '2026-09-15' }),
+    // A legacy full-ISO row reads as its day.
+    task(7, 'Legacy ISO', { startDate: '2026-10-12T15:00:00.000Z' }),
+    custom(8, 'errand', 'Stamps', { startDate: '2026-10-11' }),
+    // Never ghosts: today, ahead, undated, done, let go, recurring, a subtask, a habit.
+    task(9, 'Due today', { startDate: '2026-10-15' }),
+    task(10, 'Ahead', { startDate: '2026-10-20' }),
+    task(11, 'In the braindump', { isScheduled: false }),
+    task(12, 'Done already', { startDate: '2026-10-13', status: 'completed' }),
+    task(13, 'Let go', { startDate: '2026-10-13', status: 'cancelled' }),
+    task(14, 'Weekly review', { startDate: '2026-10-01', repeatFrequency: 'weekly' }),
+    task(15, 'A subtask', { startDate: '2026-10-13', parentItemId: uid(1) }),
+    habit(16, 'Meds', { startDate: '2026-10-01' }),
+    // repeat "none" is a one-off.
+    task(17, 'Repeat none', { startDate: '2026-10-10', repeatFrequency: 'none' }),
+    // A milestone and a paused one, set aside by the sets the day passes.
+    task(18, 'Milestone: first draft', { startDate: '2026-10-09' }),
+    task(19, 'Paused', { startDate: '2026-10-12' }),
+    // An empty date and an empty parent read as none, as JavaScript's truthiness has it.
+    task(20, 'Empty date', { startDate: '' }),
+    task(21, 'Empty parent', { startDate: '2026-10-13', parentItemId: '' }),
+    // Across a month and a year end, and a leap day.
+    task(22, 'Leap day', { startDate: '2024-02-29' }),
+  ];
+  const day = (name: string, today: string, inactiveIds: string[], milestoneIds: string[]) => ({
+    name,
+    today,
+    inactiveIds,
+    milestoneIds,
+    overdue: selectOverdue(items, today, new Set(inactiveIds)).map((t) => t.id),
+    ghosts: selectGhostRows(items, today, new Set(inactiveIds), new Set(milestoneIds)).map((t) => t.id),
+    daysOverdue: Object.fromEntries(items.map((t) => [t.id, daysOverdue(t as Task, today)])),
+  });
+  // ghost-fold.tsx's own composition: canKeep and Reschedule ask canReschedule,
+  // Move to tomorrow canMoveToNextDay, Send to sidebar canSendToBraindump, all
+  // on the ghost's own day, and Let it go letGoItems' filter.
+  const ghostVerbs = (item: Item, milestones: ReadonlySet<string>) => {
+    const t = item as Task;
+    const day = (t.startDate ?? '').split('T')[0];
+    return {
+      keep: canReschedule(t, 'task', day),
+      tomorrow: canMoveToNextDay(t, 'task', day),
+      reschedule: canReschedule(t, 'task', day),
+      sidebar: canSendToBraindump(t, 'task', day, milestones),
+      letGo:
+        t.status === 'pending' &&
+        !isRecurring(t) &&
+        getItemTypeConfig(itemTypeName(item)).allowedStatuses.includes('cancelled'),
+    };
+  };
+  const verbItems: [string, Item, string[]][] = [
+    ['an open one-off', task(31, 'Call the bank', { startDate: '2026-10-13' }), []],
+    ['a legacy ISO date', task(32, 'Legacy', { startDate: '2026-10-12T15:00:00.000Z' }), []],
+    ['a custom type', custom(33, 'errand', 'Stamps', { startDate: '2026-10-11' }), []],
+    ['in a project block', task(34, 'Block', { startDate: '2026-10-13', inProjectBlock: true }), []],
+    ['a milestone', task(35, 'Milestone', { startDate: '2026-10-13' }), [uid(35)]],
+    ['a series', task(36, 'Weekly', { startDate: '2026-10-01', repeatFrequency: 'weekly' }), []],
+    ['done', task(37, 'Done', { startDate: '2026-10-13', status: 'completed' }), []],
+    ['let go already', task(38, 'Gone', { startDate: '2026-10-13', status: 'cancelled' }), []],
+    ['a habit', habit(39, 'Meds'), []],
+    // Dated, but neither scheduled nor in a part of day: the braindump lists it
+    // and it ghosts, so Send to sidebar is offered and clears the date
+    // (Move to Braindump's own "already a braindump row" check is not asked).
+    ['dated, not scheduled', task(40, 'Loose end', { startDate: '2026-10-13', isScheduled: false }), []],
+  ];
+  const weekdayDates = ['2026-10-15', '2026-10-11', '2026-10-17', '2024-02-29', '2026-01-01', '2026-10-12T23:30:00.000Z'];
+  return {
+    threshold: GHOST_PILE_THRESHOLD,
+    worlds: [
+      {
+        name: 'mixed',
+        items,
+        days: [
+          day('a Thursday with nothing set aside', '2026-10-15', [], []),
+          day('a milestone and a paused one set aside', '2026-10-15', [uid(19)], [uid(18)]),
+          day('a legacy ISO today', '2026-10-15T08:00:00.000Z', [], [uid(18)]),
+          day('the day after', '2026-10-16', [uid(19)], [uid(18)]),
+          day('long before anything', '2024-01-01', [], []),
+          day('the first of a new year', '2027-01-01', [], [uid(18)]),
+        ],
+      },
+    ],
+    verbs: verbItems.map(([name, item, milestoneIds]) => ({
+      name,
+      item,
+      milestoneIds,
+      expected: ghostVerbs(item, new Set(milestoneIds)),
+    })),
+    weekdays: weekdayDates.map((date) => ({ name: date, date, expected: ghostWeekday(date) })),
+    collapsed: [0, 1, 4, 5, 6, 12].map((count) => ({
+      name: `${count}`,
+      count,
+      expected: ghostFoldStartsCollapsed(count),
+    })),
+  };
+}
+
 // ── Writing and checking ─────────────────────────────────────────────────────
 
 const FIXTURES: Record<string, () => unknown> = {
@@ -2281,6 +2420,7 @@ const FIXTURES: Record<string, () => unknown> = {
   due: buildDue,
   copy: buildCopy,
   'schedule-copy': buildScheduleCopy,
+  'ghost-rows': buildGhostRows,
 };
 
 const serialize = (f: unknown) => JSON.stringify(f, null, 2) + '\n';
@@ -2320,6 +2460,18 @@ describe('day fixtures shared with DsulCore', () => {
       expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(JSON.parse(serialize(value)));
     });
   }
+
+  it('the ghost cases reach both cohorts, the milestone rule and both fold states', () => {
+    const g = generated['ghost-rows'] as GhostRowsFixture;
+    const [first, setAside] = g.worlds[0].days;
+    expect(first.ghosts.length).toBeGreaterThan(GHOST_PILE_THRESHOLD);
+    expect(first.ghosts).not.toEqual(first.overdue);
+    expect(first.ghosts).toContain(uid(18));
+    expect(setAside.ghosts).not.toContain(uid(18));
+    expect(setAside.overdue).toContain(uid(18));
+    expect(setAside.ghosts).not.toContain(uid(19));
+    expect(new Set(g.collapsed.map((c) => c.expected))).toEqual(new Set([true, false]));
+  });
 
   it('the cases exercise both answers of every predicate', () => {
     const active = generated.active as ActiveFixture;
@@ -2526,8 +2678,6 @@ describe('day fixtures shared with DsulCore', () => {
     const lines = [
       ...copy.reminderCopy.flatMap((c) => [c.expected.title, c.expected.body]),
       ...copy.lastCallCopy.flatMap((c) => (c.expected ? [c.expected.title, c.expected.body] : [])),
-      copy.eodCopy.title,
-      copy.eodCopy.body,
     ];
     for (const line of lines) expect(line, line).not.toMatch(NEVER_SCOLDS);
   });

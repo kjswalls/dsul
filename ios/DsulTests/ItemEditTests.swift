@@ -829,7 +829,7 @@ import Testing
     /// still moves the item through part 1's `move`, which it takes.
     @Test func anOlderServerTakesTheDateButNotTheTime() async throws {
         let partTwoC = PlannerJSON.allWrites.filter {
-            $0 != "time" && $0 != "repeat" && $0 != "project" && $0 != "collect" && $0 != "unschedule"
+            $0 != "time" && $0 != "repeat" && $0 != "project" && $0 != "collect" && $0 != "unschedule" && $0 != "letGo"
         }
         #expect(partTwoC.last == "reminder")
         let server = FakeServer()
@@ -1011,7 +1011,7 @@ import Testing
     /// stays read-only and a repeat edit sends nothing.
     @Test func anOlderServerKeepsTheRepeatReadOnly() async throws {
         let partTwoD = PlannerJSON.allWrites.filter {
-            $0 != "repeat" && $0 != "project" && $0 != "collect" && $0 != "unschedule"
+            $0 != "repeat" && $0 != "project" && $0 != "collect" && $0 != "unschedule" && $0 != "letGo"
         }
         #expect(partTwoD.last == "time")
         let server = FakeServer()
@@ -1191,7 +1191,7 @@ import Testing
     /// A server from before 2f lists writes up to `repeat`: the project chip
     /// stays read-only and a project edit sends nothing.
     @Test func anOlderServerKeepsTheProjectReadOnly() async throws {
-        let partTwoE = PlannerJSON.allWrites.filter { $0 != "project" && $0 != "collect" && $0 != "unschedule" }
+        let partTwoE = PlannerJSON.allWrites.filter { $0 != "project" && $0 != "collect" && $0 != "unschedule" && $0 != "letGo" }
         #expect(partTwoE.last == "repeat")
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload(writes: partTwoE)))
@@ -1338,7 +1338,7 @@ import Testing
     /// A server from before 2f-b lists writes up to `project`: the routine
     /// and season chips stay read-only and a toggle sends nothing.
     @Test func anOlderServerKeepsMembershipReadOnly() async throws {
-        let partTwoF = PlannerJSON.allWrites.filter { $0 != "collect" && $0 != "unschedule" }
+        let partTwoF = PlannerJSON.allWrites.filter { $0 != "collect" && $0 != "unschedule" && $0 != "letGo" }
         #expect(partTwoF.last == "project")
         let server = FakeServer()
         let routine = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine", [PlannerJSON.water])

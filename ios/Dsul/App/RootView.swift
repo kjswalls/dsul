@@ -9,7 +9,7 @@ enum AppTab: Hashable {
 /// as the tab view's bottom accessory everywhere but Ask (whose composer
 /// takes its place).
 ///
-/// The capture, date, item and Delete account sheets are one `PlannerSheet`
+/// The capture, date, item, leftover and Delete account sheets are one `PlannerSheet`
 /// on the planner. RootView presents it unless the braindump sheet is up; then
 /// the braindump sheet presents it, stacked (ScheduleView), because nothing
 /// under a sheet can present another one.
@@ -91,6 +91,8 @@ struct PlannerSheetContent: View {
             DatePickerSheet()
         case .item(let id, let day):
             ItemSheet(id: id, day: day)
+        case .ghost(let id):
+            GhostSheet(id: id)
         case .deleteAccount:
             DeleteAccountSheet()
         }

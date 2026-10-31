@@ -22,6 +22,8 @@ struct BucketsLayout: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 6)
                 }
+                // Leftovers on Today, above the buckets, on today only.
+                GhostFold(host: .card)
                 ForEach(Self.order, id: \.self) { bucket in
                     BucketCard(bucket: bucket, items: buckets[bucket] ?? [], nowMin: nowMin)
                 }

@@ -24,7 +24,7 @@
  *     in between, a last call whose last item was done: each is silence now
  *     (due.ts's wantsDoingOn), and the row is closed for retries with a code
  *     saying why. An `eod` row (the end of day review's invitation, retired in
- *     ghost rows phase 2) is never sent again: it is closed as not wanted.
+ *     ghost rows phases 2 and 3) is never sent again: it is closed as not wanted.
  *   · NOT THIS TICK'S. A row is retried only once it is RETRY_AFTER_MS old,
  *     so a row another tick opened a moment ago, whose send is still in
  *     flight, is never taken for a lost one.
@@ -37,7 +37,7 @@ import { cueNudge, lastCallNudge } from './build'
 import { sendNudgeToDevices } from './channels/push'
 import type { LocalClock } from './clock'
 import type { TimeFormat } from './copy'
-import { closeCueLog, isMissingCueLog, MAX_ATTEMPTS, type CueLogKind, type CueLogResult } from './cue-log-write'
+import { closeCueLog, isMissingCueLog, MAX_ATTEMPTS, type CueLogResult, type StoredCueLogKind } from './cue-log-write'
 import { lastCallItems, wantsDoingOn } from './due'
 import type { Nudge } from './nudge'
 
@@ -57,7 +57,7 @@ export interface OpenCueRow {
   id: string
   user_id: string
   key: string
-  kind: CueLogKind
+  kind: StoredCueLogKind
   item_id: string | null
   date_str: string
   window_end: string
@@ -125,8 +125,8 @@ export async function nudgeForRow(row: OpenCueRow, user: RetryUser): Promise<Nud
   const expiresAtMs = Date.parse(row.window_end)
   if (!Number.isFinite(expiresAtMs)) return 'malformed'
 
-  // The review's invitation is no longer sent (ghost rows phase 2), so a row
-  // an older build claimed and lost is closed, not re-sent.
+  // The review's invitation is no longer sent (ghost rows), so a row an
+  // older build claimed and lost is closed, not re-sent.
   if (row.kind === 'eod') return 'not_wanted'
 
   if (row.kind === 'last-call') {

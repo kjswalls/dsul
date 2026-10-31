@@ -100,12 +100,13 @@ describe('the iOS change filter', () => {
       'lib/reminders/due.ts',
       'lib/reminders/copy.ts',
       'lib/reminders/channels/push.ts',
-      'lib/eod.ts',
+      'lib/ghost-rows.ts',
+      'lib/overdue.ts',
       'ios/DsulCore/Sources/DsulCore/ReminderPlan.swift',
     ]) {
       expect(filter.test(p), p).toBe(true);
     }
-    for (const p of ['lib/reminders/scan.ts', 'lib/reminders/plan.test.ts', 'lib/eod-link.ts', 'lib/reminders/channels/sms.ts']) {
+    for (const p of ['lib/reminders/scan.ts', 'lib/reminders/plan.test.ts', 'lib/eod.ts', 'lib/reminders/channels/sms.ts']) {
       expect(filter.test(p), p).toBe(false);
     }
   });

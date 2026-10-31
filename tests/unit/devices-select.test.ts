@@ -43,7 +43,7 @@ const iphoneApp = (transport: DeviceRow['transport'] = 'none') =>
 
 describe('selectDevices', () => {
   it('sends to an ordinary browser, for every kind', () => {
-    for (const kind of ['cue', 'snooze', 'last-call', 'eod', 'pledge', 'other'] as const) {
+    for (const kind of ['cue', 'snooze', 'last-call', 'pledge', 'other'] as const) {
       expect(why([row()], kind)).toBe('sent');
     }
   });
@@ -52,19 +52,18 @@ describe('selectDevices', () => {
     expect(why([row({ transport: 'none', token: null, keys: null })], 'last-call')).toBe('no_transport');
   });
 
-  it('a device that schedules its own cues takes no cue, snooze or eod, but still takes the rest', () => {
+  it('a device that schedules its own cues takes no cue or snooze, but still takes the rest', () => {
     const local = row({ delivery: 'local' });
     expect(why([local], 'cue')).toBe('local');
     expect(why([local], 'snooze')).toBe('local');
-    expect(why([local], 'eod')).toBe('local');
     expect(why([local], 'last-call')).toBe('sent');
     expect(why([local], 'pledge')).toBe('sent');
   });
 
   describe('native wins on the iPhone', () => {
-    it('holds the Home Screen app for cue, snooze and eod while the app is on the phone', () => {
+    it('holds the Home Screen app for cue and snooze while the app is on the phone', () => {
       const pwa = iphonePwa();
-      for (const kind of ['cue', 'snooze', 'eod'] as const) {
+      for (const kind of ['cue', 'snooze'] as const) {
         expect(why([pwa, iphoneApp()], kind, pwa)).toBe('native_wins');
       }
     });
@@ -97,7 +96,7 @@ describe('selectDevices', () => {
     it('gives way to a per-device override', () => {
       const pwa = row({ os: 'ios', form: 'phone', prefs: { kinds: { cue: true } } });
       expect(why([pwa, iphoneApp()], 'cue', pwa)).toBe('sent');
-      expect(why([pwa, iphoneApp()], 'eod', pwa)).toBe('native_wins');
+      expect(why([pwa, iphoneApp()], 'snooze', pwa)).toBe('native_wins');
     });
 
     it('holds nothing without the app', () => {
@@ -135,6 +134,12 @@ describe('selectDevices', () => {
     expect(prefsOf({ kinds: 'nope' })).toEqual({});
     expect(prefsOf(null)).toEqual({});
     expect(why([row({ prefs: { kinds: 'nope', muted: true } })], 'cue')).toBe('sent');
+  });
+
+  it('still reads a row that stored the retired review\'s switch', () => {
+    const prefs = { kinds: { eod: false }, muted: true };
+    expect(prefsOf(prefs)).toEqual(prefs);
+    expect(why([row({ prefs })], 'cue')).toBe('muted');
   });
 });
 

@@ -36,11 +36,10 @@ export const SNOOZE_MINUTES = 15
  * The topic for a push about one day as a whole: `lc-20260810`.
  *
  * The date drops its dashes to fit the 32 characters a topic may have, and the
- * prefix keeps the kinds apart, so a day's last call never replaces its review.
- * Two kinds and no more, one each a day: the pledge notice has no topic either
+ * prefix names the kind. One kind, one a day: the pledge notice has no topic
  * (lib/stakes/pledge.ts), because a catch-up sends one per day it settles.
  */
-export function dayTopic(prefix: 'lc' | 'eod', dateStr: string): string {
+export function dayTopic(prefix: 'lc', dateStr: string): string {
   return `${prefix}-${dateStr.replace(/-/g, '')}`
 }
 
@@ -51,13 +50,11 @@ export function dayTopic(prefix: 'lc' | 'eod', dateStr: string): string {
  * The two reminder kinds are 'high'. A cue is the minute the user chose and a
  * last call is the day's final chance at a streak, so a push service that
  * holds either until the phone next wakes on its own has delivered it late.
- * What can wait for the phone is 'normal': the EOD review, an invitation that
- * stays good until midnight and is no worse for arriving when the phone is
- * next picked up, and the pledge notice after it.
+ * What can wait for the phone is 'normal': the pledge notice, which is no
+ * worse for arriving when the phone is next picked up.
  *
- * A last call's topic is its day, whether it names one habit or three, and so
- * is the review's: two topics a day at most, whatever the user has set, and
- * each gone by its midnight.
+ * A last call's topic is its day, whether it names one habit or three: one
+ * topic a day at most, whatever the user has set, gone by its midnight.
  *
  * A cue has NO topic. Chrome's push service is FCM, which holds at most four
  * collapse keys per device and makes no promise which four it keeps
@@ -79,7 +76,6 @@ const DELIVERY: Record<
 > = {
   cue: { urgency: 'high', topic: () => undefined },
   'last-call': { urgency: 'high', topic: (nudge) => dayTopic('lc', nudge.dateStr) },
-  eod: { urgency: 'normal', topic: (nudge) => dayTopic('eod', nudge.dateStr) },
 }
 
 /**
@@ -124,8 +120,7 @@ function channelResultOf(result: SendReport, kind: Nudge['kind']): ChannelResult
 
 /**
  * The tag a nudge's notification collapses on: the item, or the day for a
- * multi-item last call and for the EOD review (whose `dsul-eod-<date>` is the
- * tag its old route sent), so a re-delivery REPLACES rather than stacks. A
+ * multi-item last call, so a re-delivery REPLACES rather than stacks. A
  * shade with four copies of the same cue is how someone learns to swipe the
  * whole app away. cue_log keeps it as the row's `collapse_id`.
  */

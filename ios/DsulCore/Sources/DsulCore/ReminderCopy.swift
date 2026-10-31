@@ -11,8 +11,7 @@ import Foundation
 // a stake only as a fact, never as a threat ("12 days", not "Don't lose your
 // streak!"). The words are the intervention, so no surface composes its own.
 //
-// Ported: `streakPhrase`, `reminderCopy`, `lastCallCopy` and `EOD_COPY`
-// (`eodCopy`). `formatCueTime` is already in Cadence.swift and is reused, not
+// Ported: `streakPhrase`, `reminderCopy` and `lastCallCopy`. `formatCueTime` is already in Cadence.swift and is reused, not
 // re-ported. Not ported: `spokenLine` and `smsLine`, the speaker's and the
 // text message's registers, which take lib/reminders/nudge.ts's `Nudge` and
 // which no phone surface says.
@@ -79,7 +78,3 @@ public func lastCallCopy(_ items: [Item]) -> NotificationText? {
     let body = top > 0 ? "\(list)\(reminderDot)\(streakPhrase(top)) riding on it" : list
     return NotificationText(title: items.count == 1 ? "Still open today" : "\(items.count) still open", body: body)
 }
-
-/// lib/reminders/copy.ts `EOD_COPY`: the end-of-day review's invitation,
-/// word for word. It asks; it does not tally the day.
-public let eodCopy = NotificationText(title: "End of day \u{1F319}", body: "How'd today go?")

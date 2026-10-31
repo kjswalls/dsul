@@ -184,6 +184,12 @@ final class PlannerSync {
         /// web's gate and writes the store's `UNSCHEDULE_TASK_PATCH`, so the
         /// planner's step (`unscheduling`) is what it holds after.
         case unschedule(id: UUID)
+        /// (Ghost rows phase 3) Let it go: the item cancelled, kept in
+        /// history. The body is the action alone (DsulCore
+        /// `ItemWriteBody.letGo`); the server asks the web's `letGoItems` gate
+        /// and writes `{status:'cancelled'}`, so the planner's step
+        /// (`lettingGo`) is what it holds after.
+        case letGo(id: UUID)
         /// (2f-b) Join (`member`) or leave one routine or season: one
         /// membership row. Changes no item field.
         case collect(id: UUID, kind: ContainerKind, containerId: String, member: Bool)
@@ -228,7 +234,7 @@ final class PlannerSync {
             case .holdRoutine(let seasonId, let routineId, let hold):
                 return (ContainerRef(kind: .season, id: seasonId), .holdRoutine(routineId: routineId, hold: hold))
             case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .addSubtask, .resetStreak,
-                 .unschedule, .collect, .snooze, .container, .createContainer:
+                 .unschedule, .letGo, .collect, .snooze, .container, .createContainer:
                 return nil
             }
         }
@@ -260,7 +266,7 @@ final class PlannerSync {
                 return []
             case .complete(let id, _, _, _), .schedule(let id, _, _), .capture(let id, _), .skip(let id, _, _),
                  .move(let id, _), .pause(let id, _, _, _), .edit(let id, _), .addSubtask(let id, _, _),
-                 .resetStreak(let id), .unschedule(let id):
+                 .resetStreak(let id), .unschedule(let id), .letGo(let id):
                 return [.item(id)]
             }
         }
@@ -288,7 +294,7 @@ final class PlannerSync {
                 return [.container(ContainerRef(kind: .season, id: seasonId)),
                         .container(ContainerRef(kind: .routine, id: routineId))]
             case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .resetStreak, .unschedule,
-                 .snooze, .container, .createContainer:
+                 .letGo, .snooze, .container, .createContainer:
                 return []
             }
         }
@@ -659,6 +665,10 @@ final class PlannerSync {
             // so it fails and reverts. A 200 for a row already in the
             // braindump's shape (a retry whose first answer was lost) landed.
             try await api.unschedule(id: id)
+        case .letGo(let id):
+            // No 404 exception, as Move to Braindump has none. A 200 for a row
+            // already cancelled (a retry whose first answer was lost) landed.
+            try await api.letGo(id: id)
         case .collect(let id, let kind, let containerId, let member):
             try await api.collect(id: id, kind: kind, containerId: containerId, member: member)
         case .snooze(let id, let date, let minutes, let timeZone):
@@ -1098,7 +1108,7 @@ final class PlannerSync {
                 member = true
                 anchor = after.map { StepAnchor.after($0) } ?? .first
             case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .addSubtask, .resetStreak,
-                 .unschedule, .snooze, .container, .createContainer, .holdRoutine:
+                 .unschedule, .letGo, .snooze, .container, .createContainer, .holdRoutine:
                 // No other write names a membership.
                 continue
             }
@@ -1283,6 +1293,9 @@ final class PlannerSync {
             // phone sent it from, and keeps the rest (DsulCore
             // `unscheduling`), so the replay needs no day either.
             return unscheduling(item)
+        case .letGo:
+            // The status alone, whatever day it was sent (DsulCore `lettingGo`).
+            return lettingGo(item)
         case .delete:
             return nil
         case .capture, .addSubtask:

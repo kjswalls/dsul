@@ -1365,7 +1365,14 @@ export const DeviceTransportSchema = z.enum(['webpush', 'apns', 'fcm', 'none'])
 export const DeviceDeliverySchema = z.enum(['push', 'local'])
 export const DeviceFormSchema = z.enum(['phone', 'tablet', 'desktop', 'watch'])
 /** What a send is about, for a device's per-kind switches. `other` is a push with no kind (/api/push/send). */
-export const DeviceSendKindSchema = z.enum(['cue', 'snooze', 'last-call', 'eod', 'pledge', 'other'])
+export const DeviceSendKindSchema = z.enum(['cue', 'snooze', 'last-call', 'pledge', 'other'])
+/**
+ * A key `prefs.kinds` may hold: a send kind, or `eod`, the end of day review's
+ * switch, which a row may still store after the review was retired (ghost rows).
+ * Kept so such a row's prefs still parse: a blob that fails turns its quiet
+ * hours and mute off with it (lib/devices/select.ts prefsOf).
+ */
+const DevicePrefKindSchema = z.enum([...DeviceSendKindSchema.options, 'eod'])
 
 const DEVICE_ID = /^[A-Za-z0-9:._-]{8,128}$/
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -1376,7 +1383,7 @@ const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
  * so a device registered before a kind existed still gets it.
  */
 export const DevicePrefsSchema = z.object({
-  kinds: z.record(DeviceSendKindSchema, z.boolean()).optional(),
+  kinds: z.record(DevicePrefKindSchema, z.boolean()).optional(),
   quiet: z.object({ start: z.string().regex(HHMM), end: z.string().regex(HHMM) }).nullable().optional(),
   muted: z.boolean().optional(),
   claimsLocally: z.boolean().optional(),

@@ -171,7 +171,7 @@ describe('the Devices list', () => {
       quiet: { start: '22:00', end: '07:00' },
       claimsLocally: true,
     });
-    expect(withKind(null, 'eod', true)).toEqual({ kinds: { eod: true } });
+    expect(withKind(null, 'last-call', true)).toEqual({ kinds: { 'last-call': true } });
   });
 
   it('says the iPhone app covers the Home Screen app on the same phone, and nothing else', () => {

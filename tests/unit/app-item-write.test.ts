@@ -340,6 +340,7 @@ describe('reading the row first', () => {
     ['project', { action: 'project', projectId: PROJECT }],
     ['collect', { action: 'collect', kind: 'routine', containerId: ROUTINE, member: true }],
     ['unschedule', { action: 'unschedule' }],
+    ['letGo', { action: 'letGo' }],
   ])('404s another user’s id for %s, invisible under RLS, and writes nothing', async (_, body) => {
     // Load-bearing: set_item_completion, set_item_skip and updateItem filter
     // on id and type only, so without this read a foreign (or deleted) id
@@ -390,6 +391,8 @@ describe('reading the row first', () => {
     ['collect', { action: 'collect', kind: 'routine', containerId: ROUTINE, member: true }, BASE_COLUMNS],
     // "Already in the braindump" asks all four; start_date and time_bucket are in every read.
     ['unschedule', { action: 'unschedule' }, `${BASE_COLUMNS}, start_time, is_scheduled`],
+    // The type, the status and the frequency decide it, and all three are in every read.
+    ['letGo', { action: 'letGo' }, BASE_COLUMNS],
   ])('reads for %s only the column it decides on', async (_, body, columns) => {
     // A tick never reads the notes, which can run to 200,000 characters.
     row = {
@@ -2896,6 +2899,53 @@ describe('collect', () => {
       expect((await write({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: true })).status).toBe(200);
       expect(joins('routine_items')).toHaveLength(1);
     }
+  });
+});
+
+describe('letGo', () => {
+  /** An overdue one-off: what the leftovers on Today offer Let it go on. */
+  const LEFTOVER = { ...ONE_OFF, start_date: '2026-09-28' };
+
+  beforeEach(() => {
+    row = LEFTOVER;
+  });
+
+  it('cancels a pending one-off, the row the web’s letGoItems leaves', async () => {
+    const res = await write({ action: 'letGo' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(writes('items', 'update')).toEqual([{ status: 'cancelled' }]);
+    const update = queries.find((q) => q.table === 'items' && op(q) === 'update')!;
+    expect(update.calls).toEqual(expect.arrayContaining([['eq', ['id', ITEM]], ['eq', ['type', 'task']]]));
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('lets a custom type go by its stored slug', async () => {
+    row = { ...LEFTOVER, type: 'book' };
+    expect((await write({ action: 'letGo' })).status).toBe(200);
+    const update = queries.find((q) => q.table === 'items' && op(q) === 'update')!;
+    expect(update.calls).toContainEqual(['eq', ['type', 'book']]);
+    expect(writes('items', 'update')).toEqual([{ status: 'cancelled' }]);
+  });
+
+  it('answers 200 and writes nothing for a row already let go (a retry of a write that landed)', async () => {
+    row = { ...LEFTOVER, status: 'cancelled' };
+    const res = await write({ action: 'letGo' });
+    expect(res.status).toBe(200);
+    expect(writes('items', 'update')).toEqual([]);
+  });
+
+  it.each([
+    ['a recurring task', RECURRING_TASK],
+    ['a completed one-off', { ...LEFTOVER, status: 'completed' }],
+    ['a habit, which has no cancelled status', HABIT],
+  ])('409s %s and writes nothing', async (_, r) => {
+    row = r;
+    const res = await write({ action: 'letGo' });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'not_let_go' });
+    expect(writes('items', 'update')).toEqual([]);
+    expect(rpc).not.toHaveBeenCalled();
   });
 });
 

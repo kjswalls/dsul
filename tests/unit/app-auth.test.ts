@@ -284,6 +284,7 @@ describe('every /api/app route is behind it', () => {
     ],
     ['POST /api/app/items/:id snooze', itemWrite({ action: 'snooze', date: '2026-10-02' })],
     ['POST /api/app/items/:id unschedule', itemWrite({ action: 'unschedule' })],
+    ['POST /api/app/items/:id letGo', itemWrite({ action: 'letGo' })],
     [
       'POST /api/app/timezone',
       (headers) =>

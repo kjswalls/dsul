@@ -56,7 +56,6 @@ private struct Fixture: Decodable, Sendable {
     let streakPhrase: [StreakPhraseCase]
     let reminderCopy: [ReminderCopyCase]
     let lastCallCopy: [LastCallCopyCase]
-    let eodCopy: TextFixture
 }
 
 private enum FixtureError: Error {
@@ -141,19 +140,12 @@ private func text(_ t: NotificationText) -> TextFixture {
         }
     }
 
-    @Test func eodCopyMatchesTheWeb() throws {
-        let f = try loadFixture()
-        // Compared as Strings: the title ends in an emoji (U+1F319).
-        #expect(eodCopy.title == f.eodCopy.title)
-        #expect(eodCopy.body == f.eodCopy.body)
-    }
-
     /// Every line the Swift side says keeps the contract, whatever the fixture
     /// expects: the words are the intervention.
     @Test func everySwiftLineKeepsTheContract() throws {
         let f = try loadFixture()
         let regex = try neverScolds(f.neverScolds)
-        var lines: [String] = [eodCopy.title, eodCopy.body]
+        var lines: [String] = []
         for c in f.reminderCopy {
             let format = TimeFormat(rawValue: c.timeFormat) ?? .twelveHour
             let words = reminderCopy(

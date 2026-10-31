@@ -14,9 +14,7 @@
     "remindersEnabled": true,
     "lastCallEnabled": true,
     "lastCallTime": "20:45",
-    "eodReviewEnabled": true,
-    "eodReviewTime": "21:30",
-    "lastEodReviewDate": "2026-10-01",
+    "leftoversOnToday": false,
     "reminderGraceMinutes": 30
   },
   "snoozes": [
@@ -45,7 +43,8 @@
     "project",
     "collect",
     "snooze",
-    "unschedule"
+    "unschedule",
+    "letGo"
   ],
   "trashWrites": [
     "list",

@@ -4,8 +4,13 @@
 > [ghost-rows.md](ghost-rows.md)). The server sends no review: scan.ts's Tier 0, `eodNudge`
 > and the `/?eod=` handler are gone (an old `/?eod=` link just opens home), and nothing on
 > the web writes `last_eod_review_date`. Every EOD tier, `reviewedDay` and the review's push
-> below (the 2026-10-06 addendum's item 8, §2.1, §3.1, §5) describes what was, not what runs. The
-> iPhone still plans the review locally until phase 3; `rituals.eod` is its off switch.
+> below (the 2026-10-06 addendum's item 8, §2.1, §3.1, §5) describes what was, not what runs.
+> **Phase 3 retired the iPhone's review too:** ReminderPlan.swift and plan.ts plan no review,
+> the payload carries no `eod*` fields, the `DSUL_EOD` category is gone, and NotificationScheduler
+> removes a pending or delivered `dsul-eod…` request left by an older build. `rituals.eod` went
+> with it. `eod` survives only where stored data names it: `DevicePrefsSchema.kinds` (a row's
+> stored `{kinds:{eod:false}}` still parses), a `cue_log` row's kind (closed `not_wanted`), and
+> electron's key pattern.
 
 > **Addendum (2026-10-06): what Phase 0 changed on the way in.** Phase 0 was built and
 > reviewed four times, and nine shapes in the body below (§2.1's "What rings" row, §3.1,

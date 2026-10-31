@@ -6,11 +6,11 @@
  * In order, the first rule that holds a row names the reason:
  *
  *   1. `transport 'none'` — nothing can push to it (the desktop app, Phase 1c).
- *   2. `delivery 'local'` for cue, snooze and eod — the device arms its own
+ *   2. `delivery 'local'` for cue and snooze — the device arms its own
  *      triggers for those (decision 18: one scheduler per device). Last call,
  *      pledge and the rest still go.
  *   3. native-wins — a phone with the iPhone app AND the Home Screen app gets
- *      cue, snooze and eod from the app only: the webpush row with
+ *      cue and snooze from the app only: the webpush row with
  *      os 'ios' + form 'phone' is held while a live `ios` row exists, and for
  *      last call too once that row's transport is apns AND this deployment
  *      can send on apns (an APNs key missing from the deployment must not
@@ -31,7 +31,7 @@ import { isStale } from './prune'
 import type { DevicePrefs, DeviceRow, DeviceSendKind, HeldReason } from './types'
 
 /** The kinds a device that schedules its own cues never takes from the server. */
-const LOCAL_KINDS: ReadonlySet<DeviceSendKind> = new Set<DeviceSendKind>(['cue', 'snooze', 'eod'])
+const LOCAL_KINDS: ReadonlySet<DeviceSendKind> = new Set<DeviceSendKind>(['cue', 'snooze'])
 
 /** A row's prefs, or none: a malformed blob turns nothing off. */
 export function prefsOf(raw: unknown): DevicePrefs {

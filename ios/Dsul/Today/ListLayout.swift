@@ -20,6 +20,9 @@ struct ListLayout: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
             }
+            // Leftovers on Today: the fold above the day's sections, on
+            // today only, whatever the chip says.
+            GhostFold(host: .list)
             if sections.isEmpty {
                 Section {
                     if !planner.hasLoaded {
