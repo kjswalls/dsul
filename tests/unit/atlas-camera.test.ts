@@ -36,13 +36,14 @@ describe('atlas camera', () => {
     expect(after.y).toBeCloseTo(before.y);
   });
 
-  it('clamps the zoom to 0.25 to 2', () => {
+  it('clamps the zoom to 0.12 to 2 (PR3 extends it down for the far zoom)', () => {
     expect(clampZoom(10)).toBe(ATLAS_MAX_ZOOM);
     expect(clampZoom(0.01)).toBe(ATLAS_MIN_ZOOM);
     expect(clampZoom(NaN)).toBe(1);
     expect(clampZoom(0)).toBe(1);
     expect(zoomAt({ x: 0, y: 0, z: 2 }, { x: 0, y: 0 }, 3).z).toBe(2);
-    expect(zoomAt({ x: 0, y: 0, z: 0.25 }, { x: 0, y: 0 }, 0.1).z).toBe(0.25);
+    expect(ATLAS_MIN_ZOOM).toBe(0.12);
+    expect(zoomAt({ x: 0, y: 0, z: 0.12 }, { x: 0, y: 0 }, 0.1).z).toBe(0.12);
   });
 
   it('pans by a screen delta', () => {
@@ -88,7 +89,7 @@ describe('atlas camera', () => {
   });
 
   it('fitBounds with a floor stops there and anchors the top-left corner at the pad', () => {
-    const rects = [{ x: 100, y: 50, w: 6000, h: 3000 }];
+    const rects = [{ x: 100, y: 50, w: 12000, h: 6000 }];
     const cam = fitBounds(rects, { w: 1100, h: 760 }, 48, undefined, ATLAS_FIT_FLOOR);
     expect(cam.z).toBe(ATLAS_FIT_FLOOR);
     expect(worldToScreen(cam, { x: 100, y: 50 })).toEqual({ x: 48, y: 48 });

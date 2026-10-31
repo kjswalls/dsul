@@ -32,8 +32,11 @@ export interface Viewport {
   h: number;
 }
 
-/** PR1's zoom range. PR3 adds the far zoom below 0.5. */
-export const ATLAS_MIN_ZOOM = 0.25;
+/**
+ * The zoom range. Below ATLAS_FAR_ZOOM the cards give way to the far zoom
+ * (PR3's Relay grid canvas), down to 12%.
+ */
+export const ATLAS_MIN_ZOOM = 0.12;
 export const ATLAS_MAX_ZOOM = 2;
 
 /**
@@ -41,6 +44,34 @@ export const ATLAS_MAX_ZOOM = 2;
  * unreadable. The toolbar's Fit, an explicit request, keeps the full range.
  */
 export const ATLAS_FIT_FLOOR = 0.6;
+
+/** Below this zoom the DOM cards unmount and the far zoom canvas draws alone. */
+export const ATLAS_FAR_ZOOM = 0.5;
+
+/**
+ * The top of the handoff band (design 3.3): from here down to ATLAS_FAR_ZOOM
+ * the cards shrink toward their clusters while the canvas comes up under them.
+ */
+export const ATLAS_HANDOFF_ZOOM = 0.6;
+
+/** The zoom a click on a far cluster flies in to. */
+export const ATLAS_FLY_ZOOM = 1;
+
+/**
+ * How far through the handoff band a zoom is: 0 at or above 0.6 (cards only),
+ * 1 at or below 0.5 (canvas only). The canvas draws at this alpha (canvas
+ * pixels, never a parent's opacity) and the cards scale by
+ * `handoffCardScale`.
+ */
+export function handoffProgress(z: number): number {
+  if (!Number.isFinite(z)) return 0;
+  return Math.max(0, Math.min(1, (ATLAS_HANDOFF_ZOOM - z) / (ATLAS_HANDOFF_ZOOM - ATLAS_FAR_ZOOM)));
+}
+
+/** A card's scale in the band: 1 at its top, 0.4 as it hands off to its tiles. */
+export function handoffCardScale(z: number): number {
+  return 1 - 0.6 * handoffProgress(z);
+}
 
 export const IDENTITY_CAMERA: AtlasCamera = { x: 0, y: 0, z: 1 };
 
@@ -161,4 +192,34 @@ export function ensureVisible(
   if (s.y + dy < margin) dy = margin - s.y;
   if (dx === 0 && dy === 0) return cam;
   return { x: cam.x + dx, y: cam.y + dy, z: cam.z };
+}
+
+/** The world rect the viewport shows. */
+export function viewRect(cam: AtlasCamera, viewport: Viewport): Rect {
+  const z = cam.z || 1;
+  return { x: -cam.x / z, y: -cam.y / z, w: viewport.w / z, h: viewport.h / z };
+}
+
+/** The camera, at its own zoom or `z`, that puts a world point mid-viewport. */
+export function centerOnPoint(cam: AtlasCamera, p: Point, viewport: Viewport, z = cam.z): AtlasCamera {
+  const zz = clampZoom(z);
+  return { x: viewport.w / 2 - p.x * zz, y: viewport.h / 2 - p.y * zz, z: zz };
+}
+
+/**
+ * A flight between two cameras at `t` (0 to 1, eased by the caller): the world
+ * point mid-viewport moves in a straight line while the zoom changes
+ * geometrically, so a fly-in never swings out past either end.
+ */
+export function flyCamera(from: AtlasCamera, to: AtlasCamera, viewport: Viewport, t: number): AtlasCamera {
+  if (t <= 0) return from;
+  if (t >= 1) return to;
+  const c0 = screenToWorld(from, { x: viewport.w / 2, y: viewport.h / 2 });
+  const c1 = screenToWorld(to, { x: viewport.w / 2, y: viewport.h / 2 });
+  const z0 = from.z || 1;
+  const z1 = to.z || 1;
+  const z = z0 * (z1 / z0) ** t;
+  const cx = c0.x + (c1.x - c0.x) * t;
+  const cy = c0.y + (c1.y - c0.y) * t;
+  return { x: viewport.w / 2 - cx * z, y: viewport.h / 2 - cy * z, z };
 }

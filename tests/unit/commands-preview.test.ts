@@ -94,6 +94,7 @@ const GATED_DURING_PREVIEW: Record<string, boolean> = {
   'view.atlasLayoutMomentum': false,
   'view.atlasLayoutGoal': false,
   'view.atlasLayoutTimeline': false,
+  'atlas.toggleMinimap': false,
   'view.toggleScope': false,
   'view.zen': false,
   'view.weekColumnsWider': false,

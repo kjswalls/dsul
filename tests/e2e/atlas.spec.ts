@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { reloadApp, runCommand, setScope } from './helpers/app';
+import { reloadApp, runCommand, setScope, waitForAppReady } from './helpers/app';
 import { cleanupByTitlePrefix, cleanupTestLabels, createTestTask, specScope } from './helpers/api';
 
 /**
@@ -12,7 +12,9 @@ import { cleanupByTitlePrefix, cleanupTestLabels, createTestTask, specScope } fr
  * the rail, and Escape closes the sheet before the item; Organize's "Open
  * Atlas" door switches the scope. PR2: keys 1 to 4 switch layouts without
  * touching an open item, and a card dragged into Momentum's Resting column
- * is pinned there across a reload.
+ * is pinned there across a reload. PR3: Ctrl+wheel past 50% swaps the cards
+ * for the Relay grid canvas, panning the board off screen shows the minimap
+ * and M pins it, and the Look pane has the Bloom or Dusk row.
  *
  * Under its own prefix, swept by name like organize.spec.ts (projects are not
  * items, so the title sweep would miss them).
@@ -200,28 +202,21 @@ test.describe('atlas', () => {
     await page.keyboard.press('2');
     await expect(view).toHaveAttribute('data-atlas-layout', 'momentum');
 
-    // Let the glide settle, then drag the card by its footer into Resting.
-    await page.getByRole('button', { name: 'Fit every card on screen' }).click();
-    await page.waitForTimeout(700);
+    // Pin it to Resting from the card's menu. The pointer drag that pins is
+    // covered by the view tests: here the shared test account can hold enough
+    // cards that a Fit lands in the far zoom (below 50%), where cards give way
+    // to the Relay grid, so a drag by the footer can't be relied on.
     const resting = page.locator('[data-atlas-lane="resting"]');
-    const col = (await resting.boundingBox())!;
-    const footer = (await card.getByTestId('atlas-card-footer').boundingBox())!;
-    const cardBox = (await card.boundingBox())!;
-    const from = { x: footer.x + 8, y: footer.y + footer.height / 2 };
-    const dx = col.x + col.width / 2 - (cardBox.x + cardBox.width / 2);
-    const pinned = page.waitForResponse(
-      (r) =>
-        r.url().includes('/rest/v1/atlas_positions') &&
-        r.request().method() === 'POST' &&
-        (r.request().postData() ?? '').includes('"pinned_band":"resting"')
+    await expect(resting).toHaveCount(1);
+    const saved = page.waitForResponse(
+      (r) => r.url().includes('/rest/v1/atlas_positions') && r.request().method() !== 'GET',
+      { timeout: 15_000 }
     );
-    await page.mouse.move(from.x, from.y);
-    await page.mouse.down();
-    for (let i = 1; i <= 10; i++) await page.mouse.move(from.x + (dx * i) / 10, from.y + 4 * i);
-    await expect(resting).toHaveAttribute('data-hot', 'true');
-    await page.mouse.up();
-    expect((await pinned).ok()).toBe(true);
+    await card.getByTestId('atlas-card-header').dispatchEvent('contextmenu', { button: 2, clientX: 240, clientY: 240 });
+    await expect(page.getByTestId('container-context-menu')).toBeVisible();
+    await page.getByTestId('container-menu-pin-resting').click();
     await expect(card).toHaveAttribute('data-pinned', 'true');
+    expect((await saved).ok()).toBe(true);
     await expect(card.getByTestId('atlas-unpin')).toBeVisible();
 
     // The layout and the pin are both remembered.
@@ -236,6 +231,48 @@ test.describe('atlas', () => {
     await page.getByTestId('atlas-view').focus();
     await page.keyboard.press('1');
     await expect(page.getByTestId('atlas-view')).toHaveAttribute('data-atlas-layout', 'map');
+    await setScope(page, 'Day');
+  });
+
+  test('zooming far out draws the Relay grid, and the minimap shows and pins', async ({ page }) => {
+    const name = scope.title('Far');
+    const projectId = await createProject(page, name);
+    await createTestTask(page, { title: scope.title('A step'), project: name });
+    await reloadApp(page);
+
+    await setScope(page, 'Atlas');
+    const view = page.getByTestId('atlas-view');
+    const card = page.locator(`[data-atlas-card="project:${projectId}"]`);
+    await expect(card).toBeVisible();
+
+    // Ctrl+wheel zooms at the pointer; past 50% the cards give way to the canvas.
+    const box = (await view.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.keyboard.down('Control');
+    for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 120);
+    await page.keyboard.up('Control');
+    await expect(page.getByTestId('atlas-far-canvas')).toBeVisible();
+    await expect(page.locator('[data-atlas-card]')).toHaveCount(0);
+    await expect(page.locator(`[data-atlas-far-cluster="project:${projectId}"]`)).toHaveCount(1);
+    await expect(page.getByTestId('atlas-zoom')).toHaveText('12%');
+
+    // Pan the board off screen: the minimap shows while moving, M pins it.
+    await page.mouse.wheel(4000, 0);
+    const minimap = page.getByTestId('atlas-minimap');
+    await expect(minimap).toHaveAttribute('data-shown', 'true');
+    await view.focus();
+    await page.keyboard.press('m');
+    await expect(minimap).toHaveAttribute('data-pinned', 'true');
+    await page.waitForTimeout(1800);
+    await expect(minimap).toHaveAttribute('data-shown', 'true');
+    await page.keyboard.press('m');
+    await expect(minimap).not.toHaveAttribute('data-pinned', 'true');
+
+    // The Look pane has the far zoom's pick, on the desktop.
+    await page.goto('/settings/look');
+    await expect(page.locator('[data-setting-row="look.atlasFar"]').first()).toBeVisible();
+    await page.goto('/');
+    await waitForAppReady(page);
     await setScope(page, 'Day');
   });
 

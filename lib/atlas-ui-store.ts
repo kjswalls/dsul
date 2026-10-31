@@ -53,6 +53,12 @@ interface AtlasUiStore {
    */
   hotLane: string | null;
   setHotLane: (id: string | null) => void;
+  /**
+   * The minimap stays on screen (PR3; M, the toggle_atlas_minimap command).
+   * Memory only: a session's choice (design Q5).
+   */
+  minimapPinned: boolean;
+  toggleMinimapPinned: () => void;
   reset: () => void;
 }
 
@@ -64,6 +70,7 @@ const INITIAL = {
   expanded: {},
   seeded: {},
   hotLane: null,
+  minimapPinned: false,
 } satisfies Partial<AtlasUiStore>;
 
 export const useAtlasUiStore = create<AtlasUiStore>()((set) => ({
@@ -83,6 +90,7 @@ export const useAtlasUiStore = create<AtlasUiStore>()((set) => ({
   addSeeded: (places) =>
     set((s) => (Object.keys(places).length === 0 ? s : { seeded: { ...s.seeded, ...places } })),
   setHotLane: (hotLane) => set((s) => (s.hotLane === hotLane ? s : { hotLane })),
+  toggleMinimapPinned: () => set((s) => ({ minimapPinned: !s.minimapPinned })),
   reset: () => set({ ...INITIAL }),
 }));
 

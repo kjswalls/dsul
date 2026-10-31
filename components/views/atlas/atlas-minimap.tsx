@@ -1,0 +1,242 @@
+'use client';
+
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useAtlasUiStore } from '@/lib/atlas-ui-store';
+import { atlasWheel } from '@/components/views/atlas/atlas-surface';
+import type { Rect, Viewport } from '@/lib/atlas-camera';
+import {
+  ATLAS_MINIMAP_H,
+  ATLAS_MINIMAP_IDLE_MS,
+  ATLAS_MINIMAP_W,
+  cameraForMiniPoint,
+  minimapFrame,
+  minimapNeeded,
+  viewportInMini,
+  worldToMini,
+} from '@/lib/atlas-minimap';
+import { toneColor } from '@/lib/atlas-tones';
+import type { AtlasColors } from '@/components/views/atlas/use-atlas-colors';
+import type { FarCluster } from '@/components/views/atlas/atlas-far-canvas';
+import { cn } from '@/lib/utils';
+
+/**
+ * The minimap (design PR3, the cards mock): the far zoom in miniature, a
+ * tile per item in its Aurora tone, with the viewport as a rounded frame.
+ * Bottom left: bottom right is the "?" help bubble.
+ *
+ * It shows while the camera moves and hides ATLAS_MINIMAP_IDLE_MS after; M
+ * (the toggle_atlas_minimap command) pins it; a pointer resting on its corner
+ * brings it back (pointer only, under `(hover: hover) and (pointer: fine)`).
+ * A click or drag flies the camera there. It exists only when some of the
+ * board is off screen, and writes nothing.
+ *
+ * Shown and hidden by `visibility` and a small transform, never opacity: it
+ * can hold a lime container's tiles, and lime is never faded through a
+ * parent's opacity (CLAUDE.md, D8).
+ */
+export function AtlasMinimap({
+  content,
+  clusters,
+  viewport,
+  colors,
+  reduced,
+}: {
+  /** The board's content rects (world), what the minimap frames. */
+  content: readonly Rect[];
+  clusters: readonly FarCluster[];
+  viewport: Viewport;
+  colors: AtlasColors;
+  reduced: boolean;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const zoneRef = useRef<HTMLDivElement>(null);
+  const pinned = useAtlasUiStore((s) => s.minimapPinned);
+  const camera = useAtlasUiStore((s) => s.camera);
+  const needed = minimapNeeded(content, camera, viewport);
+  const [awake, setAwake] = useState(false);
+  const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragging = useRef<number | null>(null);
+
+  // Sleep a while after the last camera move, or after a drag ends.
+  const scheduleSleep = useCallback(() => {
+    if (idle.current) clearTimeout(idle.current);
+    idle.current = setTimeout(() => {
+      idle.current = null;
+      if (dragging.current === null) setAwake(false);
+    }, ATLAS_MINIMAP_IDLE_MS);
+  }, []);
+  useEffect(
+    () =>
+      useAtlasUiStore.subscribe((s, prev) => {
+        if (s.camera === prev.camera) return;
+        setAwake(true);
+        scheduleSleep();
+      }),
+    [scheduleSleep]
+  );
+  useEffect(
+    () => () => {
+      if (idle.current) clearTimeout(idle.current);
+    },
+    []
+  );
+
+  const shown = needed && (pinned || awake);
+
+  // The tiles, drawn once into an offscreen layer per content, clusters,
+  // colours and ratio; a camera move only blits it and strokes the frame.
+  const layer = useRef<{ key: unknown[]; canvas: HTMLCanvasElement } | null>(null);
+  const tileLayer = useCallback(
+    (f: NonNullable<ReturnType<typeof minimapFrame>>, dpr: number): HTMLCanvasElement | null => {
+      const key = [content, clusters, colors, dpr];
+      const prev = layer.current;
+      if (prev && prev.key.every((k, i) => k === key[i])) return prev.canvas;
+      const canvas = prev?.canvas ?? document.createElement('canvas');
+      canvas.width = ATLAS_MINIMAP_W * dpr;
+      canvas.height = ATLAS_MINIMAP_H * dpr;
+      const g = canvas.getContext('2d');
+      if (!g) return null;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.clearRect(0, 0, ATLAS_MINIMAP_W, ATLAS_MINIMAP_H);
+      const t = 4;
+      const gap = 1.5;
+      for (const c of clusters) {
+        const n = Math.min(c.tiles, 64);
+        if (n === 0) continue;
+        // Capped clusters keep their lit share (as the card's cappedTiles does).
+        const litShown = c.tiles > n ? Math.round((c.lit / c.tiles) * n) : c.lit;
+        const cols = Math.ceil(Math.sqrt(n));
+        const rows = Math.ceil(n / cols);
+        const { x: cx, y: cy } = worldToMini(f, { x: c.x, y: c.y });
+        g.fillStyle = toneColor(colors.tones.get(c.color) ?? 'teal', colors.mode, 1);
+        // One path per alpha: lit, then open (canvas alpha, not a parent's opacity, D8).
+        for (const lit of [true, false]) {
+          if (c.resting && !lit) continue;
+          g.globalAlpha = c.resting ? 0.35 : lit ? 1 : 0.28;
+          g.beginPath();
+          for (let i = 0; i < n; i++) {
+            if (!c.resting && i < litShown !== lit) continue;
+            const x = cx + ((i % cols) - (cols - 1) / 2) * (t + gap) - t / 2;
+            const y = cy + (Math.floor(i / cols) - (rows - 1) / 2) * (t + gap) - t / 2;
+            g.rect(x, y, t, t);
+          }
+          g.fill();
+        }
+      }
+      g.globalAlpha = 1;
+      layer.current = { key, canvas };
+      return canvas;
+    },
+    [content, clusters, colors]
+  );
+
+  const draw = useCallback(() => {
+    const el = canvasRef.current;
+    const ctx = el?.getContext('2d');
+    const f = minimapFrame(content);
+    if (!el || !ctx || !f) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    // Resizing reallocates the backing store: only when the ratio changes.
+    if (el.width !== ATLAS_MINIMAP_W * dpr || el.height !== ATLAS_MINIMAP_H * dpr) {
+      el.width = ATLAS_MINIMAP_W * dpr;
+      el.height = ATLAS_MINIMAP_H * dpr;
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, el.width, el.height);
+    const tiles = tileLayer(f, dpr);
+    if (tiles) ctx.drawImage(tiles, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const cam = useAtlasUiStore.getState().camera;
+    const v = viewportInMini(f, cam, viewport);
+    ctx.strokeStyle = colors.sub;
+    ctx.fillStyle = colors.frameFill;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    const r = 4;
+    ctx.moveTo(v.x + r, v.y);
+    ctx.arcTo(v.x + v.w, v.y, v.x + v.w, v.y + v.h, r);
+    ctx.arcTo(v.x + v.w, v.y + v.h, v.x, v.y + v.h, r);
+    ctx.arcTo(v.x, v.y + v.h, v.x, v.y, r);
+    ctx.arcTo(v.x, v.y, v.x + v.w, v.y, r);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }, [content, colors, viewport, tileLayer]);
+
+  // Drawn only while it can be seen (a camera move re-renders this component).
+  useEffect(() => {
+    if (needed) draw();
+  }, [needed, shown, camera, draw]);
+
+  // The corner sits over the board but outside the surface, so it takes the
+  // board's wheel itself: a pinch there zooms Atlas, never the page.
+  useEffect(() => {
+    const zone = zoneRef.current;
+    const board = zone?.parentElement;
+    if (!zone || !board) return;
+    const onWheel = (e: WheelEvent) => atlasWheel(e, board);
+    zone.addEventListener('wheel', onWheel, { passive: false });
+    return () => zone.removeEventListener('wheel', onWheel);
+  }, [needed]);
+
+  const flyTo = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    const f = minimapFrame(content);
+    const r = e.currentTarget.getBoundingClientRect();
+    if (!f) return;
+    const ui = useAtlasUiStore.getState();
+    ui.setCamera(cameraForMiniPoint(f, ui.camera, { x: e.clientX - r.left, y: e.clientY - r.top }, viewport));
+  };
+
+  const endDrag = () => {
+    dragging.current = null;
+    // A drag held past the idle delay skipped its sleep: take it now.
+    scheduleSleep();
+  };
+
+  if (!needed) return null;
+  // Pointer only, and redundant with the board (the cluster buttons and the
+  // card Tab walk are the keyboard path), so hidden from assistive tech.
+  return (
+    <div
+      ref={zoneRef}
+      aria-hidden
+      className="atlas-minimap-zone absolute bottom-3 left-3 z-20"
+      style={{ width: ATLAS_MINIMAP_W, height: ATLAS_MINIMAP_H }}
+      data-testid="atlas-minimap-zone"
+    >
+      <div
+        data-testid="atlas-minimap"
+        data-shown={shown ? 'true' : undefined}
+        data-pinned={pinned ? 'true' : undefined}
+        className={cn(
+          'atlas-minimap size-full overflow-hidden rounded-[14px] border border-border bg-card shadow-[var(--shadow-elev-sm)]',
+          shown ? 'visible translate-y-0 scale-100' : 'invisible translate-y-2 scale-[.98]',
+          !reduced && 'transition-[translate,scale,visibility] duration-150'
+        )}
+      >
+        <canvas
+          ref={canvasRef}
+          className="block size-full cursor-pointer touch-none"
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            e.stopPropagation();
+            dragging.current = e.pointerId;
+            try {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            } catch {
+              // Synthetic pointers can't always capture; the move still flies.
+            }
+            flyTo(e);
+          }}
+          onPointerMove={(e) => {
+            if (dragging.current === e.pointerId) flyTo(e);
+          }}
+          onPointerUp={(e) => {
+            if (dragging.current === e.pointerId) endDrag();
+          }}
+          onPointerCancel={endDrag}
+        />
+      </div>
+    </div>
+  );
+}

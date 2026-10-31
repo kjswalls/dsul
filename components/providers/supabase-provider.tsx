@@ -26,6 +26,7 @@ import {
 import { useUserThemes } from '@/lib/user-themes/store';
 import { DEFAULT_LAYOUT, LAYOUT_STORAGE_KEY, isLayoutTheme } from '@/lib/layout-themes';
 import { APP_ICON_STORAGE_KEY, isAppIcon } from '@/lib/app-icons';
+import { ATLAS_FAR_PAPER_STORAGE_KEY, DEFAULT_ATLAS_FAR_PAPER } from '@/lib/atlas-far-looks';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useModsStore } from '@/lib/mods-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
@@ -216,6 +217,19 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // Private mode — the pick still holds for this session.
     }
   }, [appIcon, appIconKnown]);
+
+  // Atlas's far zoom on a light theme (Bloom or Dusk): device only until 087
+  // is on prod (design D11), so this mirror is its only home. No hydrate line
+  // and no settings-service column until the follow-up.
+  const atlasFarPaper = useLookStore((s) => s.atlasFarPaper);
+  useEffect(() => {
+    try {
+      if (atlasFarPaper === DEFAULT_ATLAS_FAR_PAPER) window.localStorage.removeItem(ATLAS_FAR_PAPER_STORAGE_KEY);
+      else window.localStorage.setItem(ATLAS_FAR_PAPER_STORAGE_KEY, atlasFarPaper);
+    } catch {
+      // Private mode: the pick still holds for this session.
+    }
+  }, [atlasFarPaper]);
 
   // The planner snapshot (lib/planner-snapshot.ts): its writer for the page's
   // lifetime, and an orphan purge. Declared BEFORE the auth effect, so the purge

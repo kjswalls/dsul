@@ -5251,3 +5251,25 @@ body {
     stroke-dashoffset: 0;
   }
 }
+
+/* Atlas's minimap (components/views/atlas/atlas-minimap.tsx): a pointer
+   resting on its corner brings it back while it hides at rest. Pointer only,
+   since :hover sticks after a tap. Visibility and a transform, never opacity:
+   the minimap can hold a lime container's tiles (design D8). Without a
+   hovering pointer the hidden corner takes no press, so a pan can start there. */
+.atlas-minimap-zone {
+  pointer-events: none;
+}
+.atlas-minimap-zone > .atlas-minimap[data-shown] {
+  pointer-events: auto;
+}
+@media (hover: hover) and (pointer: fine) {
+  .atlas-minimap-zone {
+    pointer-events: auto;
+  }
+  .atlas-minimap-zone:hover > .atlas-minimap {
+    visibility: visible;
+    translate: none;
+    scale: none;
+  }
+}

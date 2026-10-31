@@ -1086,4 +1086,21 @@ describe('the layouts (PR2)', () => {
     fireEvent.click(screen.getByTestId('container-menu-unpin'));
     expect(useAtlasStore.getState().places['project:p1']?.band ?? null).toBeNull();
   });
+
+  it('a press on a menu row is not a press on the board (the menu is portalled)', () => {
+    seed([task('a')]);
+    useViewStore.setState({ atlasLayout: 'momentum' });
+    render(<AtlasView />);
+    rightClick(within(card()).getByTestId('atlas-card-header'));
+    const row = screen.getByTestId('container-menu-pin-resting');
+    const before = useAtlasUiStore.getState().camera;
+    // React bubbles the row's press through the portal to the surface; it must
+    // not start a pan (which captures the pointer and steals the row's click).
+    fireEvent.pointerDown(row, { pointerId: 3, button: 0, buttons: 1, clientX: 50, clientY: 50 });
+    fireEvent.pointerMove(screen.getByTestId('atlas-surface'), { pointerId: 3, buttons: 1, clientX: 90, clientY: 90 });
+    expect(useAtlasUiStore.getState().camera).toEqual(before);
+    fireEvent.pointerUp(row, { pointerId: 3, button: 0, clientX: 50, clientY: 50 });
+    fireEvent.click(row);
+    expect(useAtlasStore.getState().places['project:p1']?.band).toBe('resting');
+  });
 });
