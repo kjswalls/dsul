@@ -78,6 +78,8 @@ import {
   layoutStyles,
 } from '@/lib/layout-themes';
 import { APP_ICONS, DEFAULT_APP_ICON, isAppIcon } from '@/lib/app-icons';
+import { ATLAS_FAR_PAPER, DEFAULT_ATLAS_FAR_PAPER, isAtlasFarPaper } from '@/lib/atlas-far-looks';
+import { ATLAS_COPY } from '@/lib/atlas-copy';
 import { lookChanges, type LookPreset } from '@/lib/looks';
 import { userLookChanges, type UserLook } from '@/lib/user-looks';
 import { toast } from 'sonner';
@@ -1043,6 +1045,26 @@ export const SETTINGS: SettingRecord[] = [
       if (ctx.userId) saveSettings(ctx.userId, { app_icon: v });
     },
     defaultValue: DEFAULT_APP_ICON,
+  },
+  {
+    // Permanent id. Device only until migration 087 is on prod (design D11):
+    // no dbColumn and no saveSettings here. The follow-up adds both, and the
+    // column to settings-service's PENDING_SCHEMA_COLUMNS, once it exists on
+    // prod. "Light" is any light context, not only Paper.
+    id: 'look.atlasFar',
+    pane: 'look',
+    label: ATLAS_COPY.farSettingLabel,
+    description: ATLAS_COPY.farSettingDescription,
+    control: 'enum',
+    desktopOnly: true,
+    options: ATLAS_FAR_PAPER.map((o) => ({ value: o.value, label: o.label })),
+    // Not "dusk": the dark theme of that name owns it in search.
+    keywords: ['atlas', 'zoom', 'constellation', 'far', 'glow', 'watercolour', 'slate', 'map'],
+    read: () => look().atlasFarPaper,
+    write: (v) => {
+      if (isAtlasFarPaper(v)) look().setAtlasFarPaper(v);
+    },
+    defaultValue: DEFAULT_ATLAS_FAR_PAPER,
   },
   {
     id: 'look.typeface',

@@ -183,6 +183,38 @@ export const ATLAS_COPY = {
   unlinkedMany: (name: string, n: number) => `Unlinked ${name} from ${n} goals`,
   moved: (name: string, goal: string) => `Moved ${name} to ${goal}. New items won't join on their own.`,
   targetMoved: (goal: string, day: string) => `Target for ${goal} moved to ${day}`,
+
+  /* ── PR3: the far zoom, its Look setting and the minimap ──────────── */
+  /** The canvas below 50% zoom. */
+  farLabel: 'Atlas, zoomed out',
+  /** A cluster's label under its tiles. */
+  farLeft: (n: number) => `${n} left`,
+  farAllDone: 'all done',
+  farResting: 'resting',
+  /** A cluster's tooltip: "Project · 2 of 7 done". */
+  farTip: (kind: string, lit: number, total: number) => `${kind} · ${lit} of ${total} done`,
+  farNext: (title: string) => `Next: ${title}`,
+  farNothingLeft: "Nothing left. What's next?",
+  /** A cluster's hit target, for a screen reader and the keyboard. */
+  farClusterLabel: (name: string, kind: string) => `${name}, ${kind}. Zoom in`,
+  farZoomIn: 'Zoom in here',
+  /** A season's dashed outline around what it holds. */
+  farSeason: (name: string, kind: string) => `${name} · ${kind}`,
+  /** The Look setting (look.atlasFar). */
+  farSettingLabel: 'Atlas zoomed out, light mode',
+  farSettingDescription:
+    'How Atlas looks on this computer when you zoom far out on a light theme. Bloom keeps the paper. Dusk turns it to slate so the tiles glow.',
+  farBloom: 'Bloom',
+  farDusk: 'Dusk',
+  /** The minimap and its command (shortcut id toggle_atlas_minimap). */
+  minimapLabel: 'Minimap. Click or drag to move the view.',
+  minimapHint: 'click to fly',
+  minimapToggle: 'Pin the Atlas minimap',
+  minimapToggleDescription: 'Keep the minimap on screen, or let it hide at rest',
+  minimapToggleKeywords: 'atlas minimap map overview pin navigator',
+  minimapContext: 'Atlas only, on the desktop.',
+  minimapPinned: 'Minimap pinned',
+  minimapUnpinned: 'Minimap hides at rest',
 } as const;
 
 /** The undo strip offers Undo for these (hooks/use-undo-toast.ts). */

@@ -102,7 +102,7 @@ describe('one home per id', () => {
 
   it('keeps the rest of the pane as rows', () => {
     renderLook();
-    for (const id of ['look.appIcon', 'look.typeface', 'look.buckets', 'look.showCompleted']) {
+    for (const id of ['look.appIcon', 'look.atlasFar', 'look.typeface', 'look.buckets', 'look.showCompleted']) {
       const row = anchors(id)[0];
       expect(row, id).toBeTruthy();
       expect(screen.getByTestId('look-picker').contains(row), id).toBe(false);

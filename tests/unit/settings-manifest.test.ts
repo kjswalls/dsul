@@ -334,6 +334,8 @@ describe('settings manifest — persistence contract', () => {
       'look.buckets',
       'look.markStyle',
       'look.showPaused',
+      // Atlas's far zoom on paper: device only until 087 is on prod (design D11).
+      'look.atlasFar',
       'beacon.provider',
       'beacon.instructions',
       'beacon.apiKey',

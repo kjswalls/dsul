@@ -58,7 +58,9 @@ import {
   Workflow,
   Puzzle,
   Map as MapIcon,
+  Map as MinimapIcon,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 import { ATLAS_COPY } from '../atlas-copy';
 import { addDays, subDays } from 'date-fns';
@@ -861,6 +863,24 @@ export const STATIC_COMMANDS: Command[] = [
       run: () => view().setAtlasLayout(o.value),
     })
   ),
+  // M on Atlas pins the minimap (PR3). A registered command only, never an
+  // Atlas-root handler: with both, one press would flip the pin twice.
+  {
+    id: 'atlas.toggleMinimap',
+    label: ATLAS_COPY.minimapToggle,
+    description: ATLAS_COPY.minimapToggleDescription,
+    group: 'view',
+    icon: MinimapIcon,
+    keywords: ATLAS_COPY.minimapToggleKeywords,
+    shortcut: { id: 'toggle_atlas_minimap', keys: ['m'], context: ATLAS_COPY.minimapContext },
+    availableWhen: (ctx) => !ctx.isMobile && onAtlas(),
+    hidden: (ctx) => ctx.isMobile,
+    run: () => {
+      const ui = useAtlasUiStore.getState();
+      ui.toggleMinimapPinned();
+      toast(useAtlasUiStore.getState().minimapPinned ? ATLAS_COPY.minimapPinned : ATLAS_COPY.minimapUnpinned);
+    },
+  },
   {
     id: 'view.toggleScope',
     label: 'Toggle Day/Week view',

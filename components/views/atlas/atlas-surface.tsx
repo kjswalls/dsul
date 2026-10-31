@@ -2,10 +2,14 @@
 
 import { useEffect, useRef, type ReactNode, type RefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
-import { panBy, zoomAt } from '@/lib/atlas-camera';
+import { ATLAS_HANDOFF_ZOOM, handoffCardScale, panBy, zoomAt } from '@/lib/atlas-camera';
+import { ATLAS_GRID_PITCH } from '@/lib/atlas-relay-grid';
 
-/** The dot grid's pitch in world pixels. */
-const DOT_PITCH = 32;
+/**
+ * The dot grid's pitch in world pixels: the far zoom's grid (26px), so the
+ * board's dots and the Relay grid's cells line up through the handoff.
+ */
+const DOT_PITCH = ATLAS_GRID_PITCH;
 /** Ctrl+wheel (a trackpad pinch) zoom speed. */
 const WHEEL_ZOOM = 0.01;
 /**
@@ -34,12 +38,15 @@ const WHEEL_LINE_PX = 16;
 export function AtlasSurface({
   rootRef,
   inert,
+  far,
   children,
 }: {
   /** The Atlas root, focused on a bare-canvas press so its keys keep working. */
   rootRef: RefObject<HTMLDivElement | null>;
   /** While the focus sheet is up: the map behind takes no focus and no press. */
   inert?: boolean;
+  /** The far zoom (PR3), drawn above the dots and under the cards. */
+  far?: ReactNode;
   children: ReactNode;
 }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -144,14 +151,20 @@ export function AtlasSurface({
       onPointerCancel={endPan}
     >
       <AtlasDots />
+      {far}
       <AtlasWorld>{children}</AtlasWorld>
     </div>
   );
 }
 
-/** The dot grid, scaled and shifted with the camera. CSS only, no canvas. */
+/**
+ * The dot grid, scaled and shifted with the camera. CSS only, no canvas.
+ * Below the handoff zoom the far zoom's canvas draws the same grid (its free
+ * cells, thinned as it zooms out), so this one steps aside.
+ */
 function AtlasDots() {
   const { x, y, z } = useAtlasUiStore((s) => s.camera);
+  if (z < ATLAS_HANDOFF_ZOOM) return null;
   const pitch = DOT_PITCH * z;
   return (
     <div
@@ -167,14 +180,23 @@ function AtlasDots() {
   );
 }
 
-/** The ONLY node that carries the camera's transform. */
+/**
+ * The ONLY node that carries the camera's transform. In the handoff band it
+ * also carries `--atlas-handoff`, the scale each card shrinks to toward its
+ * cluster (a card in the band reads it), so a zoom there re-renders no card.
+ */
 function AtlasWorld({ children }: { children: ReactNode }) {
   const { x, y, z } = useAtlasUiStore((s) => s.camera);
+  const band = z < ATLAS_HANDOFF_ZOOM;
   return (
     <div
       className="atlas-world absolute left-0 top-0 origin-top-left"
       data-testid="atlas-world"
-      style={{ transform: `translate(${x}px, ${y}px) scale(${z})` }}
+      data-handoff={band ? 'true' : undefined}
+      style={{
+        transform: `translate(${x}px, ${y}px) scale(${z})`,
+        ...(band ? ({ '--atlas-handoff': handoffCardScale(z) } as Record<string, number>) : null),
+      }}
     >
       {children}
     </div>

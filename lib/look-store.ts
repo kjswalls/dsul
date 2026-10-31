@@ -21,6 +21,12 @@ import {
   type LayoutTheme,
 } from '@/lib/layout-themes';
 import { APP_ICON_STORAGE_KEY, DEFAULT_APP_ICON, isAppIcon, type AppIcon } from '@/lib/app-icons';
+import {
+  ATLAS_FAR_PAPER_STORAGE_KEY,
+  DEFAULT_ATLAS_FAR_PAPER,
+  isAtlasFarPaper,
+  type AtlasFarPaper,
+} from '@/lib/atlas-far-looks';
 
 /**
  * The theme picked for each mode (lib/theme-looks.ts). Both picks live here at
@@ -36,7 +42,9 @@ import { APP_ICON_STORAGE_KEY, DEFAULT_APP_ICON, isAppIcon, type AppIcon } from 
  *
  * The layout (lib/layout-themes.ts) lives here too: it is the third pick on
  * the Look pane, and unlike the two above it is NOT per mode. So does the app
- * icon (lib/app-icons.ts), for the same reason.
+ * icon (lib/app-icons.ts), for the same reason. And Atlas's far zoom on a
+ * light theme (lib/atlas-far-looks.ts), which is device only until migration
+ * 087 is on prod (design D11): no server column is read or written for it.
  */
 interface LookStore {
   /**
@@ -61,6 +69,9 @@ interface LookStore {
    */
   appIconKnown: boolean;
   setAppIcon: (appIcon: AppIcon) => void;
+  /** Atlas zoomed out on a light theme: Bloom (the default) or Dusk. */
+  atlasFarPaper: AtlasFarPaper;
+  setAtlasFarPaper: (pick: AtlasFarPaper) => void;
 }
 
 function readStored(key: string): string | null {
@@ -83,6 +94,7 @@ export const useLookStore = create<LookStore>((set) => ({
   layout: stored(LAYOUT_STORAGE_KEY, isLayoutTheme, DEFAULT_LAYOUT),
   appIcon: stored(APP_ICON_STORAGE_KEY, isAppIcon, DEFAULT_APP_ICON),
   appIconKnown: isAppIcon(readStored(APP_ICON_STORAGE_KEY)),
+  atlasFarPaper: stored(ATLAS_FAR_PAPER_STORAGE_KEY, isAtlasFarPaper, DEFAULT_ATLAS_FAR_PAPER),
 
   setLight: (light, opts) => {
     const write = () => set({ light });
@@ -100,6 +112,8 @@ export const useLookStore = create<LookStore>((set) => ({
   // Store state only, like setLayout: the localStorage mirror lives in
   // supabase-provider, and the tab and the shell each read the store.
   setAppIcon: (appIcon) => set({ appIcon, appIconKnown: true }),
+  // State only, never eased: the localStorage mirror lives in supabase-provider.
+  setAtlasFarPaper: (atlasFarPaper) => set({ atlasFarPaper }),
 }));
 
 /**

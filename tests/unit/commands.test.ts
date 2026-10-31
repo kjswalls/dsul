@@ -165,6 +165,8 @@ describe('command registry', () => {
       'atlas_layout_momentum',
       'atlas_layout_goal',
       'atlas_layout_timeline',
+      // Atlas's minimap pin, M (PR3).
+      'toggle_atlas_minimap',
     ];
     const actual = DEFAULT_SHORTCUTS.map((s) => s.id);
     for (const id of expected) expect(actual).toContain(id);

@@ -77,6 +77,7 @@ export const AtlasCard = memo(function AtlasCard({
   dayAt,
   laneLabel,
   onTick,
+  handoff,
 }: {
   card: AtlasCardModel;
   at: Point;
@@ -112,6 +113,11 @@ export const AtlasCard = memo(function AtlasCard({
   laneLabel?: string;
   /** A row on this card was ticked (the view holds a computed layout). */
   onTick?: (key: string) => void;
+  /**
+   * In the far zoom's handoff band (PR3): the card shrinks toward its
+   * cluster by the world's `--atlas-handoff`, transform only, no glide.
+   */
+  handoff?: boolean;
 }) {
   const ref = useRef<HTMLElement>(null);
   const commit = useCallback((to: Point) => onMove(card.key, to), [onMove, card.key]);
@@ -208,10 +214,10 @@ export const AtlasCard = memo(function AtlasCard({
       data-pinned={pinned ? 'true' : undefined}
       style={{
         width: ATLAS_CARD_W,
-        transform: `translate(${pos.x}px, ${pos.y}px)${leaving ? ' scale(.96)' : ''}`,
+        transform: `translate(${pos.x}px, ${pos.y}px)${leaving ? ' scale(.96)' : handoff ? ' scale(var(--atlas-handoff, 1))' : ''}`,
         // Transform only (D8). A hidden card scales down quickly; the glide
         // carries a layout switch or a spring back; nothing animates mid-drag.
-        transition: dragging ? 'none' : leaving ? `transform ${ATLAS_LEAVE_MS}ms ease-out` : glide ? ATLAS_GLIDE : undefined,
+        transition: dragging || handoff ? 'none' : leaving ? `transform ${ATLAS_LEAVE_MS}ms ease-out` : glide ? ATLAS_GLIDE : undefined,
         pointerEvents: leaving ? 'none' : undefined,
       }}
     >

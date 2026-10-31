@@ -283,10 +283,15 @@ describe('a binding that only works somewhere says so', () => {
     // split at exactly half. Tightening this back to `>` would only buy silence
     // by making a true sentence go unsaid. What must not happen is qualified
     // rows OUTNUMBERING plain ones.
-    const unqualified = SHORTCUT_RECORDS.filter((r) => !/only|Desktop/i.test(r.description ?? ''));
+    //
+    // Atlas's own keys (1 to 4, and M for the minimap) are a view's keymap,
+    // not caveats on global bindings: they are left out of the count, so a
+    // view that adds its own keys never tips this balance.
+    const global = SHORTCUT_RECORDS.filter((r) => !/^atlas_|_atlas_/.test(r.shortcutId));
+    const unqualified = global.filter((r) => !/only|Desktop/i.test(r.description ?? ''));
     expect(unqualified.map((r) => r.shortcutId)).toContain('undo');
     expect(unqualified.map((r) => r.shortcutId)).toContain('system_search');
-    expect(unqualified.length).toBeGreaterThanOrEqual(SHORTCUT_RECORDS.length / 2);
+    expect(unqualified.length).toBeGreaterThanOrEqual(global.length / 2);
   });
 
   it('is findable by the words the context uses', () => {
