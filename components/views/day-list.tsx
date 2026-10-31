@@ -1,5 +1,6 @@
 'use client';
 
+import { GhostFold } from '@/components/planner/ghost-fold';
 import { format } from 'date-fns';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
@@ -102,6 +103,8 @@ export function DayList() {
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
+        {/* Left from earlier days, on today only (components/planner/ghost-fold.tsx). */}
+        <GhostFold dateStr={dateStr} />
         {/* The floor gives an empty or short day a target worth aiming at;
             the negative margin lets the drop tint breathe past the rows. */}
         <ListDropZone dateStr={dateStr} className="-mx-2 min-h-[50vh] space-y-5 px-2">

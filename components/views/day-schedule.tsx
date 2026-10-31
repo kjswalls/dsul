@@ -1,5 +1,6 @@
 'use client';
 
+import { GhostFold } from '@/components/planner/ghost-fold';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { ItemContextMenu } from '@/components/planner/item-context-menu';
@@ -1738,6 +1739,8 @@ export function DaySchedule({
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
+        {/* Left from earlier days, on today only (components/planner/ghost-fold.tsx). */}
+        {!hideAnytime && <GhostFold dateStr={dayStr} />}
         {/* ANYTIME — untimed items; drop here to keep something time-free.
             On desktop it is always there, even empty, because its last row is
             where you add one (the phone keeps its own capture bar). */}

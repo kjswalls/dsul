@@ -1,5 +1,6 @@
 'use client';
 
+import { GhostFold } from '@/components/planner/ghost-fold';
 import { useDroppable } from '@dnd-kit/core';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { BucketCard, bucketGap } from '@/components/primitives/bucket-card';
@@ -424,6 +425,8 @@ export function DayBuckets({ activeId }: { activeId: string | null }) {
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
         )}
       >
+        {/* Left from earlier days, on today only (components/planner/ghost-fold.tsx). */}
+        <GhostFold dateStr={dateStr} />
         {BUCKET_ORDER.map((bucket) => (
           <DayBucket
             key={bucket}

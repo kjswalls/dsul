@@ -1173,11 +1173,15 @@ export const SETTINGS: SettingRecord[] = [
   {
     id: 'rituals.morningCheck',
     pane: 'rituals',
-    label: 'Morning past-due check',
-    description: 'A single quiet line above your day when items are still waiting from earlier.',
+    // The ghost rows' switch since phase 1 (memory/plans/ghost-rows.md): the
+    // fold at the top of Today took over the waiting line this used to show.
+    // Same id, column and default, so nothing stored moves.
+    label: 'Leftovers on Today',
+    description:
+      "Things you didn't get to show up faded at the top of today until you decide what happens to them.",
     control: 'switch',
     dbColumn: 'morning_check_enabled',
-    keywords: ['overdue', 'past due', 'waiting', 'yesterday', 'sunrise', 'stale', 'backlog'],
+    keywords: ['leftovers', 'ghost', 'ghost rows', 'from earlier', 'overdue', 'past due', 'waiting', 'yesterday', 'morning check', 'stale', 'backlog'],
     read: () => morning().morningCheckEnabled,
     write: (v) => morning().setMorningCheckEnabled(Boolean(v)),
     // Rituals are opt-in for a new account (migration 054).
