@@ -43,8 +43,8 @@ import {
  * The layout (lib/layout-themes.ts) lives here too: it is the third pick on
  * the Look pane, and unlike the two above it is NOT per mode. So does the app
  * icon (lib/app-icons.ts), for the same reason. And Atlas's far zoom on a
- * light theme (lib/atlas-far-looks.ts), which is device only until migration
- * 087 is on prod (design D11): no server column is read or written for it.
+ * light theme (lib/atlas-far-looks.ts), saved per account in
+ * user_settings.atlas_far_paper (migration 087) like the icon.
  */
 interface LookStore {
   /**

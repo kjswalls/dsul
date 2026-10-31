@@ -1074,16 +1074,17 @@ export const SETTINGS: SettingRecord[] = [
     defaultValue: DEFAULT_APP_ICON,
   },
   {
-    // Permanent id. Device only until migration 087 is on prod (design D11):
-    // no dbColumn and no saveSettings here. The follow-up adds both, and the
-    // column to settings-service's PENDING_SCHEMA_COLUMNS, once it exists on
-    // prod. "Light" is any light context, not only Paper.
+    // Permanent id. Per account since migration 087 reached prod (design
+    // D11): the column is user_settings.atlas_far_paper, and this device's
+    // localStorage keeps the first paint right before the row loads. "Light"
+    // is any light context, not only Paper.
     id: 'look.atlasFar',
     pane: 'look',
     label: ATLAS_COPY.farSettingLabel,
     description: ATLAS_COPY.farSettingDescription,
     control: 'enum',
     desktopOnly: true,
+    dbColumn: 'atlas_far_paper',
     options: ATLAS_FAR_PAPER.map((o) => ({ value: o.value, label: o.label })),
     // Not "dusk": the dark theme of that name owns it in search.
     keywords: ['atlas', 'zoom', 'constellation', 'far', 'glow', 'watercolour', 'slate', 'map'],
@@ -1091,8 +1092,12 @@ export const SETTINGS: SettingRecord[] = [
     // until a light theme is showing. Said here, or the row reads as broken.
     note: (ctx) => (darkThemeShowing(ctx) ? ATLAS_COPY.farSettingDarkNote : null),
     read: () => look().atlasFarPaper,
-    write: (v) => {
-      if (isAtlasFarPaper(v)) look().setAtlasFarPaper(v);
+    // Same pairing as look.appIcon: the store setter is local state only, so
+    // the Supabase write rides here.
+    write: (v, ctx) => {
+      if (!isAtlasFarPaper(v)) return;
+      look().setAtlasFarPaper(v);
+      if (ctx.userId) saveSettings(ctx.userId, { atlas_far_paper: v });
     },
     defaultValue: DEFAULT_ATLAS_FAR_PAPER,
   },

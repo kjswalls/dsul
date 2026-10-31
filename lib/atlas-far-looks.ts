@@ -5,12 +5,11 @@ import { ATLAS_COPY } from './atlas-copy';
  * the paper and paints each cluster in a watercolour wash; Dusk drops the
  * board to slate while zoomed out, so the tiles glow as they do at night.
  *
- * Device only for now: the pick lives in look-store and this device's
- * localStorage (`ATLAS_FAR_PAPER_STORAGE_KEY`). Migration 087 adds
- * `user_settings.atlas_far_paper`, but nothing reads or writes it until a
- * follow-up that lands once 087 is on prod (the pending-column fallback in
- * lib/settings-service.ts is all or nothing, so naming it early would reset
- * every user's settings on every load).
+ * Per account: `user_settings.atlas_far_paper` (migration 087) is the truth,
+ * written by the Look record and applied by supabase-provider at sign-in.
+ * look-store mirrors it to this device's localStorage
+ * (`ATLAS_FAR_PAPER_STORAGE_KEY`) so the first paint is right before the row
+ * loads. A null column means never chosen, and this device's pick stands.
  */
 export type AtlasFarPaper = 'bloom' | 'dusk';
 
