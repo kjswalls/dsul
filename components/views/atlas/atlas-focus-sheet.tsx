@@ -30,7 +30,7 @@ import { useOpenConsole } from '@/lib/console-door';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import type { Viewport } from '@/lib/atlas-camera';
 import { cn } from '@/lib/utils';
-import { ATLAS_EASE_EXIT, ATLAS_EASE_OUT, ATLAS_MOTION } from '@/lib/atlas-motion';
+import { ATLAS_EASE_EXIT, ATLAS_EASE_OUT, ATLAS_MOTION, ATLAS_SHEET_RISE_TOTAL_MS } from '@/lib/atlas-motion';
 
 /**
  * The grow and the shrink (lib/atlas-motion.ts): out of the card on the settle
@@ -298,6 +298,13 @@ function SheetBody({
   keepFocus: () => void;
 }) {
   const timeFormat = usePlannerStore((s) => s.timeFormat);
+  // The blocks rise only as the sheet opens (the body remounts per open), so
+  // one that mounts later (a Done group after a tick) is simply there.
+  const [rising, setRising] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setRising(false), ATLAS_SHEET_RISE_TOTAL_MS);
+    return () => clearTimeout(t);
+  }, []);
   const openConsole = useOpenConsole();
   const [allDone, setAllDone] = useState(false);
   const held = useSheetHold();
@@ -363,7 +370,10 @@ function SheetBody({
   return (
     // atlas-sheet-body: each block rises a few pixels into place as the sheet
     // opens, staggered, by transform only (globals.css; off under reduced motion).
-    <div className="atlas-sheet-body flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-[22px] pb-[22px] pt-[18px]">
+    <div
+      data-rising={rising ? '' : undefined}
+      className="atlas-sheet-body flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-[22px] pb-[22px] pt-[18px]"
+    >
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <button
           type="button"

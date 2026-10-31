@@ -39,6 +39,8 @@ export const ATLAS_MOTION = {
   leaveMs: 150,
   /** The focus sheet grows out of its card. */
   sheetOpenMs: 340,
+  /** Its blocks rise a few pixels into place as it opens (globals.css `atlas-sheet-rise`). */
+  sheetRiseMs: 260,
   /** And shrinks back into it, a little quicker. */
   sheetCloseMs: 260,
   /** The scrim behind the sheet, by colour. */
@@ -61,6 +63,17 @@ export const ATLAS_MOTION = {
   /** When in the flight the assembly starts. */
   flourishDelayMs: 150,
 } as const;
+
+/**
+ * The focus sheet's rise, block by block: the delay of its 1st, 2nd, ... 6th
+ * and every later block. globals.css spells the same values (a test pins
+ * them), and the rise is on only while the sheet opens, so a block that
+ * mounts later (a Done group after a tick) never rises.
+ */
+export const ATLAS_SHEET_RISE_DELAYS = [0, 30, 55, 80, 100, 120] as const;
+/** How long the sheet's body keeps its rise on after it opens. */
+export const ATLAS_SHEET_RISE_TOTAL_MS =
+  ATLAS_MOTION.sheetRiseMs + ATLAS_SHEET_RISE_DELAYS[ATLAS_SHEET_RISE_DELAYS.length - 1];
 
 /** The strands follow their cards this long after a change: the glide, its cascade and slack. */
 export const ATLAS_FOLLOW_MS = ATLAS_MOTION.glideMs + ATLAS_MOTION.glideStaggerMs + 40;
@@ -237,6 +250,30 @@ export function drawInDash(
 /** The delay for the `i`th strand appearing at once. */
 export function strandDelay(i: number): number {
   return Math.min(Math.max(0, i) * ATLAS_MOTION.strandStaggerMs, ATLAS_MOTION.strandStaggerCapMs);
+}
+
+/* ── A pin made here ───────────────────────────────────────────────────────
+ *
+ * A card's pin settle plays only for a pin this tab just made (the card menu
+ * or a drop into a Momentum column): never for a card that was pinned all
+ * along and only now shows it (a switch into Momentum), and never for a pin
+ * caught up from another device. The view arms the card's key as it writes
+ * the pin; the card takes the arm when it sees itself pinned. An arm nobody
+ * takes (a drop that wrote nothing) lapses.
+ */
+const PIN_ARM_MS = 2000;
+const pinArms = new Map<string, number>();
+
+/** A pin is being written here for `key`: its settle may play. */
+export function armPinSettle(key: string, now: number = Date.now()): void {
+  pinArms.set(key, now);
+}
+
+/** Takes `key`'s arm: true once for a pin armed in the last two seconds. */
+export function takePinSettle(key: string, now: number = Date.now()): boolean {
+  const at = pinArms.get(key);
+  pinArms.delete(key);
+  return at !== undefined && now - at >= 0 && now - at <= PIN_ARM_MS;
 }
 
 /* ── One-off pops, by the Web Animations API ────────────────────────────── */

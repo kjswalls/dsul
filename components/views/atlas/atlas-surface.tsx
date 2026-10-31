@@ -1,9 +1,17 @@
 'use client';
 
-import { useEffect, useRef, type ReactNode, type RefObject, type PointerEvent as ReactPointerEvent } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type ReactNode,
+  type RefObject,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
-import { ATLAS_HANDOFF_ZOOM, handoffShown, panBy, zoomAt } from '@/lib/atlas-camera';
-import { foldScale, sweepAt } from '@/lib/atlas-motion';
+import { ATLAS_HANDOFF_ZOOM, handoffShown, panBy, viewRect, zoomAt, type Point } from '@/lib/atlas-camera';
+import { foldScale } from '@/lib/atlas-motion';
+import { ATLAS_CARD_H, ATLAS_CARD_W } from '@/lib/atlas-seed';
 import { ATLAS_GRID_PITCH } from '@/lib/atlas-relay-grid';
 
 /**
@@ -74,6 +82,7 @@ export function AtlasSurface({
   far,
   farOver,
   fold = true,
+  cardsAt,
   children,
 }: {
   /** The Atlas root, focused on a bare-canvas press so its keys keep working. */
@@ -86,6 +95,8 @@ export function AtlasSurface({
   farOver?: ReactNode;
   /** The cards fold in the handoff (off under reduced motion: a plain swap at 0.5). */
   fold?: boolean;
+  /** Where each card rests, so the fold is written only to the cards in view. */
+  cardsAt?: RefObject<ReadonlyMap<string, Point>>;
   children: ReactNode;
 }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -181,7 +192,9 @@ export function AtlasSurface({
           (an empty board) the CSS dots stay at every zoom. */}
       <AtlasDots yieldBelowHandoff={far != null} />
       {far}
-      <AtlasWorld fold={fold}>{children}</AtlasWorld>
+      <AtlasWorld fold={fold} cardsAt={cardsAt}>
+        {children}
+      </AtlasWorld>
       {farOver}
     </div>
   );
@@ -213,32 +226,88 @@ function AtlasDots({ yieldBelowHandoff }: { yieldBelowHandoff: boolean }) {
 
 /**
  * The ONLY node that carries the camera's transform. Through the handoff
- * (lib/atlas-motion.ts) it also carries the fold every card in it takes,
- * `--atlas-fold-x` / `--atlas-fold-y`, and the light's pass, `--atlas-sweep`
- * (a card in the band reads them), so a zoom there re-renders no card. The
- * handoff shown is a fly-in's flourish while one runs, else the zoom's own.
+ * (lib/atlas-motion.ts) each card in view folds flat onto its tile strip by
+ * `--atlas-fold-x` / `--atlas-fold-y`, written on the card itself, after the
+ * render, from the handoff shown (a fly-in's flourish while one runs, else
+ * the zoom's own). Both are registered non-inherited (globals.css), so a
+ * frame restyles those cards and nothing inside them, and a card off screen
+ * is not touched at all; a zoom there re-renders no card. The light's pass is
+ * drawn on the handoff overlay (atlas-handoff-canvas.tsx).
  */
-function AtlasWorld({ fold, children }: { fold: boolean; children: ReactNode }) {
+function AtlasWorld({
+  fold,
+  cardsAt,
+  children,
+}: {
+  fold: boolean;
+  cardsAt?: RefObject<ReadonlyMap<string, Point>>;
+  children: ReactNode;
+}) {
   const { x, y, z } = useAtlasUiStore((s) => s.camera);
   const flourish = useAtlasUiStore((s) => s.flourish);
   const e = handoffShown(z, flourish);
   const band = fold && e > 0;
-  const { sx, sy } = foldScale(e);
+  const worldRef = useRef<HTMLDivElement>(null);
+  /** The cards this world last folded, to unfold when the band ends. */
+  const folded = useRef(new Set<HTMLElement>());
+  /** The surface's size, measured off the frame path. */
+  const box = useRef({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const parent = worldRef.current?.parentElement;
+    if (!parent) return;
+    const measure = () => {
+      box.current = { w: parent.clientWidth, h: parent.clientHeight };
+    };
+    measure();
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    ro?.observe(parent);
+    return () => ro?.disconnect();
+  }, []);
+
+  // After every render (a camera frame, or cards mounting mid-band): fold the
+  // cards in view. No dependency list on purpose: the world renders only on
+  // a camera or flourish change, or when its children do.
+  useLayoutEffect(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    const touched = folded.current;
+    if (!band) {
+      if (touched.size === 0) return;
+      for (const el of touched) {
+        el.style.removeProperty('--atlas-fold-x');
+        el.style.removeProperty('--atlas-fold-y');
+      }
+      touched.clear();
+      return;
+    }
+    const { sx, sy } = foldScale(e);
+    const fx = String(round4(sx));
+    const fy = String(round4(sy));
+    const { w, h } = box.current;
+    // jsdom (and a surface not laid out yet) has no size: fold every card.
+    const v = w > 0 && h > 0 ? viewRect({ x, y, z }, { w, h }) : null;
+    const at = cardsAt?.current;
+    for (const el of Array.from(world.querySelectorAll<HTMLElement>(':scope > [data-atlas-card]'))) {
+      const p = at?.get(el.dataset.atlasCard ?? '');
+      if (v && p) {
+        const pad = ATLAS_CARD_W;
+        if (p.x + ATLAS_CARD_W + pad < v.x || p.x - pad > v.x + v.w) continue;
+        if (p.y + ATLAS_CARD_H * 3 + pad < v.y || p.y - pad > v.y + v.h) continue;
+      }
+      el.style.setProperty('--atlas-fold-x', fx);
+      el.style.setProperty('--atlas-fold-y', fy);
+      touched.add(el);
+    }
+    for (const el of touched) if (!el.isConnected) touched.delete(el);
+  });
+
   return (
     <div
+      ref={worldRef}
       className="atlas-world absolute left-0 top-0 origin-top-left"
       data-testid="atlas-world"
       data-handoff={band ? 'true' : undefined}
-      style={{
-        transform: `translate(${x}px, ${y}px) scale(${z})`,
-        ...(band
-          ? ({
-              '--atlas-fold-x': round4(sx),
-              '--atlas-fold-y': round4(sy),
-              '--atlas-sweep': round4(sweepAt(e)),
-            } as Record<string, number>)
-          : null),
-      }}
+      style={{ transform: `translate(${x}px, ${y}px) scale(${z})` }}
     >
       {children}
     </div>

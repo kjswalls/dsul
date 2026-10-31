@@ -29,6 +29,7 @@ import {
   ATLAS_MOTION,
   atlasPop,
   glideTransition,
+  takePinSettle,
 } from '@/lib/atlas-motion';
 
 /** How long a ticked row stays where it was before the card re-picks. */
@@ -192,11 +193,15 @@ export const AtlasCard = memo(function AtlasCard({
   const steady = settled && !previewing;
   // Pinned in Momentum: once its glide to the new column lands, the card
   // settles in with a breath of scale, added to its place (never replacing it).
+  // Only for a pin made here (the view arms it as it writes): a card pinned
+  // all along shows `pinned` only in Momentum, so a switch into Momentum, or
+  // a pin caught up from another device, is not news and plays nothing.
   const wasPinned = useRef(pinned);
   useEffect(() => {
     const before = wasPinned.current;
     wasPinned.current = pinned;
     if (!pinned || before) return;
+    if (!takePinSettle(card.key) || !steady) return;
     atlasPop(
       ref.current,
       [{ transform: 'scale(1)' }, { transform: 'scale(1.035)', offset: 0.35 }, { transform: 'scale(1)' }],
@@ -208,7 +213,7 @@ export const AtlasCard = memo(function AtlasCard({
       },
       still
     );
-  }, [pinned, still]);
+  }, [pinned, still, steady, card.key]);
   // A receipt: the count pulses when the card gains a member (a row filed
   // into it) or a tick lights one. Never on the first draw, never going down.
   const countRef = useRef<HTMLSpanElement>(null);

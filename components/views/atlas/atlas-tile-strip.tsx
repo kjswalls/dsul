@@ -34,16 +34,33 @@ export function AtlasTileStrip({
     if (!prev || prev === card.tiles || reduced || !before.steady || !steady) return;
     const els = ref.current?.children;
     if (!els) return;
-    card.tiles.forEach((state, i) => {
-      const was = prev[i];
-      if (was === state || (was !== undefined && state !== 'lit')) return;
-      atlasPop(
-        els[i],
-        [{ transform: 'scale(.55)' }, { transform: 'scale(1.3)', offset: 0.5 }, { transform: 'scale(1)' }],
-        { duration: ATLAS_MOTION.tilePopMs, easing: ATLAS_EASE_SPRING },
-        reduced
-      );
-    });
+    // By how many of each state there are, never by index: the strip is
+    // sorted by state, so one arrival shifts every tile after it, and an
+    // index compare would pop two tiles for one. A state that grew pops its
+    // last tiles (one per tile gained); an open tile only on an arrival.
+    const count = (list: readonly string[]) => {
+      const m = new Map<string, number>();
+      for (const t of list) m.set(t, (m.get(t) ?? 0) + 1);
+      return m;
+    };
+    const was = count(prev);
+    const now = count(card.tiles);
+    const grew = card.tiles.length > prev.length;
+    for (const [state, n] of now) {
+      const gained = n - (was.get(state) ?? 0);
+      if (gained <= 0 || (state !== 'lit' && !grew)) continue;
+      let left = gained;
+      for (let i = card.tiles.length - 1; i >= 0 && left > 0; i--) {
+        if (card.tiles[i] !== state) continue;
+        left--;
+        atlasPop(
+          els[i],
+          [{ transform: 'scale(.55)' }, { transform: 'scale(1.3)', offset: 0.5 }, { transform: 'scale(1)' }],
+          { duration: ATLAS_MOTION.tilePopMs, easing: ATLAS_EASE_SPRING },
+          reduced
+        );
+      }
+    }
   }, [card.tiles, reduced, steady]);
   if (card.tiles.length === 0) return null;
   return (

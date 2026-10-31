@@ -35,7 +35,7 @@ import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 import { useAtlasStore } from '@/lib/atlas-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
-import { ATLAS_GLIDE, ATLAS_MOTION } from '@/lib/atlas-motion';
+import { ATLAS_GLIDE, ATLAS_MOTION, armPinSettle, takePinSettle } from '@/lib/atlas-motion';
 import { EXT_GOALS } from '@/lib/extension-registry';
 import type { Item, Project } from '@/lib/planner-types';
 import { disableExtensions, enableExtensions } from './support/extensions';
@@ -114,6 +114,20 @@ describe('a tick and a filed row', () => {
     keyframesHaveNoOpacity();
   });
 
+  it('pops the arriving tile, by state counts, though the tiles after it shift', () => {
+    // Open tiles sort first, so a new open one pushes the lit tile along:
+    // an index compare would pop the lit tile, which did not change.
+    seed([task('a'), task('b', { status: 'completed' })]);
+    render(<AtlasView />);
+    act(() => {
+      const items = [...usePlannerStore.getState().items, task('n', { project: 'Work' })] as Item[];
+      usePlannerStore.setState({ items, tasks: items as never });
+    });
+    const tiles = played.filter((p) => (p.el as HTMLElement).tagName === 'I');
+    expect(tiles).toHaveLength(1);
+    expect((tiles[0].el as HTMLElement).dataset.tile).toBe('open');
+  });
+
   it('pulses nothing when the cached preview gives way to the real load', () => {
     seed([task('a')]);
     usePlannerStore.setState({ isPreview: true } as never);
@@ -135,17 +149,45 @@ describe('a tick and a filed row', () => {
 });
 
 describe('a pin', () => {
+  beforeEach(() => {
+    // No arm left over from another test.
+    takePinSettle('project:p1');
+  });
+
   it('settles the card once its glide lands, added to its place', () => {
     seed([task('a')]);
     useViewStore.setState({ atlasLayout: 'momentum' });
     render(<AtlasView />);
-    act(() => useAtlasStore.getState().pin('project', 'p1', 'now', undefined));
+    // As the view's own pin does (the card menu, a drop into a column).
+    act(() => {
+      armPinSettle('project:p1');
+      useAtlasStore.getState().pin('project', 'p1', 'now', undefined);
+    });
     const settle = played.filter((p) => p.el === card());
     expect(settle).toHaveLength(1);
     expect(settle[0].options.composite).toBe('add');
     expect(settle[0].options.delay).toBeGreaterThan(0);
     expect(settle[0].options.delay!).toBeLessThan(ATLAS_MOTION.glideMs);
     keyframesHaveNoOpacity();
+  });
+
+  it('plays nothing for a card pinned all along when the board switches into Momentum', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    // Pinned on Your map (Map shows no pins), then into Momentum.
+    act(() => useAtlasStore.getState().pin('project', 'p1', 'now', undefined));
+    act(() => useViewStore.setState({ atlasLayout: 'momentum' }));
+    expect(card().getAttribute('data-pinned')).toBe('true');
+    expect(played.filter((p) => p.el === card() && p.options.composite === 'add')).toHaveLength(0);
+  });
+
+  it('plays nothing for a pin caught up from another device', () => {
+    seed([task('a')]);
+    useViewStore.setState({ atlasLayout: 'momentum' });
+    render(<AtlasView />);
+    act(() => useAtlasStore.getState().pin('project', 'p1', 'now', undefined));
+    expect(card().getAttribute('data-pinned')).toBe('true');
+    expect(played.filter((p) => p.el === card())).toHaveLength(0);
   });
 });
 
@@ -202,6 +244,35 @@ describe('strands', () => {
     fireEvent.pointerOver(card());
     expect(played.filter((p) => p.el === path)).toHaveLength(1);
     keyframesHaveNoOpacity();
+  });
+
+  it('measure their draw-in where they will rest, so a strand appearing mid-glide never outgrows its cover', () => {
+    enableExtensions(EXT_GOALS);
+    seed([task('a')]);
+    usePlannerStore.setState({ goals: [goal('g1', ['a'])] });
+    // The cards are still at their old spots (a glide just starting): the
+    // drawn curve is short, the resting one long.
+    const real = window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((el, pseudo) => {
+      const cs = real(el, pseudo);
+      if (!(el as Element).hasAttribute?.('data-atlas-card')) return cs;
+      return new Proxy(cs, {
+        get: (t, k) => (k === 'transform' ? 'matrix(1, 0, 0, 1, 0, 0)' : Reflect.get(t, k)),
+      });
+    });
+    const measured: string[] = [];
+    (SVGElement.prototype as unknown as { getTotalLength: () => number }).getTotalLength = function (this: SVGElement) {
+      measured.push(this.getAttribute('d') ?? '');
+      return measured.length === 1 ? 60 : 400;
+    };
+    render(<AtlasView />);
+    const path = document.querySelector('[data-atlas-strand]')!;
+    const draw = played.filter((p) => p.el === path);
+    expect(draw).toHaveLength(1);
+    expect(new Set(measured).size).toBeGreaterThan(1);
+    // Covered for the resting length, and the drawn curve put back.
+    expect(Number(draw[0].keyframes[0].strokeDashoffset)).toBeGreaterThan(400);
+    expect(path.getAttribute('d')).toBe(measured[0]);
   });
 
   it('appear whole under reduced motion', () => {

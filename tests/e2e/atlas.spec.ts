@@ -24,7 +24,9 @@ import {
  * and M pins it, and the Look pane has the Bloom or Dusk row. PR4: a
  * braindump row dropped on a card files it there (it stays in the braindump)
  * and Undo takes it back; a row dragged from one routine's card to another's
- * moves it, as one undo.
+ * moves it, as one undo. Round 2: a click on a far cluster flies in and
+ * plays the handoff as a flourish that lets go, and Ctrl+wheel mid-flight
+ * takes it back.
  *
  * Under its own prefix, swept by name like organize.spec.ts (projects are not
  * items, so the title sweep would miss them).
@@ -329,6 +331,65 @@ test.describe('atlas', () => {
     await expect(farChip).toContainText('Bloom');
     await page.goto('/');
     await waitForAppReady(page);
+    await setScope(page, 'Day');
+  });
+
+  test('a click on a far cluster flies in with the handoff, which lets go, and Ctrl+wheel takes it back', async ({ page }) => {
+    const name = scope.title('Fly');
+    const projectId = await createProject(page, name);
+    await createTestTask(page, { title: scope.title('Fly step'), project: name });
+    await reloadApp(page);
+
+    await setScope(page, 'Atlas');
+    const view = page.getByTestId('atlas-view');
+    const world = page.getByTestId('atlas-world');
+    const overlay = page.getByTestId('atlas-handoff-canvas');
+    const card = page.locator(`[data-atlas-card="project:${projectId}"]`);
+    await expect(card).toBeVisible();
+    // Cards only, above the band: no fold, no overlay.
+    await expect(world).not.toHaveAttribute('data-handoff', 'true');
+    await expect(overlay).toHaveCount(0);
+
+    const zoomOut = async () => {
+      const box = (await view.boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.keyboard.down('Control');
+      for (let i = 0; i < 6; i++) await page.mouse.wheel(0, 120);
+      await page.keyboard.up('Control');
+      await expect(page.locator('[data-atlas-card]')).toHaveCount(0);
+    };
+
+    // Far out (below 50%): the constellation alone, and no overlay there either.
+    await zoomOut();
+    await expect(overlay).toHaveCount(0);
+    const cluster = page.locator(`[data-atlas-far-cluster="project:${projectId}"]`);
+    await expect(cluster).toHaveCount(1);
+
+    // The click flies in and plays the handoff as a flourish: the fold and the
+    // overlay are up while the card assembles, then both let go (the whole
+    // fly-in is under a second), and the card is whole at 100%.
+    await cluster.click();
+    await expect(world).toHaveAttribute('data-handoff', 'true', { timeout: 2_000 });
+    await expect(card).toBeVisible({ timeout: 2_000 });
+    await expect(world).not.toHaveAttribute('data-handoff', 'true', { timeout: 3_000 });
+    await expect(overlay).toHaveCount(0);
+    await expect(page.getByTestId('atlas-zoom')).toHaveText('100%');
+    await expect(card).not.toHaveAttribute('style', /--atlas-fold-x/);
+
+    // Again, and Ctrl+wheel in mid-flight takes the camera at once: the
+    // flourish ends with it, so nothing stays folded at a zoom above the band.
+    await zoomOut();
+    await page.locator(`[data-atlas-far-cluster="project:${projectId}"]`).click();
+    await expect(world).toHaveAttribute('data-handoff', 'true', { timeout: 2_000 });
+    const box = (await view.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.keyboard.down('Control');
+    for (let i = 0; i < 6; i++) await page.mouse.wheel(0, -120);
+    await page.keyboard.up('Control');
+    await expect(card).toBeVisible();
+    await expect(world).not.toHaveAttribute('data-handoff', 'true', { timeout: 1_000 });
+    await expect(overlay).toHaveCount(0);
+    await expect(page.getByTestId('atlas-zoom')).not.toHaveText('100%');
     await setScope(page, 'Day');
   });
 

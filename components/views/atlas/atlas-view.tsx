@@ -25,7 +25,14 @@ import { AtlasDropRemeasure } from '@/components/views/atlas/atlas-card-drop';
 import { useAtlasColors, useAtlasLightContext } from '@/components/views/atlas/use-atlas-colors';
 import { useLookStore } from '@/lib/look-store';
 import { ATLAS_GRID_PITCH, buildRelayGrid, liveness } from '@/lib/atlas-relay-grid';
-import { ATLAS_FLY_TOTAL_MS, ATLAS_MOTION, easeInOutCubic, flourishAt, glideDelay } from '@/lib/atlas-motion';
+import {
+  ATLAS_FLY_TOTAL_MS,
+  ATLAS_MOTION,
+  armPinSettle,
+  easeInOutCubic,
+  flourishAt,
+  glideDelay,
+} from '@/lib/atlas-motion';
 import { ATLAS_DUSK_GROUND } from '@/lib/atlas-tones';
 import { cn } from '@/lib/utils';
 import { useAtlasCards } from '@/components/views/atlas/use-atlas-cards';
@@ -133,6 +140,14 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // drawn: the band, or a fly-in's flourish playing past it.
   const zoomBand = useAtlasUiStore((s) => s.camera.z < ATLAS_HANDOFF_ZOOM);
   const inBand = useAtlasUiStore((s) => s.camera.z < ATLAS_HANDOFF_ZOOM || s.flourish !== null);
+  const flourishing = useAtlasUiStore((s) => s.flourish !== null);
+  // The overlay of tiles in flight is drawn only where the handoff can be
+  // strictly between its ends: the band itself, or a fly-in's flourish. At
+  // the far zoom (0.5 and down) every tile is the constellation canvas's, so
+  // a pan there clears no full-screen canvas.
+  const handoffLive = useAtlasUiStore(
+    (s) => s.flourish !== null || (s.camera.z < ATLAS_HANDOFF_ZOOM && s.camera.z > ATLAS_FAR_ZOOM)
+  );
   const farPaper = useLookStore((s) => s.atlasFarPaper);
   const islandRef = useRef<HTMLDivElement>(null);
   // Read from the root, outside the island, so Dusk's own `.dark` never
@@ -142,7 +157,10 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // pinch that hovers at 0.5 doesn't flip the board back and forth. The cards
   // in the band on the way back in sit on the slate, inside `.dark`.
   const [duskZoom, setDuskZoom] = useState(far);
-  const nextDuskZoom = far ? true : zoomBand ? duskZoom : false;
+  // A fly-in leaves the band in about 30ms while its flourish is still
+  // assembling the cards, so the latch holds through the flourish too:
+  // nothing recolours mid-flourish.
+  const nextDuskZoom = far ? true : zoomBand || flourishing ? duskZoom : false;
   if (nextDuskZoom !== duskZoom) setDuskZoom(nextDuskZoom);
   const dusk = nextDuskZoom && lightContext && farPaper === 'dusk';
   // The ground fades to slate over ATLAS_GROUND_MS; the island takes `.dark`
@@ -218,6 +236,11 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   const [hold, setHold] = useState<{ layout: string; result: AtlasLayoutResult } | null>(null);
   const result = hold && hold.layout === layout && layout !== 'map' ? hold.result : computed;
   const positions = result.positions;
+  // Where the cards rest, for the world's fold (it writes only to cards in view).
+  const positionsRef = useRef(positions);
+  useLayoutEffect(() => {
+    positionsRef.current = positions;
+  }, [positions]);
   const lastDrawn = useRef<{ layout: string; result: AtlasLayoutResult }>({ layout, result });
   useLayoutEffect(() => {
     lastDrawn.current = { layout, result };
@@ -510,8 +533,10 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
       const shown = flourish && elapsed < total ? Math.max(handoffProgress(last.z), flourishAt(elapsed)) : null;
       store.setFlight(last, shown);
       flight.current = elapsed < total ? requestAnimationFrame(step) : null;
-      // Landed: once the cards have mounted, hand focus on.
-      if (t >= 1 && !landed) {
+      // Landed: once the cards have mounted (and a flourish has finished, so
+      // a focus that pans the camera never cuts the assembly short), hand
+      // focus on.
+      if (elapsed >= total && !landed) {
         landed = true;
         if (onLand) requestAnimationFrame(onLand);
       }
@@ -716,6 +741,8 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     if (!card) return;
     // The lane the card is DRAWN in, so the drop's "from" is what the screen shows.
     const drawnLane = ctx.result.cardLane.get(key);
+    // A drop into a Momentum column may pin the card: its settle may play.
+    if (ctx.layout === 'momentum') armPinSettle(key);
     const out = dropCard({
       layout: ctx.layout,
       card,
@@ -749,6 +776,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     const ctx = dropCtx.current;
     const card = ctx.cards.find((c) => c.key === key);
     if (!card) return;
+    if (band) armPinSettle(key);
     useAtlasStore.getState().pin(card.kind, card.id, band, ctx.places[key]);
     toast(band ? ATLAS_COPY.pinned(card.name, bandLabel(band)) : ATLAS_COPY.unpinned(card.name));
   }, []);
@@ -893,8 +921,9 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
           rootRef={rootRef}
           inert={sheetOpen}
           fold={!reduced}
+          cardsAt={positionsRef}
           farOver={
-            inBand && !reduced && cards.length > 0 ? (
+            handoffLive && !reduced && cards.length > 0 ? (
               <AtlasHandoffCanvas scene={farScene} grid={farGrid} colors={colors} />
             ) : null
           }

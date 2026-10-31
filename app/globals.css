@@ -4247,55 +4247,54 @@ button[data-ai-chip]:focus-visible {
 }
 
 /* Atlas's far zoom handoff (lib/atlas-motion.ts, atlas-handoff-canvas.tsx).
-   Through the band each card folds flat onto its tile strip (its transform
-   reads --atlas-fold-x / -y off .atlas-world) while its tiles fly to the grid
-   on the overlay canvas, which draws them from exactly where the strip held
-   them, so the strip's own tiles step aside by visibility, never opacity.
-   A soft light passes over the card as it folds: a band of ink on its own
-   pseudo-element, laid OVER the card, so nothing on the card is faded and the
-   lime is never under an opacity. --atlas-sweep runs 0 to 1. The attribute
-   is only ever set with motion allowed: reduced motion is a plain swap. */
-.atlas-world[data-handoff] [data-atlas-card] [data-testid='atlas-tiles'] > i {
-  visibility: hidden;
+   Through the band each card in view folds flat onto its tile strip: its
+   transform reads --atlas-fold-x / -y, which the world writes on that card
+   alone (atlas-surface.tsx). They are registered non-inherited, so a frame
+   restyles the card and nothing inside it. Its tiles fly to the grid on the
+   overlay canvas, which draws them from exactly where the strip held them,
+   so the strip's own tiles (and its "+n" chip, whose tiles grow out of it)
+   step aside by visibility, never opacity. The light's pass over a folding
+   card is drawn on that canvas too. The attribute is only ever set with
+   motion allowed: reduced motion is a plain swap. */
+@property --atlas-fold-x {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 1;
 }
-.atlas-world[data-handoff] [data-atlas-card]::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background-image: linear-gradient(
-    100deg,
-    transparent 38%,
-    color-mix(in oklab, var(--card-foreground) 11%, transparent) 50%,
-    transparent 62%
-  );
-  background-repeat: no-repeat;
-  background-size: 250% 100%;
-  background-position: calc((1 - var(--atlas-sweep, 0)) * 100%) 0;
+@property --atlas-fold-y {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 1;
+}
+.atlas-world[data-handoff] [data-atlas-card] [data-testid='atlas-tiles'] > i,
+.atlas-world[data-handoff] [data-atlas-card] [data-testid='atlas-tiles-more'] {
+  visibility: hidden;
 }
 
 /* The focus sheet's blocks rise a few pixels into place as it opens,
-   staggered, by transform only (atlas-focus-sheet.tsx). */
-.atlas-sheet-body > * {
+   staggered, by transform only (atlas-focus-sheet.tsx). Only while it opens
+   (data-rising, ATLAS_SHEET_RISE_TOTAL_MS), so a block that mounts later
+   never rises. The duration and delays are ATLAS_MOTION.sheetRiseMs and
+   ATLAS_SHEET_RISE_DELAYS (a test pins them). */
+.atlas-sheet-body[data-rising] > * {
   animation: atlas-sheet-rise 260ms var(--ease-out-soft) backwards;
 }
-.atlas-sheet-body > :nth-child(2) { animation-delay: 30ms; }
-.atlas-sheet-body > :nth-child(3) { animation-delay: 55ms; }
-.atlas-sheet-body > :nth-child(4) { animation-delay: 80ms; }
-.atlas-sheet-body > :nth-child(5) { animation-delay: 100ms; }
-.atlas-sheet-body > :nth-child(n + 6) { animation-delay: 120ms; }
+.atlas-sheet-body[data-rising] > :nth-child(2) { animation-delay: 30ms; }
+.atlas-sheet-body[data-rising] > :nth-child(3) { animation-delay: 55ms; }
+.atlas-sheet-body[data-rising] > :nth-child(4) { animation-delay: 80ms; }
+.atlas-sheet-body[data-rising] > :nth-child(5) { animation-delay: 100ms; }
+.atlas-sheet-body[data-rising] > :nth-child(n + 6) { animation-delay: 120ms; }
 @keyframes atlas-sheet-rise {
   from {
     transform: translateY(8px);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .atlas-sheet-body > * {
+  .atlas-sheet-body[data-rising] > * {
     animation: none;
   }
 }
-[data-reduce-motion='true'] .atlas-sheet-body > * {
+[data-reduce-motion='true'] .atlas-sheet-body[data-rising] > * {
   animation: none;
 }
 

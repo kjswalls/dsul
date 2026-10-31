@@ -173,6 +173,21 @@ export const AtlasStrands = memo(function AtlasStrands({
     draw();
     if (!reduced) follow(FOLLOW_MS);
   }, [draw, follow, reduced, links, frames, positions, expanded]);
+  /** A strand's curve between where its two cards rest (null if either is not placed). */
+  const restingPath = useCallback(
+    (from: string, to: string): string | null => {
+      const rect = (key: string): Rect | null => {
+        const p = positionsRef.current.get(key);
+        if (!p) return null;
+        const el = cardEl(key);
+        return { x: p.x, y: p.y, w: el?.offsetWidth || ATLAS_CARD_W, h: el?.offsetHeight || ATLAS_CARD_H };
+      };
+      const a = rect(from);
+      const b = rect(to);
+      return a && b ? strandPath(a, b) : null;
+    },
+    [cardEl]
+  );
   // A hot card changing only adds or restyles strands: one draw, no loop.
   // Then every strand drawn for the first time draws in from its goal.
   const shown = useRef(new Set<string>());
@@ -186,9 +201,21 @@ export const AtlasStrands = memo(function AtlasStrands({
       if (shown.current.has(id) || reduced) continue;
       const path = paths.current.get(id);
       if (!path || typeof path.getTotalLength !== 'function') continue;
+      // Measured where the strand will REST, as well as where it is drawn
+      // now: a strand that appears as its cards start a glide (leaving By
+      // goal) is drawn at their old spots, and a length taken there alone
+      // would be outgrown by its dash cover mid-draw, then snap whole. The
+      // resting curve is set, measured and put back before any paint.
       let length = 0;
       try {
-        length = path.getAttribute('d') ? path.getTotalLength() : 0;
+        const now = path.getAttribute('d');
+        length = now ? path.getTotalLength() : 0;
+        const rest = restingPath(l.from, l.to);
+        if (rest && rest !== now) {
+          path.setAttribute('d', rest);
+          length = Math.max(length, path.getTotalLength());
+          path.setAttribute('d', now ?? '');
+        }
       } catch {
         length = 0;
       }
@@ -210,7 +237,7 @@ export const AtlasStrands = memo(function AtlasStrands({
       );
     }
     shown.current = next;
-  }, [draw, ordered, reduced]);
+  }, [draw, ordered, reduced, restingPath]);
 
   // Hot ends and held presses, heard on the world (capture, so a card's own
   // handlers can't hide them). Space+drag pans the camera, which moves no card

@@ -9,6 +9,9 @@ import {
   ATLAS_FOLLOW_MS,
   ATLAS_GLIDE,
   ATLAS_MOTION,
+  ATLAS_SHEET_RISE_DELAYS,
+  ATLAS_SHEET_RISE_TOTAL_MS,
+  armPinSettle,
   atlasPop,
   drawInDash,
   flightPoint,
@@ -18,10 +21,12 @@ import {
   glideTransition,
   strandDelay,
   sweepAt,
+  takePinSettle,
   tileFlight,
   underLayer,
 } from '@/lib/atlas-motion';
-import { planFlights, stripGeometry } from '@/components/views/atlas/atlas-handoff-canvas';
+import { FLIGHT_EXTRA, planFlights, stripGeometry } from '@/components/views/atlas/atlas-handoff-canvas';
+import { ATLAS_TILE_CAP } from '@/lib/atlas-model';
 import { buildRelayGrid } from '@/lib/atlas-relay-grid';
 import type { FarCluster } from '@/components/views/atlas/atlas-far-canvas';
 
@@ -151,8 +156,9 @@ describe('the handoff', () => {
       more: { x: 60, y: 46 },
       measured: true,
     };
-    const flights = planFlights(geom, cells);
+    const { list: flights, settle } = planFlights(geom, cells);
     expect(flights).toHaveLength(5);
+    expect(settle).toHaveLength(0);
     const litCells = new Set(cells.filter((c) => c.lit).map((c) => `${c.x},${c.y}`));
     for (const f of flights) {
       expect(f.dst).not.toBeNull();
@@ -161,6 +167,31 @@ describe('the handoff', () => {
     // Past the strip, from the "+n" chip.
     expect(flights.slice(3).every((f) => f.off.x === 60)).toBe(true);
     expect(flights.map((f) => f.k)).toEqual([0, 1, 2, 3, 4]);
+    // They never sat on the strip, so they grow from nothing (no stack of
+    // squares over the chip on the band's first frame); the strip's own don't.
+    expect(flights.slice(3).every((f) => f.extra)).toBe(true);
+    expect(flights.slice(0, 3).some((f) => f.extra)).toBe(false);
+  });
+
+  it('flies the strip and a few more, and settles the rest of a big container in place', () => {
+    const grid = buildRelayGrid([{ key: 'k', x: 0, y: 0, tiles: 120, lit: 40 }]);
+    const cells = (grid.byCluster.get('k') ?? []).filter((c) => c.role === 'tile');
+    expect(cells.length).toBeGreaterThan(ATLAS_TILE_CAP + FLIGHT_EXTRA);
+    const tiles = Array.from({ length: ATLAS_TILE_CAP }, (_, i) => ({
+      x: 10 + (i % 23) * 10,
+      y: 46 + Math.floor(i / 23) * 10,
+      state: i < 10 ? 'lit' : 'open',
+    }));
+    const { list, settle } = planFlights({ tiles, more: { x: 200, y: 66 }, measured: true }, cells);
+    expect(list).toHaveLength(ATLAS_TILE_CAP + FLIGHT_EXTRA);
+    expect(list.length + settle.length).toBe(cells.length);
+    // Every cell is someone's, once.
+    const ends = new Set([...list.map((f) => `${f.dst!.x},${f.dst!.y}`), ...settle.map((c) => `${c.x},${c.y}`)]);
+    expect(ends.size).toBe(cells.length);
+    // A goal's card has no strip: only the extra budget flies, from nothing.
+    const goal = planFlights({ tiles: [], more: null, measured: true }, cells);
+    expect(goal.list).toHaveLength(FLIGHT_EXTRA);
+    expect(goal.list.every((f) => f.extra)).toBe(true);
   });
 
   it('estimates a strip for a card not on screen yet', () => {
@@ -193,6 +224,32 @@ describe('strands drawing in', () => {
   });
 });
 
+describe('a pin made here', () => {
+  it('arms a settle once, for two seconds, and never for a pin nobody armed', () => {
+    expect(takePinSettle('project:none', 1000)).toBe(false);
+    armPinSettle('project:a', 1000);
+    expect(takePinSettle('project:a', 1500)).toBe(true);
+    expect(takePinSettle('project:a', 1500)).toBe(false);
+    armPinSettle('project:b', 1000);
+    expect(takePinSettle('project:b', 3500)).toBe(false);
+  });
+});
+
+describe('the focus sheet rise', () => {
+  it('spells the same timing in the stylesheet as in the motion module, and only while opening', () => {
+    expect(css).toMatch(new RegExp(`\\.atlas-sheet-body\\[data-rising\\] > \\* \\{\\s*animation: atlas-sheet-rise ${ATLAS_MOTION.sheetRiseMs}ms `));
+    ATLAS_SHEET_RISE_DELAYS.slice(1, 5).forEach((d, i) => {
+      expect(css).toContain(`.atlas-sheet-body[data-rising] > :nth-child(${i + 2}) { animation-delay: ${d}ms; }`);
+    });
+    const last = ATLAS_SHEET_RISE_DELAYS[ATLAS_SHEET_RISE_DELAYS.length - 1];
+    expect(css).toContain(`.atlas-sheet-body[data-rising] > :nth-child(n + 6) { animation-delay: ${last}ms; }`);
+    // No rule animates the body's blocks without the opening's attribute.
+    expect(css).not.toMatch(/\.atlas-sheet-body > \*/);
+    expect(ATLAS_SHEET_RISE_TOTAL_MS).toBe(ATLAS_MOTION.sheetRiseMs + last);
+    expect(ATLAS_MOTION.sheetRiseMs).toBeLessThanOrEqual(300);
+  });
+});
+
 describe('atlasPop', () => {
   it('plays nothing under reduced motion, or where the browser cannot', () => {
     let calls = 0;
@@ -208,18 +265,58 @@ describe('atlasPop', () => {
   });
 });
 
+/**
+ * Does this source fade an element by opacity, in any of the forms it takes:
+ * a style or keyframe key, a utility (with any variant prefix, such as
+ * `hover:` or `group-hover:`), an inline write or a setProperty. Canvas
+ * `globalAlpha` is drawing, not an element's opacity, and is allowed.
+ */
+function fadesByOpacity(src: string): string | null {
+  const forms: [string, RegExp][] = [
+    ['opacity style key', /\bopacity\s*:/],
+    ['quoted opacity key', /['"`]opacity['"`]\s*:/],
+    ['opacity utility', /(?:^|[^\w-])!?opacity-(?:\d|\[|\()/m],
+    ['opacity keyframe', /\{\s*opacity\b/],
+    ['inline opacity write', /\.style\.opacity\s*=/],
+    ['opacity setProperty', /setProperty\(\s*['"`]opacity['"`]/],
+    ['Tailwind fade arbitrary', /\[opacity:/],
+  ];
+  for (const [name, re] of forms) if (re.test(src)) return name;
+  return null;
+}
+
 describe('nothing in Atlas fades by opacity', () => {
   const strip = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
   const dir = join(ROOT, 'components/views/atlas');
-  const files = readdirSync(dir).filter((f) => /\.tsx?$/.test(f));
+  const files = [
+    ...readdirSync(dir)
+      .filter((f) => /\.tsx?$/.test(f))
+      .map((f) => join('components/views/atlas', f)),
+    ...readdirSync(join(ROOT, 'lib'))
+      .filter((f) => /^atlas-.*\.tsx?$/.test(f))
+      .map((f) => join('lib', f)),
+  ];
+
+  it('catches every form of an opacity fade, prefixed utilities included', () => {
+    for (const bad of [
+      'className="hover:opacity-50"',
+      "cn('group-hover:opacity-0')",
+      'className="opacity-60"',
+      "cn(x && 'data-[s=a]:opacity-[.4]')",
+      'style={{ opacity: 0.5 }}',
+      "{ 'opacity': 1 }",
+      'el.style.opacity = "0"',
+      "el.style.setProperty('opacity', '0')",
+      "[{ opacity: 0 }, { opacity: 1 }]",
+    ])
+      expect(fadesByOpacity(bad), bad).not.toBeNull();
+    for (const fine of ['ctx.globalAlpha = 0.5', 'const layerOpacity = 1', "'--day-recede'", 'backdrop-blur-[2px]'])
+      expect(fadesByOpacity(fine), fine).toBeNull();
+  });
 
   it.each(files)('%s sets no opacity on an element', (f) => {
-    const src = strip(readFileSync(join(dir, f), 'utf8'));
-    // No opacity style, no opacity utility, no opacity keyframe. Canvas
-    // globalAlpha is drawing, not an element's opacity, and is allowed.
-    expect(src).not.toMatch(/\bopacity\s*:/);
-    expect(src).not.toMatch(/['"`\s]opacity-/);
-    expect(src).not.toMatch(/\{\s*opacity\b/);
+    const src = strip(readFileSync(join(ROOT, f), 'utf8'));
+    expect(fadesByOpacity(src)).toBeNull();
   });
 
   it("keeps the stylesheet's Atlas rules free of opacity", () => {
