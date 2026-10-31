@@ -88,6 +88,7 @@ const GATED_DURING_PREVIEW: Record<string, boolean> = {
   'view.clearFilters': false,
   'view.scopeDay': false,
   'view.scopeWeek': false,
+  'view.scopeAtlas': false,
   'view.toggleScope': false,
   'view.zen': false,
   'view.weekColumnsWider': false,

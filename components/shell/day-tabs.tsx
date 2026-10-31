@@ -8,7 +8,8 @@ import { useViewStore } from '@/lib/view-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { formatKeys, isApplePlatform } from '@/lib/commands/keys';
-import { SCOPE_OPTIONS } from '@/lib/view-options';
+import { scopeOptionsFor } from '@/lib/view-options';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { goToDate } from '@/lib/nav-commands';
 import { WEEK_STARTS } from '@/hooks/use-day-counts';
 import type { SlotVariant } from '@/lib/layout-themes';
@@ -56,6 +57,7 @@ export function DayTabs({ variant, className }: { variant: TabsVariant; classNam
   const weekStartDay = usePlannerStore((s) => s.weekStartDay);
   const scope = useViewStore((s) => s.scope);
   const setScope = useViewStore((s) => s.setScope);
+  const isMobile = useIsMobile();
   const paneOpen = useSidebarStore((s) => s.leftSidebarOpen);
   const togglePane = useSidebarStore((s) => s.toggleLeftSidebar);
   const searchKeys = useShortcutKeys('system_search');
@@ -111,7 +113,16 @@ export function DayTabs({ variant, className }: { variant: TabsVariant; classNam
               type="button"
               aria-current={t.offset === 0 ? 'date' : undefined}
               data-testid={t.offset === 0 ? 'day-tab-current' : t.offset < 0 ? 'day-tab-prev' : 'day-tab-next'}
-              onClick={() => t.offset !== 0 && goToDate(t.target, t.offset > 0 ? 'left' : 'right')}
+              onClick={() => {
+                // On Atlas a date tab reads as "go to that day", the Today tab
+                // included (it is a no-op only while a day is already showing).
+                if (scope === 'atlas') {
+                  setScope('day');
+                  goToDate(t.target, t.offset > 0 ? 'left' : 'right');
+                  return;
+                }
+                if (t.offset !== 0) goToDate(t.target, t.offset > 0 ? 'left' : 'right');
+              }}
               className={cn(TAB, t.offset === 0 ? TAB_ON : TAB_OFF)}
             >
               <span className="truncate">{t.label}</span>
@@ -120,7 +131,7 @@ export function DayTabs({ variant, className }: { variant: TabsVariant; classNam
       </nav>
 
       <div className="ml-auto flex h-9 flex-none items-center gap-0.5 text-xs text-muted-foreground">
-        {SCOPE_OPTIONS.map((o) => (
+        {scopeOptionsFor(isMobile).map((o) => (
           <button
             key={o.value}
             type="button"

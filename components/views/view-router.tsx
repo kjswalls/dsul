@@ -8,6 +8,7 @@ import { DayBuckets } from '@/components/views/day-buckets';
 import { DayList } from '@/components/views/day-list';
 import { DaySchedule } from '@/components/views/day-schedule';
 import { DoStuffDesk } from '@/components/sidebar/do-stuff-desk';
+import { AtlasView } from '@/components/views/atlas/atlas-view';
 import { useDeskHost, useDoStuffStore } from '@/lib/do-stuff';
 import { PlannerSkeleton } from '@/components/primitives/planner-skeleton';
 import { useCanvasWide, useViewStore } from '@/lib/view-store';
@@ -42,7 +43,7 @@ export const ViewRouter = memo(function ViewRouter() {
   const previewing = usePlannerPreviewing();
   const visible = settled || previewing;
   const wide = useCanvasWide();
-  const { scope, layout } = useViewStore();
+  const { scope, layout, atlasLayout } = useViewStore();
   // Doing stuff at the Desk: the canvas is the current item beside today's day
   // column, whatever the scope and layout (components/sidebar/do-stuff-desk.tsx).
   const desk = useDoStuffStore((s) => s.on && s.desk);
@@ -52,6 +53,9 @@ export const ViewRouter = memo(function ViewRouter() {
 
   const view = (() => {
     if (desk) return <DoStuffDesk activeId={activeId} />;
+    // Atlas: containers as cards on a map (components/views/atlas/). Desktop
+    // only; the phone's router never reads scope.
+    if (scope === 'atlas') return <AtlasView activeId={activeId} />;
     if (scope === 'week') {
       if (layout === 'list') return <WeekList />;
       if (layout === 'schedule') return <WeekSchedule activeId={activeId} />;
@@ -72,7 +76,7 @@ export const ViewRouter = memo(function ViewRouter() {
     <div
       data-testid="view-root"
       data-view-scope={scope}
-      data-view-layout={layout}
+      data-view-layout={scope === 'atlas' ? atlasLayout : layout}
       // Whether the planner store's initial fetch has LANDED — the same
       // predicate that swaps the skeleton out, so `data-loaded="false"` and
       // the skeleton are one state. A test that acted on "the page is
@@ -91,7 +95,11 @@ export const ViewRouter = memo(function ViewRouter() {
       inert={previewing}
       style={{ display: 'contents' }}
     >
-      {visible ? view : <PlannerSkeleton variant={layout} scope={scope} wide={wide} />}
+      {visible ? (
+        view
+      ) : (
+        <PlannerSkeleton variant={scope === 'atlas' ? 'atlas' : layout} scope={scope} wide={wide} />
+      )}
     </div>
   );
 });

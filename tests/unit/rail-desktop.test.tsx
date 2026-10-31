@@ -1678,6 +1678,12 @@ describe('the Ask button', () => {
     expect(headerRow).toHaveAttribute('data-wide', 'true');
     // WeekScale holds the far end there; two auto margins would split the room between them.
     expect(pill()).not.toHaveClass('ml-auto');
+    // Atlas is wide too, but has no WeekScale: the Ask button keeps the far end
+    // (useWeekScaleShown, design D7).
+    act(() => useViewStore.setState({ scope: 'atlas' }));
+    expect(headerRow).toHaveAttribute('data-wide', 'true');
+    expect(pill()).toHaveClass('ml-auto');
+    act(() => useViewStore.setState({ scope: 'week', layout: 'buckets' }));
     // Notepad's plain header: the rail row at the top (mt-0), the 40px plate
     // 4px above it and the key 4px into it.
     act(() => useLookStore.setState({ layout: 'notepad' }));

@@ -141,6 +141,27 @@ describe('the persist merge, through a real rehydrate', () => {
     expect(useViewStore.getState().braindumpGroupBy).toBe('priority');
   });
 
+  it('keeps a stored atlas scope and layout', async () => {
+    seed({ scope: 'atlas', atlasLayout: 'map' });
+    await useViewStore.persist.rehydrate();
+    expect(useViewStore.getState().scope).toBe('atlas');
+    expect(useViewStore.getState().atlasLayout).toBe('map');
+  });
+
+  it('coerces a scope and an atlasLayout that are not legal values', async () => {
+    seed({ scope: 'month', atlasLayout: 'galaxy' });
+    await useViewStore.persist.rehydrate();
+    expect(useViewStore.getState().scope).toBe('day');
+    expect(useViewStore.getState().atlasLayout).toBe('map');
+  });
+
+  it('gives a blob that predates atlasLayout the default', async () => {
+    seed({ scope: 'week' });
+    await useViewStore.persist.rehydrate();
+    expect(useViewStore.getState().scope).toBe('week');
+    expect(useViewStore.getState().atlasLayout).toBe('map');
+  });
+
   it('keeps a braindumpGroupBy value that is still legal', async () => {
     // The coercion must not be a reset in disguise: a newly-widened value passes.
     seed({ braindumpGroupBy: 'season' });

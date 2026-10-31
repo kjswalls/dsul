@@ -187,7 +187,7 @@ export async function toggleComplete(
 
 /* ── view + date navigation ────────────────────────────────────────────── */
 
-export async function setScope(page: Page, option: 'Day' | 'Week'): Promise<void> {
+export async function setScope(page: Page, option: 'Day' | 'Week' | 'Atlas'): Promise<void> {
   await page.getByRole('button', { name: 'Scope', exact: true }).click();
   await page.getByRole('menuitem', { name: option }).click();
   await expect(page.getByTestId('view-root')).toHaveAttribute(

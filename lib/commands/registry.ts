@@ -57,7 +57,9 @@ import {
   Target,
   Workflow,
   Puzzle,
+  Map as MapIcon,
 } from 'lucide-react';
+import { ATLAS_COPY } from '../atlas-copy';
 import { addDays, subDays } from 'date-fns';
 
 import { AskMarkIcon, AskMarkUnlitIcon } from '@/components/ai/ask-mark';
@@ -167,6 +169,12 @@ import {
 
 const planner = () => usePlannerStore.getState();
 const view = () => useViewStore.getState();
+/** Atlas has no day of its own (design rule 4); a few commands step around it. */
+const onAtlas = () => view().scope === 'atlas';
+/** A date command from Atlas means "go to that day". */
+const leaveAtlasForDay = () => {
+  if (onAtlas()) view().setScope('day');
+};
 
 /**
  * Said once, on all three column-width bindings. Their `availableWhen` is the
@@ -264,10 +272,11 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'new create todo',
     aliases: ['task'],
     shortcut: { id: 'new_task', keys: ['n'] },
-    run: () => openAddDialog('task'),
+    // On Atlas the selected date is hidden, so a new task lands on today.
+    run: () => openAddDialog('task', undefined, onAtlas() ? new Date() : undefined),
     // Over a grid slot or an add row, the key adds right there.
     runFromShortcut: () => {
-      if (!openHoveredSlot()) openAddDialog('task');
+      if (!openHoveredSlot()) openAddDialog('task', undefined, onAtlas() ? new Date() : undefined);
     },
   },
   {
@@ -505,7 +514,11 @@ export const STATIC_COMMANDS: Command[] = [
     icon: CalendarCheck,
     keywords: 'now jump date current',
     aliases: ['today'],
-    run: () => goToDate(new Date()),
+    // From Atlas a date means "go to that day", as goto.overdue does.
+    run: () => {
+      leaveAtlasForDay();
+      goToDate(new Date());
+    },
   },
   {
     id: 'goto.tomorrow',
@@ -514,7 +527,10 @@ export const STATIC_COMMANDS: Command[] = [
     icon: CalendarPlus,
     keywords: 'next jump date',
     aliases: ['tomorrow'],
-    run: () => goToDate(addDays(new Date(), 1), 'left'),
+    run: () => {
+      leaveAtlasForDay();
+      goToDate(addDays(new Date(), 1), 'left');
+    },
   },
   {
     id: 'goto.yesterday',
@@ -524,7 +540,10 @@ export const STATIC_COMMANDS: Command[] = [
     icon: CalendarMinus,
     keywords: 'back previous jump date missed',
     aliases: ['yesterday'],
-    run: () => goToDate(subDays(new Date(), 1), 'right'),
+    run: () => {
+      leaveAtlasForDay();
+      goToDate(subDays(new Date(), 1), 'right');
+    },
   },
   {
     id: 'goto.next',
@@ -534,6 +553,8 @@ export const STATIC_COMMANDS: Command[] = [
     icon: ChevronRight,
     keywords: 'forward advance',
     aliases: ['next'],
+    // Atlas has no date to step (stepScope returns early there too).
+    availableWhen: () => !onAtlas(),
     run: () => stepScope(1),
   },
   {
@@ -544,6 +565,7 @@ export const STATIC_COMMANDS: Command[] = [
     icon: ChevronLeft,
     keywords: 'back last',
     aliases: ['prev', 'previous'],
+    availableWhen: () => !onAtlas(),
     run: () => stepScope(-1),
   },
   {
@@ -633,6 +655,9 @@ export const STATIC_COMMANDS: Command[] = [
     icon: Rows3,
     keywords: 'buckets schedule list timeline view',
     aliases: ['layout'],
+    // Day/Week layouts only. Atlas's layouts are their own list (D2), and one
+    // command never offers both, so no alias has two owners.
+    availableWhen: () => !onAtlas(),
     argument: {
       kind: 'enum',
       placeholder: 'Layout',
@@ -649,6 +674,8 @@ export const STATIC_COMMANDS: Command[] = [
     icon: Filter,
     keywords: 'tasks habits both type filter only',
     aliases: ['show'],
+    // The filters and grouping below change state Atlas doesn't show.
+    availableWhen: () => !onAtlas(),
     argument: {
       kind: 'enum',
       placeholder: 'Show',
@@ -665,6 +692,7 @@ export const STATIC_COMMANDS: Command[] = [
     icon: Layers,
     keywords: 'group sort organise organize project priority bucket',
     aliases: ['group'],
+    availableWhen: () => !onAtlas(),
     argument: {
       kind: 'enum',
       placeholder: 'Group by',
@@ -686,7 +714,7 @@ export const STATIC_COMMANDS: Command[] = [
     icon: Filter,
     keywords: 'filter project only narrow',
     aliases: ['filter'],
-    availableWhen: () => planner().projects.length > 0,
+    availableWhen: () => !onAtlas() && planner().projects.length > 0,
     argument: {
       kind: 'enum',
       placeholder: 'Project',
@@ -723,6 +751,7 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'clear reset filters show all',
     aliases: ['clear'],
     availableWhen: () => {
+      if (onAtlas()) return false;
       const f = view().canvasFilters;
       return !isEmptyFilters(f);
     },
@@ -754,9 +783,29 @@ export const STATIC_COMMANDS: Command[] = [
     run: () => view().setScope('week'),
   },
   {
+    id: 'view.scopeAtlas',
+    label: ATLAS_COPY.switchTo,
+    description: ATLAS_COPY.switchToDescription,
+    group: 'view',
+    icon: MapIcon,
+    keywords: ATLAS_COPY.switchToKeywords,
+    aliases: ['atlas'],
+    // Desktop only: the phone's router never reads scope. availableWhen too,
+    // so a keyboard paired to a phone can't reach it either.
+    availableWhen: (ctx) => !ctx.isMobile,
+    hidden: (ctx) => ctx.isMobile,
+    run: () => view().setScope('atlas'),
+  },
+  {
     id: 'view.toggleScope',
     label: 'Toggle Day/Week view',
-    dynamicLabel: () => (view().scope === 'week' ? 'Switch to Day view' : 'Switch to Week view'),
+    // From Atlas, `v` goes back to Day (design 1.6).
+    dynamicLabel: () =>
+      onAtlas()
+        ? ATLAS_COPY.toggleFromAtlas
+        : view().scope === 'week'
+          ? 'Switch to Day view'
+          : 'Switch to Week view',
     description: 'Flips between the two, same as picking one directly',
     group: 'view',
     icon: CalendarRange,
@@ -767,7 +816,7 @@ export const STATIC_COMMANDS: Command[] = [
     // construction, so this would silently write default_view with no
     // visible effect.
     hidden: (ctx) => ctx.isMobile,
-    run: () => view().setScope(view().scope === 'week' ? 'day' : 'week'),
+    run: () => view().setScope(view().scope === 'day' ? 'week' : 'day'),
   },
   {
     id: 'view.zen',
@@ -803,7 +852,8 @@ export const STATIC_COMMANDS: Command[] = [
      * nothing in the mobile tree renders, stranding the user in a shell that
      * looks unchanged but is one reload from a room they cannot leave.
      */
-    availableWhen: (ctx) => !ctx.isMobile,
+    // Not on Atlas: Zen is today's room and replaces the shell.
+    availableWhen: (ctx) => !ctx.isMobile && !onAtlas(),
     hidden: (ctx) => ctx.isMobile,
     run: () => view().toggleZen(),
   },

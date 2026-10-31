@@ -3,7 +3,8 @@
 import { isToday } from 'date-fns';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
-import { SCOPE_OPTIONS } from '@/lib/view-options';
+import { scopeOptionsFor } from '@/lib/view-options';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 
 /**
@@ -15,6 +16,7 @@ import { cn } from '@/lib/utils';
 export function PageTabs({ className }: { className?: string }) {
   const scope = useViewStore((s) => s.scope);
   const setScope = useViewStore((s) => s.setScope);
+  const isMobile = useIsMobile();
   return (
     <div
       role="tablist"
@@ -23,7 +25,7 @@ export function PageTabs({ className }: { className?: string }) {
       data-testid="page-tabs"
       className={cn('flex flex-col gap-1.5', className)}
     >
-      {SCOPE_OPTIONS.map((o) => {
+      {scopeOptionsFor(isMobile).map((o) => {
         const on = o.value === scope;
         return (
           <button

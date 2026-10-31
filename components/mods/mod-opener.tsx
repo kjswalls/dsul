@@ -14,7 +14,7 @@ import { modSurfaceLabel } from '@/lib/mods/labels';
 import { openablePanelsOf } from '@/lib/mods/ui/card';
 import { openModPanel } from '@/lib/mods/ui/open-panel';
 import { holdRailHeader, usePanelOverlays, useRailMode } from '@/lib/rail-store';
-import { useCanvasWide, useViewStore } from '@/lib/view-store';
+import { useViewStore, useWeekScaleShown } from '@/lib/view-store';
 import { useLayoutDef } from '@/lib/look-store';
 import { railHeaderRowOffset } from '@/lib/layout-themes';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -50,7 +50,7 @@ export function ModOpener() {
   const { canChat, askInvite, askFix } = useAICapabilities();
   const isMobile = useIsMobile();
   const zen = useViewStore((s) => s.zenOpen);
-  const canvasWide = useCanvasWide();
+  const weekScaleShown = useWeekScaleShown();
   const columnShown = useRailMode(usePanelOverlays()) !== 'hidden';
   const { slots } = useLayoutDef();
   const panels = useMemo(() => (safeMode ? [] : openablePanelsOf(rows)), [rows, safeMode]);
@@ -62,7 +62,7 @@ export function ModOpener() {
   const keyClass = cn(
     'titlebar-hole text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-[10px] outline-none transition-colors focus-visible:ring-2',
     railHeaderRowOffset(slots),
-    !canvasWide && !askOffered && 'ml-auto'
+    !weekScaleShown && !askOffered && 'ml-auto'
   );
   const glyph = <Puzzle className="size-4" aria-hidden />;
 

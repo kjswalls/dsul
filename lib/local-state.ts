@@ -110,7 +110,7 @@ import { useViewStore } from './view-store';
  *   dsul-view            canvasFilters / braindumpFilters DISCLOSIVE (they
  *                          hold `project:`/`group:` refs, tag names and goal ids
  *                          lifted from the account's own containers). The other
- *                          13 INERT. `adoptedLegacy` never cleared at all.
+ *                          14 INERT. `adoptedLegacy` never cleared at all.
  *   dsul-ai-settings     all DISCLOSIVE — systemPrompt and assistantName
  *                          are text the user wrote, chatTarget says whether
  *                          this person pairs an OpenClaw agent, and
@@ -218,6 +218,8 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
     inert: [
       'scope',
       'layout',
+      // Atlas's layout: a closed enum about the screen, like `layout`.
+      'atlasLayout',
       'typeFilter',
       'canvasGroupBy',
       'braindumpGroupBy',

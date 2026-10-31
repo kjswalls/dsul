@@ -50,6 +50,11 @@ vi.mock('@/components/views/day-list', () => ({
 vi.mock('@/components/views/day-schedule', () => ({
   DaySchedule: () => <div data-testid="view-stub">day-schedule</div>,
 }));
+// Atlas too, or the real Atlas tree loads under a settings-service mock that
+// holds only saveSettings.
+vi.mock('@/components/views/atlas/atlas-view', () => ({
+  AtlasView: () => <div data-testid="view-stub">atlas</div>,
+}));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 
@@ -107,6 +112,9 @@ const DESKTOP: [ViewScope, ViewLayout][] = [
   ['week', 'buckets'],
   ['week', 'list'],
   ['week', 'schedule'],
+  // Atlas ignores `layout` (its own lives in `atlasLayout`), and its skeleton is
+  // the card-shaped 'atlas' variant whatever `layout` holds.
+  ['atlas', 'buckets'],
 ];
 const MOBILE: ViewLayout[] = ['buckets', 'list', 'schedule'];
 
@@ -133,7 +141,7 @@ describe('the canvas swaps skeleton ⇄ view on one predicate', () => {
         render(<ViewRouter />);
         expectReadiness(name, settled, visible, !!state.isPreview);
         if (!visible) {
-          expect(skeleton()!.dataset.skeletonVariant).toBe(layout);
+          expect(skeleton()!.dataset.skeletonVariant).toBe(scope === 'atlas' ? 'atlas' : layout);
           expect(skeleton()!.dataset.skeletonScope).toBe(scope);
         }
         cleanup();
@@ -252,7 +260,9 @@ describe('the look-only preview mounts the real view', () => {
 
 describe('geometry: wide where the views are wide, never a recede hook', () => {
   for (const [scope, layout] of DESKTOP) {
-    const wide = scope === 'week' && layout !== 'list';
+    // Atlas is wide too: it has no canvas-container of its own, so the header
+    // row and its skeleton flip with it (design D7).
+    const wide = scope === 'atlas' || (scope === 'week' && layout !== 'list');
     it(`${scope} × ${layout} ${wide ? 'is' : 'is not'} wide`, () => {
       useViewStore.setState({ scope, layout });
       usePlannerStore.setState({ userId: 'u1', isLoading: true });
@@ -283,6 +293,7 @@ describe('no accent in any variant', () => {
     ['schedule', 'day'],
     ['schedule', 'week'],
     ['braindump', 'day'],
+    ['atlas', 'atlas'],
   ];
   for (const [variant, scope] of CASES) {
     it(`${variant} × ${scope}`, () => {

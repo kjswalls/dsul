@@ -72,7 +72,8 @@ import { useSelectionStore } from '@/lib/selection-store';
 import { useUIStore } from '@/lib/ui-store';
 import { EXT_ORGANIZE, EXT_STREAKS } from '@/lib/extension-registry';
 import { disableExtensions, enableExtensions } from './support/extensions';
-import { ItemContextMenu } from '@/components/planner/item-context-menu';
+import { ItemContextMenu, ItemMenuRow } from '@/components/planner/item-context-menu';
+import { ContainerContextMenu } from '@/components/planner/container-context-menu';
 import {
   clearChatState,
   configureConversations,
@@ -542,6 +543,27 @@ describe('the container right-click menu', () => {
     );
     fireEvent.click(within(rightClick(screen.getByText('Work'))).getByTestId('container-menu-open-page'));
     expect(push).toHaveBeenCalledWith('/project/p1');
+  });
+
+  it('renders a surface\'s extra rows right after "Open as page" (Atlas\'s "Center here")', () => {
+    usePlannerStore.setState({ projects: [{ id: 'p1', name: 'Work', emoji: '' }] as never });
+    const onCenter = vi.fn();
+    render(
+      <ContainerContextMenu
+        kind="project"
+        id="p1"
+        extra={<ItemMenuRow icon={<span />} label="Center here" testId="container-menu-center" onSelect={onCenter} />}
+      >
+        <div>Work</div>
+      </ContainerContextMenu>
+    );
+    const menu = rightClick(screen.getByText('Work'));
+    const rows = [...menu.querySelectorAll('[data-testid^="container-menu-"]')].map((el) => el.getAttribute('data-testid'));
+    const page = rows.indexOf('container-menu-open-page');
+    expect(page).toBeGreaterThanOrEqual(0);
+    expect(rows[page + 1]).toBe('container-menu-center');
+    fireEvent.click(within(menu).getByTestId('container-menu-center'));
+    expect(onCenter).toHaveBeenCalledTimes(1);
   });
 });
 

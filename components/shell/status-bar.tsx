@@ -3,6 +3,7 @@
 import { format } from 'date-fns';
 import { useDayCounts, useMinuteClock } from '@/hooks/use-day-counts';
 import { useViewStore } from '@/lib/view-store';
+import { SCOPE_OPTIONS } from '@/lib/view-options';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useLayoutDef } from '@/lib/look-store';
 import { cn } from '@/lib/utils';
@@ -40,7 +41,7 @@ export function StatusBar({ className }: { className?: string }) {
         <b className="font-medium text-foreground">{done}</b> done
       </span>
       <span className="flex-1" />
-      <span data-status-cell="">{scope === 'week' ? 'Week' : 'Day'}</span>
+      <span data-status-cell="">{SCOPE_OPTIONS.find((o) => o.value === scope)?.label ?? 'Day'}</span>
       {kind && <span data-status-cell="">{kind}</span>}
       <span data-status-cell="" className="tabular-nums">
         {now ? format(now, timeFormat === '24h' ? 'HH:mm' : 'h:mm a') : '--:--'}

@@ -58,6 +58,9 @@ export function stepDays(delta: number): void {
  * scope. This is what the header chevrons and the Next/Previous commands do.
  */
 export function stepScope(delta: 1 | -1): void {
-  const span = useViewStore.getState().scope === 'week' ? 7 : 1;
+  const { scope } = useViewStore.getState();
+  // Atlas has no day of its own: a step there would move a date nobody can see.
+  if (scope === 'atlas') return;
+  const span = scope === 'week' ? 7 : 1;
   stepDays(delta * span);
 }

@@ -24,7 +24,9 @@ import { DisplayShelf } from '@/components/primitives/display-shelf';
 import { DayMessages } from '@/components/notices/day-messages';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
-import { LAYOUT_OPTIONS, SCOPE_OPTIONS, type ViewOption } from '@/lib/view-options';
+import { ATLAS_LAYOUT_OPTIONS, LAYOUT_OPTIONS, scopeOptionsFor, type ViewOption } from '@/lib/view-options';
+import { AtlasToolbar } from '@/components/views/atlas/atlas-toolbar';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { goToDate, stepScope } from '@/lib/nav-commands';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
@@ -149,7 +151,11 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
   const selectedDate = usePlannerStore((s) => s.selectedDate);
   // Type and the canvas filters left with the popover — DisplayMenu reads them
   // from the store itself rather than taking them through here.
-  const { scope, layout, setScope, setLayout } = useViewStore();
+  const { scope, layout, atlasLayout, setScope, setLayout, setAtlasLayout } = useViewStore();
+  const isMobile = useIsMobile();
+  // Atlas (components/views/atlas/): row 1 is its toolbar instead of the date
+  // nav, and Display, the shelf and Zen go, since none of them reach it.
+  const atlas = scope === 'atlas';
   const [mounted, setMounted] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   // The Display menu's handle, shared with the shelf under the pill, as in the
@@ -180,6 +186,9 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
           Today wraps under it (and the date takes its short form, app/
           globals.css, "The header on a narrow canvas"). At any width where
           they fit this is the one row it always was. */}
+      {atlas ? (
+        <AtlasToolbar />
+      ) : (
       <div className="flex flex-wrap items-center gap-1 px-1">
         <div className="flex items-center gap-1">
           <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
@@ -278,6 +287,7 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
             sentences in a popover (components/notices/day-messages.tsx). */}
         <DayMessages className="ml-auto" />
       </div>
+      )}
 
       {/* Row 2 — white pill: shape on the left, content on the right.
           Type used to sit alone on the far left while the filter popover sat on
@@ -289,24 +299,38 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
         data-header-pill=""
         className="flex items-center rounded-[10px] bg-surface-2 px-1.5 py-1.5 shadow-[var(--shadow-elev-sm)]"
       >
-        <SelectMenu
-          value={layout}
-          options={LAYOUT_OPTIONS}
-          onChange={(v) => setLayout(v)}
-          ariaLabel="Layout"
-        />
+        {atlas ? (
+          // Atlas's own layouts (D2), hidden while there is only one to pick.
+          ATLAS_LAYOUT_OPTIONS.length > 1 && (
+            <SelectMenu
+              value={atlasLayout}
+              options={ATLAS_LAYOUT_OPTIONS}
+              onChange={(v) => setAtlasLayout(v)}
+              ariaLabel="Layout"
+            />
+          )
+        ) : (
+          <SelectMenu
+            value={layout}
+            options={LAYOUT_OPTIONS}
+            onChange={(v) => setLayout(v)}
+            ariaLabel="Layout"
+          />
+        )}
         <SelectMenu
           value={scope}
-          options={SCOPE_OPTIONS}
+          options={scopeOptionsFor(isMobile)}
           onChange={(v) => setScope(v)}
           ariaLabel="Scope"
         />
-        <div className="ml-auto flex items-center">
-          <div className="mx-1 h-4 w-px bg-border" />
-          <DisplayMenu ref={displayRef} surface="canvas" />
-          <div className="mx-1 h-4 w-px bg-border" />
-          <ZenButton />
-        </div>
+        {!atlas && (
+          <div className="ml-auto flex items-center">
+            <div className="mx-1 h-4 w-px bg-border" />
+            <DisplayMenu ref={displayRef} surface="canvas" />
+            <div className="mx-1 h-4 w-px bg-border" />
+            <ZenButton />
+          </div>
+        )}
       </div>
 
       {/* The Display shelf: what the menu has set, in words, under the pill —
@@ -340,11 +364,13 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
           poked past the capsule's edge. So the inset is the larger of the
           0.875rem and what makes up the 14px. pt-1 and pb-px keep the
           braindump's 8px above and 9px below. */}
-      <DisplayShelf
-        surface="canvas"
-        menu={displayRef}
-        className="contain-inline-size px-4 pr-[max(0.875rem,calc(14px-0.5rem))] pt-1 pb-px"
-      />
+      {!atlas && (
+        <DisplayShelf
+          surface="canvas"
+          menu={displayRef}
+          className="contain-inline-size px-4 pr-[max(0.875rem,calc(14px-0.5rem))] pt-1 pb-px"
+        />
+      )}
     </div>
   );
 });
