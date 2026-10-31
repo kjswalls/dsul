@@ -84,6 +84,12 @@ describe('the stylesheet', () => {
     expect(readFileSync('components/primitives/wordmark.css', 'utf8')).toMatch(/\.wordmark-dot \{[^}]*animation: lime-breathe/);
   });
 
+  it('draws them as tiles, square like the relay\'s, not round', () => {
+    const breathe = css.slice(css.indexOf('The breathing tile'), css.indexOf('/* The ready words'));
+    expect(breathe).toMatch(/\[data-lime-dot\]\s*\{[^}]*border-radius: 1\.5px/);
+    expect(readFileSync('components/primitives/wordmark.css', 'utf8')).toMatch(/\[data-flavor='classic'\] \.wordmark-dot \{\s*border-radius: 18%/);
+  });
+
   it('stills the breath under reduced motion, from the OS and from the app switch', () => {
     expect(css).toMatch(/prefers-reduced-motion: reduce\) \{[^@]*\[data-ai-dot='ready'\],\s*\[data-lime-dot\] \{\s*animation: none/);
     expect(css).toMatch(/\[data-reduce-motion='true'\] :is\(\[data-ai-dot='ready'\], \[data-lime-dot\], \.wordmark-dot\)/);

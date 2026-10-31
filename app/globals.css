@@ -3018,6 +3018,8 @@ body {
    wordmark's dot (components/primitives/wordmark.css). */
 [data-ai-dot='ready'],
 [data-lime-dot] {
+  /* A tile, not a dot: the relay's own square, one of its six. */
+  border-radius: 1.5px;
   --breathe-glow: var(--lime-solid);
   animation: lime-breathe 3.2s ease-in-out infinite;
 }
