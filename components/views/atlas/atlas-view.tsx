@@ -18,6 +18,7 @@ import { useAtlasActivity } from '@/components/views/atlas/use-atlas-activity';
 import { AtlasFocusSheet } from '@/components/views/atlas/atlas-focus-sheet';
 import { AtlasFarCanvas, type FarCluster, type FarScene } from '@/components/views/atlas/atlas-far-canvas';
 import { AtlasMinimap } from '@/components/views/atlas/atlas-minimap';
+import { AtlasDropRemeasure } from '@/components/views/atlas/atlas-card-drop';
 import { useAtlasColors, useAtlasLightContext } from '@/components/views/atlas/use-atlas-colors';
 import { useLookStore } from '@/lib/look-store';
 import { liveness } from '@/lib/atlas-relay-grid';
@@ -794,6 +795,8 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
             transition: reduced ? undefined : `background-color ${ATLAS_GROUND_MS}ms ease-out`,
           }}
         />
+        {/* A camera move mid-drag re-measures the cards' drop rects (PR4). */}
+        <AtlasDropRemeasure />
         <AtlasSurface
           rootRef={rootRef}
           inert={sheetOpen}

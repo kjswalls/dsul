@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useEffect, useRef, type KeyboardEvent, type MouseEvent, type MutableRefObject } from 'react';
+import { memo, useEffect, useMemo, useRef, type KeyboardEvent, type MouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { useDraggable, type DraggableSyntheticListeners } from '@dnd-kit/core';
 import { ItemContextMenu } from '@/components/planner/item-context-menu';
 import { ItemTick, animateItemCheck } from '@/components/primitives/item-check';
@@ -12,6 +12,7 @@ import { formatShort } from '@/lib/collections';
 import type { AtlasMember } from '@/lib/atlas-model';
 import { ATLAS_COPY } from '@/lib/atlas-copy';
 import { atlasRowDragId, type AtlasDropKind } from '@/lib/dnd/atlas-ids';
+import { atlasSpaceHeld } from '@/components/views/atlas/atlas-surface';
 import type { HabitItem, Task } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -38,11 +39,12 @@ interface AtlasRowProps {
   containerId?: string;
 }
 
+/** The drag wiring, as separate props so the memoized body skips a re-render on every `over` change. */
 interface RowDnd {
-  setNodeRef: (el: HTMLElement | null) => void;
-  listeners: DraggableSyntheticListeners;
-  isDragging: boolean;
-  wasDragged: MutableRefObject<boolean>;
+  setNodeRef?: (el: HTMLElement | null) => void;
+  listeners?: DraggableSyntheticListeners;
+  isDragging?: boolean;
+  wasDragged?: MutableRefObject<boolean>;
 }
 
 /**
@@ -88,18 +90,38 @@ function DraggableAtlasRow(props: AtlasRowProps & { drag: AtlasDropKind; contain
       return () => clearTimeout(t);
     }
   }, [isDragging]);
-  return <AtlasRowBody {...props} dnd={{ setNodeRef, listeners, isDragging, wasDragged }} />;
+  // Space+drag pans the board (atlas-surface.tsx): the row stands down, so
+  // the pan never runs under a live drag.
+  const rowListeners = useMemo<DraggableSyntheticListeners>(() => {
+    if (!listeners?.onPointerDown) return listeners;
+    const down = listeners.onPointerDown;
+    return { ...listeners, onPointerDown: (e: ReactPointerEvent) => (atlasSpaceHeld() ? undefined : down(e)) };
+  }, [listeners]);
+  // useDraggable re-renders this shell whenever dnd-kit's `over` changes; the
+  // body below is memoized and its props are stable, so it does not.
+  return (
+    <AtlasRowBody
+      {...props}
+      setNodeRef={setNodeRef}
+      listeners={rowListeners}
+      isDragging={isDragging}
+      wasDragged={wasDragged}
+    />
+  );
 }
 
-function AtlasRowBody({
+const AtlasRowBody = memo(function AtlasRowBody({
   member,
   cardKey,
   cardRowIds,
   todayStr,
   milestoneIds,
   onTicked,
-  dnd,
-}: AtlasRowProps & { dnd?: RowDnd }) {
+  setNodeRef,
+  listeners,
+  isDragging = false,
+  wasDragged,
+}: AtlasRowProps & RowDnd) {
   const { item, state, todayState } = member;
   const boxRef = useRef<HTMLButtonElement>(null);
   const kind = item.type === 'habit' ? 'habit' : 'task';
@@ -115,7 +137,7 @@ function AtlasRowBody({
   };
 
   const onClick = (e: MouseEvent) => {
-    if (dnd?.wasDragged.current) return;
+    if (wasDragged?.current) return;
     const selection = useSelectionStore.getState();
     if (e.metaKey || e.ctrlKey) {
       selection.toggle(item.id);
@@ -151,8 +173,8 @@ function AtlasRowBody({
   return (
     <ItemContextMenu item={item} date="today" occurrence={todayState}>
       <div
-        ref={dnd?.setNodeRef}
-        {...dnd?.listeners}
+        ref={setNodeRef}
+        {...listeners}
         data-testid="atlas-row"
         data-item-id={item.id}
         data-item-kind={kind}
@@ -170,7 +192,7 @@ function AtlasRowBody({
           selected ? 'bg-[var(--row-selected)]' : 'hover:bg-accent',
           // The twin is away (components/shell/drag-ghost.tsx): a hollow slot,
           // never a faded copy, so the lime tick is never under an opacity.
-          dnd?.isDragging && 'drag-source'
+          isDragging && 'drag-source'
         )}
       >
         <button
@@ -209,4 +231,4 @@ function AtlasRowBody({
       </div>
     </ItemContextMenu>
   );
-}
+});

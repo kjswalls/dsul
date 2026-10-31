@@ -9,6 +9,7 @@ import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { formatClock } from '@/components/views/day-schedule';
 import { prefersReducedMotion } from '@/lib/zen-transition';
+import { ATLAS_ROW_PREFIX } from '@/lib/dnd/atlas-ids';
 import { ghostShapeFor, ghostSize, ghostTransform, type GhostShape } from '@/lib/dnd/ghost-shape';
 import type { Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -147,7 +148,7 @@ const settleOnLanding: DropAnimation = ({ active, dragOverlay, transform }) => {
 };
 
 export function DragGhost() {
-  const { activeNode, activeNodeRect, activatorEvent, over } = useDndContext();
+  const { active, activeNode, activeNodeRect, activatorEvent, over } = useDndContext();
   const activeId = useDragStore((s) => s.activeId);
   const input = useDragStore((s) => s.input);
   // Count travels only when the dragged row is itself part of a multi-selection.
@@ -160,7 +161,15 @@ export function DragGhost() {
 
   // What was grabbed: a schedule block's pane or a row, and its size (the twin's home size).
   const fromBlock = activeNode?.dataset.slot === 'pane';
-  const home = activeNodeRect ? { width: activeNodeRect.width, height: activeNodeRect.height } : null;
+  // An Atlas card's row sits in the camera's scaled world, so its screen box is
+  // the row times the zoom; the twin is the row at its own size, whatever the
+  // zoom (offsetWidth ignores transforms), so its contents fit.
+  const atlasRow = active && String(active.id).startsWith(ATLAS_ROW_PREFIX) ? activeNode : null;
+  const home = activeNodeRect
+    ? atlasRow && atlasRow.offsetWidth > 0
+      ? { width: atlasRow.offsetWidth, height: atlasRow.offsetHeight }
+      : { width: activeNodeRect.width, height: activeNodeRect.height }
+    : null;
   const durationMin = item ? blockMinutes(item) : 60;
 
   const shape: GhostShape =

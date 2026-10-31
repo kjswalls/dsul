@@ -2,6 +2,7 @@ import type { Goal, Item, Project, Routine, Season } from './planner-types';
 import { canBulkCollect, canBulkSetProject } from './bulk-edit';
 import { sameContainerName } from './container-registry';
 import { goalItemIds } from './goals';
+import { containerMemberIds as scheduleMemberIds } from './container-schedule';
 import { placementOf } from './dnd/handle-drag-end';
 import type { AtlasContainerRef } from './dnd/atlas-ids';
 import { batchHistory, usePlannerStore } from './planner-store';
@@ -73,24 +74,44 @@ function containerOf(state: FilingState, ref: AtlasContainerRef): Container | un
 }
 
 /**
- * The item ids a container holds now: a project by its (case-folded) name, as
- * the card model reads it; a routine or season by its list; a goal in any role.
+ * The item ids a container's CARD shows: the same answer the card model reads
+ * (lib/container-schedule.ts), so "already here" agrees with what the user
+ * sees. A project by its (case-folded) name; a routine by its list; a season
+ * by its list AND its routines' lists (they ride along); a goal in any role.
  */
 export function containerMemberIds(state: FilingState, ref: AtlasContainerRef): Set<string> {
-  if (ref.kind === 'project') {
-    const project = state.projects.find((p) => p.id === ref.id);
-    if (!project) return new Set();
-    const out = new Set<string>();
-    for (const item of state.items) {
-      const name = (item as { project?: string }).project;
-      if (name && sameContainerName('project', name, project.name)) out.add(item.id);
-    }
-    return out;
-  }
+  if (ref.kind === 'project') return projectMemberIds(state, ref.id);
   if (ref.kind === 'goal') {
     const goal = state.goals.find((g) => g.id === ref.id);
     return new Set(goal ? goalItemIds(goal) : []);
   }
+  if (ref.kind === 'routine') {
+    const routine = state.routines.find((r) => r.id === ref.id);
+    return new Set(routine ? scheduleMemberIds({ kind: 'routine', routine }, state.items, state.routines) : []);
+  }
+  const season = state.seasons.find((s) => s.id === ref.id);
+  return new Set(season ? scheduleMemberIds({ kind: 'season', season }, state.items, state.routines) : []);
+}
+
+function projectMemberIds(state: FilingState, id: string): Set<string> {
+  const project = state.projects.find((p) => p.id === id);
+  if (!project) return new Set();
+  const out = new Set<string>();
+  for (const item of state.items) {
+    const name = (item as { project?: string }).project;
+    if (name && sameContainerName('project', name, project.name)) out.add(item.id);
+  }
+  return out;
+}
+
+/**
+ * What a move can take OFF a source card: its DIRECT holdings. A season's
+ * routine members are held through the routine (they come off it there), and
+ * a goal's milestones and check-ins never move by drag, so only `memberIds`.
+ */
+function directMemberIds(state: FilingState, ref: AtlasContainerRef): Set<string> {
+  if (ref.kind === 'project') return projectMemberIds(state, ref.id);
+  if (ref.kind === 'goal') return new Set(state.goals.find((g) => g.id === ref.id)?.memberIds ?? []);
   const list = ref.kind === 'routine' ? state.routines : state.seasons;
   return new Set(list.find((c) => c.id === ref.id)?.itemIds ?? []);
 }
@@ -124,21 +145,27 @@ export function planFiling(
 
   // Same kind, another card: a move. A project holds one classify value, so
   // the add alone moves it; the gate and aspire kinds are lists, so the item
-  // also comes off the source's.
+  // also comes off the source's. Only what the source holds DIRECTLY can come
+  // off; anything else (a season's routine member, a selected row from
+  // elsewhere) is added, and the label says "Filed", never "Moved" for an item
+  // that stays where it was.
   const sourceContainer =
     source && source.kind === target.kind && source.id !== target.id ? containerOf(state, source) : undefined;
   let removeFromSource: string[] = [];
-  if (source && sourceContainer && target.kind !== 'project') {
+  let leaving = 0;
+  if (source && sourceContainer) {
     if (source.kind === 'goal') {
       const goal = state.goals.find((g) => g.id === source.id);
       const locked = new Set([...(goal?.milestoneIds ?? []), ...(goal?.checkinIds ?? [])]);
       joining = joining.filter((i) => !locked.has(i.id));
       if (joining.length === 0) return { kind: 'refused', message: ATLAS_COPY.milestoneMoves };
     }
-    const held = containerMemberIds(state, source);
-    removeFromSource = joining.filter((i) => held.has(i.id)).map((i) => i.id);
+    const held = directMemberIds(state, source);
+    const off = joining.filter((i) => held.has(i.id)).map((i) => i.id);
+    leaving = off.length;
+    if (target.kind !== 'project') removeFromSource = off;
   }
-  const mode = sourceContainer ? 'move' : 'add';
+  const mode = sourceContainer && leaving === joining.length ? 'move' : 'add';
 
   const n = joining.length;
   let label: string;

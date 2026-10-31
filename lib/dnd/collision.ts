@@ -1,4 +1,4 @@
-import { closestCenter, type ClientRect, type CollisionDetection } from '@dnd-kit/core';
+import { closestCenter, pointerWithin, type ClientRect, type CollisionDetection } from '@dnd-kit/core';
 
 /**
  * A `list:{date}` target the POINTER is inside wins outright.
@@ -49,8 +49,11 @@ const inside = (p: { x: number; y: number }, r: { left: number; top: number; wid
  *   viewport (`[data-atlas-root]`, one at a time): a card panned under the
  *   header or off the edge still has its full rect, and that part is not a
  *   place anyone can see.
- * - Two cards under the pointer (an expanded card over the one below) go to
- *   the one painted on top, asked of the DOM; without `elementsFromPoint`
+ * - The card must also be what the pointer is ON, asked of the DOM
+ *   (`elementsFromPoint`, skipping the drag ghost): an expanded card over the
+ *   one below goes to the one painted on top, and a card under the minimap or
+ *   under the Ask or item overlay below 1180px is not a target at all, since
+ *   nobody can see they are dropping on it. Without `elementsFromPoint`
  *   (jsdom), the last one mounted.
  * - Inside the viewport but on no card (between cards, the far zoom, an open
  *   focus sheet): no target. The drop springs back and the shell says why.
@@ -69,16 +72,14 @@ function atlasCardUnderPointer(args: Parameters<CollisionDetection>[0]) {
     if (r && inside(p, r)) hits.push(container);
   }
   if (hits.length === 0) return [];
-  let pick = hits[hits.length - 1];
-  if (hits.length > 1 && typeof document.elementsFromPoint === 'function') {
-    for (const el of document.elementsFromPoint(p.x, p.y)) {
-      const card = el.closest('[data-atlas-card]');
-      const hit = card && hits.find((c) => card.contains(c.node?.current ?? null));
-      if (hit) {
-        pick = hit;
-        break;
-      }
-    }
+  let pick: (typeof hits)[number] | undefined = hits[hits.length - 1];
+  if (typeof document.elementsFromPoint === 'function') {
+    const top = document
+      .elementsFromPoint(p.x, p.y)
+      .find((el) => !el.closest('[data-testid="drag-ghost"]'));
+    const card = top?.closest('[data-atlas-card]');
+    pick = card ? hits.find((c) => card.contains(c.node?.current ?? null)) : undefined;
+    if (!pick) return [];
   }
   return [{ id: pick.id, data: { droppableContainer: pick, value: 0 } }];
 }
@@ -104,6 +105,13 @@ export const plannerCollision: CollisionDetection = (input) => {
   const args = input.droppableContainers.some((c) => String(c.id).startsWith('atlas:'))
     ? { ...input, droppableContainers: input.droppableContainers.filter((c) => !String(c.id).startsWith('atlas:')) }
     : input;
+  // Atlas showing, pointer off the board: only a target the pointer is
+  // actually inside (the braindump) may take the drop. With no distance
+  // limit, closestCenter would hand a release over the header or the rail to
+  // the braindump, which unschedules or pauses a card's row.
+  if (typeof document !== 'undefined' && document.querySelector('[data-atlas-root]')) {
+    if (pointerWithin(args).length === 0) return [];
+  }
   const list = listDayUnderPointer(args);
   if (list) return list;
   if (typeof document === 'undefined') return closestCenter(args);

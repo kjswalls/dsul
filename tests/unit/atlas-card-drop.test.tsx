@@ -12,7 +12,16 @@ import { readFileSync } from 'node:fs';
  * - a card's rows register an `atlasrow:` draggable; the focus sheet's do not.
  */
 
-const drop = vi.hoisted(() => ({ isOver: false, activeId: null as string | null, disabled: [] as boolean[] }));
+const drop = vi.hoisted(() => ({
+  isOver: false,
+  activeId: null as string | null,
+  disabled: [] as boolean[],
+  dragIds: [] as string[],
+  dragging: false,
+  pointerDowns: 0,
+  ctxActive: null as { id: string } | null,
+  measured: [] as unknown[][],
+}));
 vi.mock('@dnd-kit/core', async (orig) => {
   const actual = await orig<typeof import('@dnd-kit/core')>();
   return {
@@ -28,13 +37,43 @@ vi.mock('@dnd-kit/core', async (orig) => {
         rect: { current: null },
       };
     },
+    useDraggable: (args: { id: string }) => {
+      drop.dragIds.push(args.id);
+      return {
+        isDragging: drop.dragging,
+        setNodeRef: () => {},
+        listeners: { onPointerDown: () => void drop.pointerDowns++ },
+        attributes: {},
+        transform: null,
+        node: { current: null },
+        active: null,
+        over: null,
+      };
+    },
+    useDndContext: () => ({
+      active: drop.ctxActive,
+      droppableContainers: new Map([
+        ['sidebar', {}],
+        [`atlas:routine:22222222-2222-4222-8222-222222222222`, {}],
+      ]),
+      measureDroppableContainers: (ids: unknown[]) => void drop.measured.push(ids),
+    }),
   };
+});
+const ui = vi.hoisted(() => ({ openEditFor: vi.fn(), space: false }));
+vi.mock('@/components/views/atlas/atlas-surface', () => ({ atlasSpaceHeld: () => ui.space }));
+vi.mock('@/lib/ui-store', async (orig) => {
+  const actual = await orig<typeof import('@/lib/ui-store')>();
+  return { ...actual, openEditFor: ui.openEditFor };
 });
 vi.mock('@/lib/db', () => ({ updateItem: vi.fn(async () => {}) }));
 vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 
-import { AtlasCardDrop } from '@/components/views/atlas/atlas-card-drop';
+import { act, fireEvent } from '@testing-library/react';
+import { AtlasCardDrop, AtlasDropRemeasure } from '@/components/views/atlas/atlas-card-drop';
+import { AtlasRow } from '@/components/views/atlas/atlas-row';
+import { atlasMissMessage } from '@/components/shell/app-shell';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 import { useSelectionStore } from '@/lib/selection-store';
@@ -48,6 +87,13 @@ beforeEach(() => {
   drop.isOver = false;
   drop.activeId = null;
   drop.disabled = [];
+  drop.dragIds = [];
+  drop.dragging = false;
+  drop.pointerDowns = 0;
+  drop.ctxActive = null;
+  drop.measured = [];
+  ui.openEditFor.mockClear();
+  ui.space = false;
   usePlannerStore.setState({
     items: [task({ id: 'a', title: 'One' }), task({ id: 'kid', parentItemId: 'a' } as never)],
     projects: [],
@@ -55,7 +101,7 @@ beforeEach(() => {
     seasons: [],
     goals: [],
   } as never);
-  useAtlasUiStore.setState({ sheet: null });
+  useAtlasUiStore.setState({ sheet: null, camera: { x: 0, y: 0, z: 1 } });
   useSelectionStore.getState().clear();
 });
 afterEach(cleanup);
@@ -127,12 +173,88 @@ describe('AtlasCardDrop', () => {
 });
 
 describe('which rows drag', () => {
-  it("a card's rows drag under their card's id; the focus sheet's rows do not (the card under it owns that id)", () => {
-    expect(readFileSync('components/views/atlas/atlas-card.tsx', 'utf8')).toMatch(/drag=\{card\.kind\}\s+containerId=\{card\.id\}/);
+  const member = { item: task({ id: 'a', title: 'One' }), state: 'open', todayState: undefined } as never;
+  const row = (extra: Record<string, unknown> = {}) => (
+    <AtlasRow member={member} cardKey="routine:r2" cardRowIds={['a']} todayStr="2026-03-10" milestoneIds={new Set()} {...extra} />
+  );
+  const rowEl = () => document.querySelector<HTMLElement>('[data-testid="atlas-row"]')!;
+
+  it("a card's row registers its card's `atlasrow:` id; a row with no card (the focus sheet's) registers none", () => {
+    render(row({ drag: 'routine', containerId: 'r2' }));
+    expect(drop.dragIds).toEqual([atlasRowDragId('routine', 'r2', 'a')]);
+    cleanup();
+    drop.dragIds = [];
+    render(row());
+    expect(drop.dragIds).toEqual([]);
     expect(readFileSync('components/views/atlas/atlas-focus-sheet.tsx', 'utf8')).not.toMatch(/\bdrag=/);
-    const row = readFileSync('components/views/atlas/atlas-row.tsx', 'utf8');
-    expect(row).toMatch(/useDraggable\(\{\s*id: atlasRowDragId\(/);
-    // A drop must never open the item: the click after a drag is swallowed.
-    expect(row).toMatch(/if \(dnd\?\.wasDragged\.current\) return;/);
+  });
+
+  it('the click a drop leaves behind does not open the item; the next click does', async () => {
+    drop.dragging = true;
+    const view = render(row({ drag: 'routine', containerId: 'r2' }));
+    drop.dragging = false;
+    view.rerender(row({ drag: 'routine', containerId: 'r2', cardRowIds: ['a', 'x'] }));
+    fireEvent.click(rowEl());
+    expect(ui.openEditFor).not.toHaveBeenCalled();
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    fireEvent.click(rowEl());
+    expect(ui.openEditFor).toHaveBeenCalledTimes(1);
+  });
+
+  it('Space held: the press goes to the board\'s pan, never to the row\'s drag', () => {
+    render(row({ drag: 'routine', containerId: 'r2' }));
+    fireEvent.pointerDown(rowEl());
+    expect(drop.pointerDowns).toBe(1);
+    ui.space = true;
+    fireEvent.pointerDown(rowEl());
+    expect(drop.pointerDowns).toBe(1);
+  });
+});
+
+describe('the camera during a drag', () => {
+  it('a camera change mid-drag re-measures the cards (only the atlas ids), once per frame', async () => {
+    drop.ctxActive = { id: 'a' };
+    render(<AtlasDropRemeasure />);
+    act(() => {
+      useAtlasUiStore.setState({ camera: { x: 40, y: 0, z: 1 } });
+      useAtlasUiStore.setState({ camera: { x: 80, y: 0, z: 1 } });
+    });
+    await act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+    expect(drop.measured).toEqual([[`atlas:routine:${R}`]]);
+  });
+
+  it('with no drag, a camera change measures nothing', async () => {
+    render(<AtlasDropRemeasure />);
+    act(() => useAtlasUiStore.setState({ camera: { x: 40, y: 0, z: 1 } }));
+    await act(() => new Promise((r) => requestAnimationFrame(() => r(null))));
+    expect(drop.measured).toEqual([]);
+  });
+
+  it('the hint counter-scales by the zoom, so it reads at its own size', () => {
+    useAtlasUiStore.setState({ camera: { x: 0, y: 0, z: 0.5 } });
+    drop.isOver = true;
+    drop.activeId = 'a';
+    mount();
+    expect(document.querySelector<HTMLElement>('[data-testid="atlas-card-drop-hint"]')!.style.scale).toBe('2');
+  });
+});
+
+describe('a release on the board with no card under it', () => {
+  it('says to drop it on a card; in the far zoom, to zoom in', () => {
+    expect(atlasMissMessage()).toBe(ATLAS_COPY.dropOnCard);
+    useAtlasUiStore.setState({ camera: { x: 0, y: 0, z: 0.3 } });
+    expect(atlasMissMessage()).toBe(ATLAS_COPY.zoomInToFile);
+  });
+
+  it('says nothing under the focus sheet or while previewing (every card is off then)', () => {
+    useAtlasUiStore.setState({ sheet: { kind: 'routine', id: R, from: null } } as never);
+    expect(atlasMissMessage()).toBeNull();
+    useAtlasUiStore.setState({ sheet: null });
+    usePlannerStore.setState({ isPreview: true } as never);
+    try {
+      expect(atlasMissMessage()).toBeNull();
+    } finally {
+      usePlannerStore.setState({ isPreview: false } as never);
+    }
   });
 });

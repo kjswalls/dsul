@@ -1,7 +1,7 @@
 'use client';
 
-import { memo } from 'react';
-import { useDroppable } from '@dnd-kit/core';
+import { memo, useEffect, useRef } from 'react';
+import { useDndContext, useDroppable } from '@dnd-kit/core';
 import { atlasCardDropId, atlasSourceOf, dragItemIdOf, type AtlasDropKind } from '@/lib/dnd/atlas-ids';
 import { planFiling, type FilingPlan } from '@/lib/atlas-file';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -79,14 +79,66 @@ export const AtlasCardDrop = memo(function AtlasCardDrop({
         acts ? 'atlas-drop-ring' : plan && 'outline-2 outline-offset-2 outline-dashed outline-muted-foreground/60'
       )}
     >
-      {hint && (
-        <span
-          data-testid="atlas-card-drop-hint"
-          className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-card px-2 py-0.5 text-2xs text-foreground shadow-[var(--shadow-elev-sm)]"
-        >
-          {hint}
-        </span>
-      )}
+      {hint && <AtlasDropHint hint={hint} />}
     </div>
   );
 });
+
+/**
+ * The line under the hovered card. The card lives in the scaled world, so the
+ * hint counter-scales by the camera's zoom and reads at its own size at any
+ * zoom (at 0.5 it would be 5px). Only the hovered card renders one, so the
+ * camera subscription is one at a time.
+ */
+function AtlasDropHint({ hint }: { hint: string }) {
+  const z = useAtlasUiStore((s) => s.camera.z);
+  return (
+    <span
+      data-testid="atlas-card-drop-hint"
+      style={{ scale: z > 0 ? 1 / z : 1, transformOrigin: 'top center' }}
+      className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-card px-2 py-0.5 text-2xs text-foreground shadow-[var(--shadow-elev-sm)]"
+    >
+      {hint}
+    </span>
+  );
+}
+
+/**
+ * Keeps every card's drop rect on the card while a drag is live and the camera
+ * moves (a wheel pan or pinch, the minimap corner). The camera moves cards by
+ * transform only, and dnd-kit re-measures droppables only when the list of
+ * them changes or a drag starts (a ResizeObserver never fires on a
+ * transform), so without this a wheel mid-drag left the pointer tested
+ * against where the cards were. One measure per frame, of the `atlas:` ids
+ * only; a new rect re-runs collision, so the lit card follows the camera even
+ * with the mouse still.
+ */
+export function AtlasDropRemeasure() {
+  const { active, droppableContainers, measureDroppableContainers } = useDndContext();
+  const latest = useRef({ droppableContainers, measureDroppableContainers });
+  useEffect(() => {
+    latest.current = { droppableContainers, measureDroppableContainers };
+  });
+  const dragging = active !== null;
+
+  useEffect(() => {
+    if (!dragging) return;
+    let frame: number | null = null;
+    const unsubscribe = useAtlasUiStore.subscribe((s, prev) => {
+      if (s.camera === prev.camera || frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        const { droppableContainers: map, measureDroppableContainers: measure } = latest.current;
+        const ids = [...map.keys()].filter((id) => String(id).startsWith('atlas:'));
+        // Never an empty list: dnd-kit reads [] as "measure everything, every render".
+        if (ids.length > 0) measure(ids);
+      });
+    });
+    return () => {
+      unsubscribe();
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [dragging]);
+
+  return null;
+}

@@ -229,6 +229,8 @@ export const ATLAS_COPY = {
   milestoneMoves: "Milestones and check-ins move from the goal's page",
   /** A drop on the board between cards. */
   dropOnCard: 'Drop it on a card to file it there',
+  /** The same drop in the far zoom, where the cards are clusters. */
+  zoomInToFile: 'Zoom in to drop it on a card',
   /** The undo strip's sentences for a filing (ATLAS_UNDO_PREFIXES has 'Filed ' and 'Moved '). */
   filed: (name: string) => `Filed in ${name}`,
   filedFromBraindump: (name: string) => `Filed in ${name}. It stays in the braindump until it has a day.`,

@@ -182,6 +182,38 @@ describe('a row moved between cards', () => {
   });
 });
 
+describe("a season's routine members (the card counts them)", () => {
+  const t1 = task({ id: 't1', title: 'Run' });
+  const t2 = task({ id: 't2', title: 'Read' });
+  const s = {
+    items: [t1, t2],
+    projects: [],
+    routines: [routine('r1', ['t1']), routine('r2', ['t2'])],
+    seasons: [season('s1', { routineIds: ['r1'], itemIds: ['t2'] }), season('s2')],
+    goals: [],
+  };
+
+  it('let go on its own season card, it is already there (as the card shows it)', () => {
+    expect(planFiling(s, ['t1'], { kind: 'season', id: 's1' }, { kind: 'season', id: 's1' })).toEqual({ kind: 'already' });
+    expect(planFiling(s, ['t1'], { kind: 'season', id: 's1' }, { kind: 'routine', id: 'r1' })).toEqual({ kind: 'already' });
+  });
+
+  it('dragged to another season, it is filed (it stays on its routine and so on s1), never "Moved"', () => {
+    const plan = planFiling(s, ['t1'], { kind: 'season', id: 's2' }, { kind: 'season', id: 's1' });
+    expect(plan).toMatchObject({ kind: 'file', mode: 'add', removeFromSource: [], label: ATLAS_COPY.filedFromBraindump('s2') });
+  });
+
+  it('a direct member of the season still moves', () => {
+    const plan = planFiling(s, ['t2'], { kind: 'season', id: 's2' }, { kind: 'season', id: 's1' });
+    expect(plan).toMatchObject({ kind: 'file', mode: 'move', removeFromSource: ['t2'], label: ATLAS_COPY.movedRow('Read', 's2') });
+  });
+
+  it('a group only part of which leaves the grabbed card says "Filed", not "Moved"', () => {
+    const plan = planFiling(s, ['t1', 't2'], { kind: 'season', id: 's2' }, { kind: 'season', id: 's1' });
+    expect(plan).toMatchObject({ kind: 'file', mode: 'add', removeFromSource: ['t2'], label: ATLAS_COPY.filedMany(2, 's2') });
+  });
+});
+
 describe('planFiling: the registry decides who may join', () => {
   const state = (items: Item[]) => ({
     items,

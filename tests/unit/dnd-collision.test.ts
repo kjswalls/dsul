@@ -22,10 +22,13 @@ const rect = (top: number, height: number, left = 0, width = 140): ClientRect =>
 function run(
   rects: Record<string, ClientRect>,
   pointer: ClientRect,
-  pointerCoordinates: { x: number; y: number } | null = null
+  pointerCoordinates: { x: number; y: number } | null = null,
+  nodes: Record<string, HTMLElement> = {}
 ) {
   const droppableRects = new Map<UniqueIdentifier, ClientRect>(Object.entries(rects));
-  const droppableContainers = Object.keys(rects).map((id) => ({ id }) as unknown as DroppableContainer);
+  const droppableContainers = Object.keys(rects).map(
+    (id) => ({ id, node: { current: nodes[id] ?? null } }) as unknown as DroppableContainer
+  );
   return plannerCollision({
     active: {} as never,
     collisionRect: pointer,
@@ -44,6 +47,7 @@ function pinHead(r: ClientRect) {
 
 afterEach(() => {
   document.body.innerHTML = '';
+  delete (document as { elementsFromPoint?: unknown }).elementsFromPoint;
 });
 
 describe('plannerCollision', () => {
@@ -135,6 +139,55 @@ describe('plannerCollision: Atlas cards (PR4)', () => {
     const ids = run(rects, at(-200, 180), { x: -200, y: 180 });
     expect(ids[0]).toBe('sidebar');
     expect(ids.some((id) => String(id).startsWith('atlas:'))).toBe(false);
+  });
+
+  it('off the board and off the braindump (the header, the rail) there is no target', () => {
+    board();
+    // Past the board's right edge: closestCenter would hand this to the braindump.
+    expect(run(rects, at(1200, 180), { x: 1200, y: 180 })).toEqual([]);
+  });
+
+  /** A card element holding its drop overlay, as AtlasCard mounts it. */
+  function card(key: string) {
+    const el = document.createElement('article');
+    el.setAttribute('data-atlas-card', key);
+    const drop = document.createElement('div');
+    el.appendChild(drop);
+    document.body.appendChild(el);
+    return { el, drop };
+  }
+  const stubStack = (els: Element[]) => {
+    (document as { elementsFromPoint?: unknown }).elementsFromPoint = () => els;
+  };
+
+  it('two cards under the pointer: the one painted on top wins, whatever the mount order', () => {
+    board();
+    const a = card('a');
+    const b = card('b');
+    // B overlaps A's right edge here; A (mounted first) is on top.
+    const overlap = { ...rects, [B]: rect(100, 160, 300, 260) };
+    stubStack([a.el, b.el]);
+    expect(run(overlap, at(330, 150), { x: 330, y: 150 }, { [A]: a.drop, [B]: b.drop })).toEqual([A]);
+    stubStack([b.el, a.el]);
+    expect(run(overlap, at(330, 150), { x: 330, y: 150 }, { [A]: a.drop, [B]: b.drop })).toEqual([B]);
+  });
+
+  it('the drag ghost on top is looked through', () => {
+    board();
+    const a = card('a');
+    const ghost = document.createElement('div');
+    ghost.setAttribute('data-testid', 'drag-ghost');
+    stubStack([ghost, a.el]);
+    expect(run(rects, at(200, 150), { x: 200, y: 150 }, { [A]: a.drop })).toEqual([A]);
+  });
+
+  it('a card under the minimap (or an overlay) is not a target, even alone', () => {
+    board();
+    const a = card('a');
+    const minimap = document.createElement('div');
+    minimap.setAttribute('data-testid', 'atlas-minimap');
+    stubStack([minimap, a.el]);
+    expect(run(rects, at(200, 150), { x: 200, y: 150 }, { [A]: a.drop })).toEqual([]);
   });
 
   it('with no Atlas on screen, atlas ids never answer by centre', () => {

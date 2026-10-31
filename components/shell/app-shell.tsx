@@ -76,6 +76,9 @@ import { sidebarDropPlan } from '@/lib/dnd/sidebar-drop';
 import { atlasSourceOf, dragItemIdOf, parseAtlasCardDropId } from '@/lib/dnd/atlas-ids';
 import { containerMemberIds, fileIntoContainer } from '@/lib/atlas-file';
 import { ATLAS_COPY } from '@/lib/atlas-copy';
+import { useAtlasUiStore } from '@/lib/atlas-ui-store';
+import { ATLAS_FAR_ZOOM } from '@/lib/atlas-camera';
+import { isPlannerPreviewing } from '@/lib/planner-ready';
 import type { Item } from '@/lib/planner-types';
 import { toDateStr } from '@/lib/recurrence';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
@@ -298,6 +301,19 @@ export function fileSelectionOnAtlas(
 }
 
 /**
+ * What to say when a drag is let go on Atlas's board with no card under it.
+ * Nothing while the focus sheet is open or the planner is previewing (every
+ * card is off then, so even a drop right on one finds none; the sheet is the
+ * card at full size); in the far zoom the cards are clusters, so zoom in.
+ * Exported for tests/unit/atlas-card-drop.test.tsx.
+ */
+export function atlasMissMessage(): string | null {
+  const { sheet, camera } = useAtlasUiStore.getState();
+  if (sheet !== null || isPlannerPreviewing()) return null;
+  return camera.z < ATLAS_FAR_ZOOM ? ATLAS_COPY.zoomInToFile : ATLAS_COPY.dropOnCard;
+}
+
+/**
  * Was this drag let go over Atlas's board? The pointer is where the drag
  * started plus how far it came, as trackReorder reads it.
  */
@@ -478,7 +494,9 @@ export function AppShell() {
     if (!over) {
       // Let go on Atlas's board between cards: the collision rule gave it no
       // target (lib/dnd/collision.ts), so it springs back, and says why.
-      if (releasedOnAtlas(event)) toast(ATLAS_COPY.dropOnCard);
+      // Off the board (the header, the rail) it springs back silently.
+      const miss = releasedOnAtlas(event) ? atlasMissMessage() : null;
+      if (miss) toast(miss);
       return;
     }
     // Landed on a target. A drop its target then declines still lands
