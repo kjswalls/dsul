@@ -320,10 +320,12 @@ test.describe('atlas', () => {
     // the chip kept saying Bloom), and Bloom puts it back.
     const farChip = page.getByTestId('setting-look.atlasFar').first();
     await farChip.click();
-    await page.getByRole('button', { name: 'Dusk', exact: true }).click();
+    // By value inside the open picker: the Look pane also has a dark theme named Dusk.
+    const pick = (v: string) => page.locator(`[data-radix-popper-content-wrapper] button[data-value="${v}"]`);
+    await pick('dusk').click();
     await expect(farChip).toContainText('Dusk');
     await farChip.click();
-    await page.getByRole('button', { name: 'Bloom', exact: true }).click();
+    await pick('bloom').click();
     await expect(farChip).toContainText('Bloom');
     await page.goto('/');
     await waitForAppReady(page);
