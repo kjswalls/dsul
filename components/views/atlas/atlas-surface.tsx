@@ -116,6 +116,10 @@ export function AtlasSurface({
   }, []);
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    // React bubbles through portals: a press on a card's context menu (portalled
+    // to <body>) reaches this handler too. It is not a press on the board, and
+    // capturing it here would steal the row's click, so the menu never chose.
+    if (!e.currentTarget.contains(e.target as Node)) return;
     const onCard = (e.target as Element).closest?.('[data-atlas-card]');
     const middle = e.button === 1;
     const bare = e.button === 0 && !onCard && !e.ctrlKey;
