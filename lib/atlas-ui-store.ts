@@ -47,6 +47,12 @@ interface AtlasUiStore {
    */
   seeded: Record<string, Point>;
   addSeeded: (places: Record<string, Point>) => void;
+  /**
+   * The lane a dragged card would land in (PR2), so the lane layer lights it
+   * before release without the drag re-rendering any card.
+   */
+  hotLane: string | null;
+  setHotLane: (id: string | null) => void;
   reset: () => void;
 }
 
@@ -57,6 +63,7 @@ const INITIAL = {
   sheet: null,
   expanded: {},
   seeded: {},
+  hotLane: null,
 } satisfies Partial<AtlasUiStore>;
 
 export const useAtlasUiStore = create<AtlasUiStore>()((set) => ({
@@ -75,6 +82,7 @@ export const useAtlasUiStore = create<AtlasUiStore>()((set) => ({
     }),
   addSeeded: (places) =>
     set((s) => (Object.keys(places).length === 0 ? s : { seeded: { ...s.seeded, ...places } })),
+  setHotLane: (hotLane) => set((s) => (s.hotLane === hotLane ? s : { hotLane })),
   reset: () => set({ ...INITIAL }),
 }));
 

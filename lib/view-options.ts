@@ -16,6 +16,8 @@ import {
   CalendarRange,
   Target,
   Map as MapIcon,
+  Activity,
+  GanttChart,
   type LucideIcon,
 } from 'lucide-react';
 import { ATLAS_COPY } from './atlas-copy';
@@ -33,6 +35,10 @@ export interface ViewOption<T extends string> {
   value: T;
   label: string;
   icon: LucideIcon;
+  /** Shown but not pickable (the menu renders `note` beside it). */
+  disabled?: boolean;
+  /** Why a disabled option can't be picked, e.g. "Turn on Goals". */
+  note?: string;
 }
 
 export const TYPE_OPTIONS: ViewOption<TypeFilter>[] = [
@@ -64,12 +70,35 @@ export function scopeOptionsFor(isMobile: boolean): ViewOption<ViewScope>[] {
 }
 
 /**
- * Atlas's layouts (D2: a separate list, never mixed into LAYOUT_OPTIONS). PR1
- * ships Your map alone; Momentum, By goal and Timeline land with PR2.
+ * Atlas's layouts (D2: a separate list, never mixed into LAYOUT_OPTIONS). A
+ * layout is a lens: switching never edits.
  */
 export const ATLAS_LAYOUT_OPTIONS: ViewOption<AtlasLayout>[] = [
   { value: 'map', label: ATLAS_COPY.layoutMap, icon: MapIcon },
+  { value: 'momentum', label: ATLAS_COPY.layoutMomentum, icon: Activity },
+  { value: 'goal', label: ATLAS_COPY.layoutGoal, icon: Target },
+  { value: 'timeline', label: ATLAS_COPY.layoutTimeline, icon: GanttChart },
 ];
+
+/**
+ * The layouts as this account can use them: By goal is shown but disabled,
+ * with a note, while Goals is off (it starts off). Timeline works with no
+ * goals (seasons and projects), so it stays enabled.
+ */
+export function atlasLayoutOptionsFor(goalsShown: boolean): ViewOption<AtlasLayout>[] {
+  if (goalsShown) return ATLAS_LAYOUT_OPTIONS;
+  return ATLAS_LAYOUT_OPTIONS.map((o) =>
+    o.value === 'goal' ? { ...o, disabled: true, note: ATLAS_COPY.goalsOffNote } : o
+  );
+}
+
+/**
+ * The layout Atlas draws: a remembered By goal reads as Your map while Goals
+ * is off (the choice is kept, and comes back when Goals does).
+ */
+export function effectiveAtlasLayout(layout: AtlasLayout, goalsShown: boolean): AtlasLayout {
+  return layout === 'goal' && !goalsShown ? 'map' : layout;
+}
 
 /**
  * The canvas grouping vocabulary — every member of `GroupBy`, since Phase 5a

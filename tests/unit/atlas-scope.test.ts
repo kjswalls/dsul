@@ -4,9 +4,21 @@ import { STATIC_COMMANDS, findCommand, matchCommands, type CommandContext } from
 import { useCanvasWide, useViewStore, useWeekScaleShown } from '@/lib/view-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
-import { ATLAS_LAYOUT_OPTIONS, SCOPE_OPTIONS, groupBySupport, scopeOptionsFor } from '@/lib/view-options';
+import {
+  ATLAS_LAYOUT_OPTIONS,
+  SCOPE_OPTIONS,
+  atlasLayoutOptionsFor,
+  effectiveAtlasLayout,
+  groupBySupport,
+  scopeOptionsFor,
+} from '@/lib/view-options';
+import { DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
+import { normalizeBinding } from '@/lib/commands/keys';
+import { EXT_GOALS } from '@/lib/extension-registry';
+import { disableExtensions, enableExtensions } from './support/extensions';
 import { stepScope } from '@/lib/nav-commands';
 import { ATLAS_COPY } from '@/lib/atlas-copy';
+import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 
 /**
  * The 'atlas' ViewScope's plumbing (design PR1a): the store, the options, the
@@ -86,8 +98,8 @@ describe('the options', () => {
     expect(scopeOptionsFor(false).map((o) => o.value)).toEqual(['day', 'week', 'atlas']);
   });
 
-  it('ships Your map alone in PR1', () => {
-    expect(ATLAS_LAYOUT_OPTIONS.map((o) => o.value)).toEqual(['map']);
+  it('ships the four layouts, Your map first (PR2)', () => {
+    expect(ATLAS_LAYOUT_OPTIONS.map((o) => o.value)).toEqual(['map', 'momentum', 'goal', 'timeline']);
     expect(ATLAS_LAYOUT_OPTIONS[0].label).toBe(ATLAS_COPY.layoutMap);
   });
 
@@ -180,5 +192,77 @@ describe('the registry', () => {
     const sel = usePlannerStore.getState().selectedDate;
     expect(Math.abs(sel.getTime() - Date.now())).toBeLessThan(5000);
     useViewStore.getState().setScope('day');
+  });
+});
+
+describe('the Atlas layout commands (PR2)', () => {
+  const KEYS = [
+    ['view.atlasLayoutMap', 'atlas_layout_map', '1', 'map'],
+    ['view.atlasLayoutMomentum', 'atlas_layout_momentum', '2', 'momentum'],
+    ['view.atlasLayoutGoal', 'atlas_layout_goal', '3', 'goal'],
+    ['view.atlasLayoutTimeline', 'atlas_layout_timeline', '4', 'timeline'],
+  ] as const;
+
+  beforeEach(() => {
+    enableExtensions(EXT_GOALS);
+    usePlannerStore.setState({ goalsAvailable: true });
+  });
+  afterEach(() => disableExtensions(EXT_GOALS));
+
+  it.each(KEYS)('%s binds %s to %s, on Atlas only, desktop only', (id, shortcutId, key, layout) => {
+    const c = cmd(id);
+    expect(c.shortcut?.id).toBe(shortcutId);
+    expect(c.shortcut?.keys).toEqual([key]);
+    expect(available(id)).toBe(false);
+    useViewStore.setState({ scope: 'atlas' });
+    expect(available(id)).toBe(true);
+    expect(available(id, mobile)).toBe(false);
+    c.run(ctx);
+    expect(useViewStore.getState().atlasLayout).toBe(layout);
+  });
+
+  it('waits while the focus sheet is open, so the card it shrinks back into stays put', () => {
+    useViewStore.setState({ scope: 'atlas' });
+    useAtlasUiStore.getState().openSheet('project', 'p1', { x: 0, y: 0, width: 280, height: 190 });
+    try {
+      for (const [id] of KEYS) expect(available(id)).toBe(false);
+      expect(available('view.atlasLayout')).toBe(false);
+    } finally {
+      useAtlasUiStore.getState().closeSheet();
+    }
+    for (const [id] of KEYS) expect(available(id)).toBe(true);
+    expect(available('view.atlasLayout')).toBe(true);
+  });
+
+  it('no two Atlas keys collide with each other or anything else', () => {
+    const combos = DEFAULT_SHORTCUTS.map((s) => normalizeBinding(s.keys).join('+'));
+    for (const [, , key] of KEYS) expect(combos.filter((k) => k === key)).toHaveLength(1);
+  });
+
+  it('view.atlasLayout is an Atlas-only picker; By goal leaves it while Goals is off', () => {
+    const c = cmd('view.atlasLayout');
+    expect(available('view.atlasLayout')).toBe(false);
+    useViewStore.setState({ scope: 'atlas' });
+    expect(available('view.atlasLayout')).toBe(true);
+    const values = () =>
+      c.argument?.kind === 'enum' ? c.argument.options(ctx).map((o) => o.value) : [];
+    expect(values()).toEqual(['map', 'momentum', 'goal', 'timeline']);
+    disableExtensions(EXT_GOALS);
+    expect(values()).toEqual(['map', 'momentum', 'timeline']);
+    expect(available('view.atlasLayoutGoal')).toBe(false);
+    c.run(ctx, 'goal');
+    expect(useViewStore.getState().atlasLayout).toBe('map');
+    c.run(ctx, 'timeline');
+    expect(useViewStore.getState().atlasLayout).toBe('timeline');
+  });
+
+  it('By goal is disabled, with a note, in the Layout menu while Goals is off', () => {
+    const off = atlasLayoutOptionsFor(false).find((o) => o.value === 'goal')!;
+    expect(off.disabled).toBe(true);
+    expect(off.note).toBe(ATLAS_COPY.goalsOffNote);
+    expect(atlasLayoutOptionsFor(false).find((o) => o.value === 'timeline')!.disabled).toBeFalsy();
+    expect(atlasLayoutOptionsFor(true).every((o) => !o.disabled)).toBe(true);
+    expect(effectiveAtlasLayout('goal', false)).toBe('map');
+    expect(effectiveAtlasLayout('goal', true)).toBe('goal');
   });
 });

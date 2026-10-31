@@ -10,6 +10,9 @@ import { act, render, screen, cleanup, fireEvent, within } from '@testing-librar
  *
  * PR1c: the focus sheet (double-click, Enter, Focus), its groups and actions,
  * and the root's Escape and Enter.
+ *
+ * PR2: the layouts (a switch keeps an open item open), the glide (transform
+ * only, off under reduced motion), the lanes, and a filter's scale-down.
  */
 
 const push = vi.fn();
@@ -41,6 +44,10 @@ import { useSelectionStore } from '@/lib/selection-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 import { useAtlasStore } from '@/lib/atlas-store';
+import { useViewStore } from '@/lib/view-store';
+import { ATLAS_COPY } from '@/lib/atlas-copy';
+import { ATLAS_GLIDE } from '@/components/views/atlas/atlas-card';
+import { toast } from 'sonner';
 import type { Item, Project } from '@/lib/planner-types';
 import { EXT_GOALS } from '@/lib/extension-registry';
 import { disableExtensions, enableExtensions } from './support/extensions';
@@ -875,5 +882,208 @@ describe('the focus sheet (PR1c)', () => {
     // Closing shrinks it back before it goes.
     act(() => useAtlasUiStore.getState().closeSheet());
     expect(sheet()?.dataset.phase).toBe('leaving');
+  });
+});
+
+describe('the layouts (PR2)', () => {
+  afterEach(() => {
+    useViewStore.setState({ atlasLayout: 'map', atlasHideFinished: false, atlasHideResting: false });
+    document.documentElement.removeAttribute('data-reduce-motion');
+  });
+
+  it('glides on transform only, never opacity', () => {
+    seed([task('a')]);
+    render(<AtlasView />);
+    const t = card().style.transition;
+    expect(t).toBe(ATLAS_GLIDE);
+    expect(t).toMatch(/^transform /);
+    expect(t).not.toMatch(/opacity|all/);
+  });
+
+  it('turns the glide off under reduced motion', () => {
+    document.documentElement.setAttribute('data-reduce-motion', 'true');
+    seed([task('a')]);
+    render(<AtlasView />);
+    expect(card().style.transition).toBe('');
+  });
+
+  it('a switch draws the new lanes and leaves an open item open', () => {
+    seed([task('a', { startDate: TODAY }), task('b')]);
+    render(<AtlasView />);
+    fireEvent.click(rowsIn(card())[0]);
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item' });
+    act(() => useViewStore.getState().setAtlasLayout('momentum'));
+    expect(screen.getByTestId('atlas-view').dataset.atlasLayout).toBe('momentum');
+    expect(document.querySelectorAll('[data-lane-kind="band"]')).toHaveLength(3);
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item' });
+    // The card says why it sits where it does.
+    expect(within(card()).getByTestId('atlas-reason').textContent).toBe(ATLAS_COPY.dueToday);
+    act(() => useViewStore.getState().setAtlasLayout('timeline'));
+    expect(screen.getAllByTestId('atlas-month').length).toBeGreaterThan(2);
+    act(() => useViewStore.getState().setAtlasLayout('map'));
+    expect(document.querySelectorAll('[data-atlas-lane]')).toHaveLength(0);
+  });
+
+  it('dims nothing by opacity in any layout', () => {
+    seed([task('a'), task('b', { status: 'completed' })]);
+    render(<AtlasView />);
+    enableExtensions(EXT_GOALS);
+    usePlannerStore.setState({ goals: [{ id: 'g1', name: 'Ship', state: 'active', memberIds: ['a'], milestoneIds: [], checkinIds: [] } as never] });
+    for (const layout of ['momentum', 'goal', 'timeline', 'map'] as const) {
+      act(() => useViewStore.getState().setAtlasLayout(layout));
+      const root = document.querySelector('[data-atlas-root]')!;
+      const offenders = [root, ...root.querySelectorAll('*')].filter((el) => {
+        const cls = (el.getAttribute('class') ?? '').split(/\s+/);
+        return cls.some((c) => /(^|:)opacity-/.test(c)) || /opacity\s*:/.test(el.getAttribute('style') ?? '');
+      });
+      expect(offenders.map((el) => el.outerHTML.slice(0, 120))).toEqual([]);
+    }
+  });
+
+  it('Hide finished scales a finished card down, then unmounts it', async () => {
+    seed([task('a', { status: 'completed' })]);
+    render(<AtlasView />);
+    expect(card()).toBeTruthy();
+    act(() => useViewStore.getState().setAtlasHideFinished(true));
+    const leaving = card();
+    expect(leaving.dataset.leaving).toBe('true');
+    expect(leaving.style.transform).toMatch(/scale\(\.96\)/);
+    expect(leaving.style.transition).toMatch(/^transform /);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 200));
+    });
+    expect(card()).toBeNull();
+  });
+
+  it('a remembered By goal reads as Your map while Goals is off', () => {
+    disableExtensions(EXT_GOALS);
+    useViewStore.setState({ atlasLayout: 'goal' });
+    seed([task('a')]);
+    render(<AtlasView />);
+    expect(screen.getByTestId('atlas-view').dataset.atlasLayout).toBe('map');
+  });
+
+  const TWO = [{ id: 'p1', name: 'Work', emoji: '' }, { id: 'p2', name: 'Home', emoji: '' }] as Project[];
+
+  it('holds the computed layout after a tick, so a finished card stays under the pointer until it leaves', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(asDate(TODAY));
+    seed([task('a'), task('c', { project: 'Home' })], TWO);
+    useViewStore.setState({ atlasLayout: 'momentum', atlasHideFinished: true });
+    render(<AtlasView />);
+    const at = card().style.transform;
+    const root = screen.getByTestId('atlas-view');
+    const box = within(card()).getByTestId('atlas-row-check');
+    fireEvent.pointerOver(box);
+    fireEvent.click(box, { detail: 1 });
+    // Its last step is done, so Hide finished would take it, but not under the pointer.
+    expect(card().dataset.leaving).toBeUndefined();
+    expect(card().style.transform).toBe(at);
+    fireEvent.click(within(card()).getByTestId('atlas-row-check'), { detail: 2 });
+    const status = (id: string) => (usePlannerStore.getState().items.find((i) => i.id === id) as { status: string }).status;
+    expect(status('a')).toBe('completed');
+    expect(status('c')).toBe('pending');
+    // The hold is over but the pointer is still on the card: it stays.
+    act(() => {
+      vi.advanceTimersByTime(1600);
+    });
+    expect(card().dataset.leaving).toBeUndefined();
+    // The pointer leaves: the filter applies and the card scales away.
+    act(() => {
+      fireEvent.pointerLeave(root);
+    });
+    expect(card().dataset.leaving).toBe('true');
+  });
+
+  it('Unpin hands focus to the card, never to <body>', () => {
+    seed([task('a')]);
+    useAtlasStore.setState({ places: { 'project:p1': { kind: 'project', id: 'p1', x: 0, y: 0, band: 'resting' } } });
+    useViewStore.setState({ atlasLayout: 'momentum' });
+    render(<AtlasView />);
+    const unpin = within(card()).getByTestId('atlas-unpin');
+    unpin.focus();
+    fireEvent.click(unpin);
+    expect(within(card()).queryByTestId('atlas-unpin')).toBeNull();
+    expect(document.activeElement).toBe(card());
+  });
+
+  it('a Momentum drag lights the column it is over (never its own), and a drop outside springs back with a reason', () => {
+    seed([task('a')]);
+    useViewStore.setState({ atlasLayout: 'momentum' });
+    render(<AtlasView />);
+    const c = card();
+    const slot = c.style.transform;
+    const hot = () => document.querySelector('[data-hot="true"]')?.getAttribute('data-atlas-lane') ?? null;
+    fireEvent.pointerDown(c, { button: 0, pointerId: 7, clientX: 400, clientY: 100 });
+    // Within its own column (Soon): nothing lights.
+    fireEvent.pointerMove(c, { pointerId: 7, clientX: 400, clientY: 300 });
+    expect(hot()).toBeNull();
+    // Over Now.
+    fireEvent.pointerMove(c, { pointerId: 7, clientX: 70, clientY: 100 });
+    expect(hot()).toBe('now');
+    expect(c.style.transition).toBe('none');
+    // Let go outside every column.
+    fireEvent.pointerMove(c, { pointerId: 7, clientX: -2000, clientY: 100 });
+    act(() => {
+      fireEvent.pointerUp(c, { pointerId: 7, clientX: -2000, clientY: 100 });
+    });
+    expect(toast).toHaveBeenCalledWith(ATLAS_COPY.dropInColumn);
+    expect(useAtlasStore.getState().places['project:p1']?.band ?? null).toBeNull();
+    expect(card().style.transform).toBe(slot);
+  });
+
+  it('Escape cancels a drag: claims the key, writes nothing, springs back', () => {
+    seed([task('a')]);
+    useViewStore.setState({ atlasLayout: 'momentum' });
+    render(<AtlasView />);
+    const c = card();
+    const slot = c.style.transform;
+    fireEvent.pointerDown(c, { button: 0, pointerId: 8, clientX: 400, clientY: 100 });
+    fireEvent.pointerMove(c, { pointerId: 8, clientX: 70, clientY: 100 });
+    const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => {
+      window.dispatchEvent(esc);
+    });
+    expect(esc.defaultPrevented).toBe(true);
+    expect(card().style.transform).toBe(slot);
+    expect(document.querySelector('[data-hot="true"]')).toBeNull();
+    act(() => {
+      fireEvent.pointerUp(c, { pointerId: 8, clientX: 70, clientY: 100 });
+    });
+    expect(useAtlasStore.getState().places['project:p1']?.band ?? null).toBeNull();
+    expect(card().style.transform).toBe(slot);
+  });
+
+  it('tabs in reading order for the layout shown, and names the column', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(asDate(TODAY));
+    // Work is undated (Soon); Home has a step today (Now).
+    seed([task('a'), task('c', { project: 'Home', startDate: TODAY })], TWO);
+    render(<AtlasView />);
+    const order = () => [...document.querySelectorAll('[data-atlas-card]')].map((el) => el.getAttribute('data-atlas-card'));
+    expect(order()).toEqual(['project:p1', 'project:p2']);
+    act(() => useViewStore.getState().setAtlasLayout('momentum'));
+    // The DOM moves only once the glide is over.
+    act(() => {
+      vi.advanceTimersByTime(700);
+    });
+    expect(order()).toEqual(['project:p2', 'project:p1']);
+    expect(card('project:p2').getAttribute('aria-label')).toMatch(new RegExp(`, in ${ATLAS_COPY.bandNow}$`));
+    expect(card('project:p1').getAttribute('aria-label')).toMatch(new RegExp(`, in ${ATLAS_COPY.bandSoon}$`));
+  });
+
+  it('Momentum menus offer the other columns, and Unpin on a pinned card', () => {
+    seed([task('a')]);
+    useAtlasStore.setState({ places: { 'project:p1': { kind: 'project', id: 'p1', x: 0, y: 0, band: 'resting' } } });
+    useViewStore.setState({ atlasLayout: 'momentum' });
+    render(<AtlasView />);
+    expect(card().dataset.pinned).toBe('true');
+    expect(within(card()).getByTestId('atlas-unpin')).toBeTruthy();
+    rightClick(within(card()).getByTestId('atlas-card-header'));
+    expect(screen.getByTestId('container-menu-pin-now')).toBeTruthy();
+    expect(screen.getByTestId('container-menu-pin-soon')).toBeTruthy();
+    expect(screen.queryByTestId('container-menu-pin-resting')).toBeNull();
+    fireEvent.click(screen.getByTestId('container-menu-unpin'));
+    expect(useAtlasStore.getState().places['project:p1']?.band ?? null).toBeNull();
   });
 });

@@ -74,8 +74,13 @@ interface AtlasStore {
   place: (kind: AtlasKind, id: string, x: number, y: number) => void;
   /** Seeding: the cards Atlas sees for the first time, in one write. */
   placeMany: (places: readonly AtlasPlace[]) => void;
-  /** Momentum's pin (PR2). Null on a card with no place forgets the row. */
-  pin: (kind: AtlasKind, id: string, band: AtlasBand | null) => void;
+  /**
+   * Momentum's pin (PR2). Null on a card with no place forgets the row.
+   * `at` is where the card is drawn on Your map: a row with no stored place
+   * takes it with the pin, so a band-only row never sits with null xy that
+   * seeding (insert-only) can't fill.
+   */
+  pin: (kind: AtlasKind, id: string, band: AtlasBand | null, at?: { x: number; y: number }) => void;
   reset: () => void;
 }
 
@@ -316,9 +321,16 @@ export const useAtlasStore = create<AtlasStore>()((set, get) => {
       send(changed, 'xy', { insertOnly: true });
     },
 
-    pin: (kind, id, band) => {
+    pin: (kind, id, band, at) => {
       const key = atlasPlaceKey(kind, id);
       const prev = get().places[key];
+      const placeless = prev?.x == null || prev?.y == null;
+      if (band !== null && placeless && at && finite(at.x) && finite(at.y)) {
+        const next: AtlasPlace = { kind, id, x: at.x, y: at.y, band };
+        set((s) => ({ places: { ...s.places, [key]: next } }));
+        send([next], 'all');
+        return;
+      }
       if (band === null && (prev?.x == null || prev?.y == null)) {
         // Nothing left in the row: forget it rather than keep an empty one.
         if (!prev) return;

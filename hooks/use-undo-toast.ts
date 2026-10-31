@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUndoStripStore } from '@/lib/undo-strip-store';
+import { ATLAS_UNDO_PREFIXES } from '@/lib/atlas-copy';
 
 // Actions that raise the transient strip row (components/notices/undo-strip.tsx).
 const SIGNIFICANT_ACTIONS = [
@@ -79,6 +80,8 @@ const SIGNIFICANT_ACTIONS = [
   // A mod's held writes (lib/mods/broker.ts), for the same reason. The prefix
   // is the host's, so a mod named "Complete task:" cannot pass for the user.
   'Mod: ',
+  // Atlas's goal links and target moves (lib/atlas-copy.ts words them).
+  ...ATLAS_UNDO_PREFIXES,
 ];
 
 /**

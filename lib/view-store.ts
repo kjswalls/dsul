@@ -138,6 +138,9 @@ interface ViewStore {
   layout: ViewLayout;
   /** Atlas's layout (D2), remembered on this device like `layout`. */
   atlasLayout: AtlasLayout;
+  /** Atlas's filters (PR2): they carry across its layouts. */
+  atlasHideFinished: boolean;
+  atlasHideResting: boolean;
   typeFilter: TypeFilter;
   canvasGroupBy: GroupBy;
   braindumpGroupBy: BraindumpGroupBy;
@@ -217,6 +220,8 @@ interface ViewStore {
   setScope: (scope: ViewScope) => void;
   setLayout: (layout: ViewLayout) => void;
   setAtlasLayout: (layout: AtlasLayout) => void;
+  setAtlasHideFinished: (on: boolean) => void;
+  setAtlasHideResting: (on: boolean) => void;
   setTypeFilter: (filter: TypeFilter) => void;
   setCanvasGroupBy: (groupBy: GroupBy) => void;
   setBraindumpGroupBy: (groupBy: BraindumpGroupBy) => void;
@@ -304,6 +309,8 @@ const INERT_DEFAULTS = {
   scope: 'day',
   layout: 'buckets',
   atlasLayout: 'map',
+  atlasHideFinished: false,
+  atlasHideResting: false,
   typeFilter: 'all',
   canvasGroupBy: 'none',
   braindumpGroupBy: 'none',
@@ -351,6 +358,8 @@ export const useViewStore = create<ViewStore>()(
       },
       setLayout: (layout) => set({ layout }),
       setAtlasLayout: (atlasLayout) => set({ atlasLayout }),
+      setAtlasHideFinished: (atlasHideFinished) => set({ atlasHideFinished }),
+      setAtlasHideResting: (atlasHideResting) => set({ atlasHideResting }),
       setTypeFilter: (typeFilter) => {
         set({ typeFilter });
         usePlannerStore.getState().setTimelineItemFilter(typeFilter);
@@ -462,6 +471,8 @@ export const useViewStore = create<ViewStore>()(
           // blob that predates `atlasLayout` gets the default from the spread.
           scope: isViewScope(p.scope) ? p.scope : 'day',
           atlasLayout: isAtlasLayout(p.atlasLayout) ? p.atlasLayout : 'map',
+          atlasHideFinished: p.atlasHideFinished === true,
+          atlasHideResting: p.atlasHideResting === true,
           braindumpFilters: normalizeFilters(p.braindumpFilters),
           canvasFilters: normalizeFilters(p.canvasFilters),
           // Scalars, so the shallow spread already supplies the default for a

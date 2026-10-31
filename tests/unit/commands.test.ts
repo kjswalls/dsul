@@ -160,6 +160,11 @@ describe('command registry', () => {
       'week_columns_reset',
       'toggle_zen',
       'do_stuff',
+      // Atlas's layouts, keys 1 to 4 (PR2).
+      'atlas_layout_map',
+      'atlas_layout_momentum',
+      'atlas_layout_goal',
+      'atlas_layout_timeline',
     ];
     const actual = DEFAULT_SHORTCUTS.map((s) => s.id);
     for (const id of expected) expect(actual).toContain(id);

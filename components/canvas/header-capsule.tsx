@@ -24,7 +24,14 @@ import { DisplayShelf } from '@/components/primitives/display-shelf';
 import { DayMessages } from '@/components/notices/day-messages';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
-import { ATLAS_LAYOUT_OPTIONS, LAYOUT_OPTIONS, scopeOptionsFor, type ViewOption } from '@/lib/view-options';
+import {
+  LAYOUT_OPTIONS,
+  atlasLayoutOptionsFor,
+  effectiveAtlasLayout,
+  scopeOptionsFor,
+  type ViewOption,
+} from '@/lib/view-options';
+import { useGoalsEnabled } from '@/lib/extension-gates';
 import { AtlasToolbar } from '@/components/views/atlas/atlas-toolbar';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { goToDate, stepScope } from '@/lib/nav-commands';
@@ -88,11 +95,22 @@ function SelectMenu<T extends string>({
           return (
             <DropdownMenuItem
               key={o.value}
-              onClick={() => onChange(o.value)}
+              disabled={o.disabled}
+              data-testid={`select-option-${o.value}`}
+              onClick={() => {
+                if (!o.disabled) onChange(o.value);
+              }}
               className="gap-2 text-sm"
             >
               <OptIcon className="h-4 w-4 text-muted-foreground" />
               <span className="flex-1">{o.label}</span>
+              {/* Why it can't be picked ("Turn on Goals"). The item's own
+                  disabled style fades the row; the note says the reason. */}
+              {o.disabled && o.note && (
+                <span className="text-2xs text-muted-foreground" data-testid={`select-option-note-${o.value}`}>
+                  {o.note}
+                </span>
+              )}
               {/* Inherited colour, not `text-primary-foreground` — that token is
                   --lime-ink, dark-green ink meant to sit ON a lime fill, and on
                   the popover ground it is very nearly invisible. */}
@@ -156,6 +174,9 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
   // Atlas (components/views/atlas/): row 1 is its toolbar instead of the date
   // nav, and Display, the shelf and Zen go, since none of them reach it.
   const atlas = scope === 'atlas';
+  const goalsOn = useGoalsEnabled();
+  const goalsAvailable = usePlannerStore((s) => s.goalsAvailable);
+  const goalsShown = goalsOn && goalsAvailable;
   const [mounted, setMounted] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   // The Display menu's handle, shared with the shelf under the pill, as in the
@@ -303,15 +324,14 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
         className="flex items-center rounded-[10px] bg-surface-2 px-1.5 py-1.5 shadow-[var(--shadow-elev-sm)]"
       >
         {atlas ? (
-          // Atlas's own layouts (D2), hidden while there is only one to pick.
-          ATLAS_LAYOUT_OPTIONS.length > 1 && (
-            <SelectMenu
-              value={atlasLayout}
-              options={ATLAS_LAYOUT_OPTIONS}
-              onChange={(v) => setAtlasLayout(v)}
-              ariaLabel="Layout"
-            />
-          )
+          // Atlas's own layouts (D2). By goal is disabled, with a note, while
+          // Goals is off; a remembered By goal then reads as Your map.
+          <SelectMenu
+            value={effectiveAtlasLayout(atlasLayout, goalsShown)}
+            options={atlasLayoutOptionsFor(goalsShown)}
+            onChange={(v) => setAtlasLayout(v)}
+            ariaLabel="Layout"
+          />
         ) : (
           <SelectMenu
             value={layout}

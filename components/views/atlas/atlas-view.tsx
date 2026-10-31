@@ -10,8 +10,11 @@ import {
   type FocusEvent,
   type KeyboardEvent,
 } from 'react';
+import { toast } from 'sonner';
 import { AtlasSurface } from '@/components/views/atlas/atlas-surface';
-import { AtlasCard } from '@/components/views/atlas/atlas-card';
+import { AtlasCard, ATLAS_GLIDE_MS, ATLAS_LEAVE_MS, ATLAS_TICK_HOLD_MS } from '@/components/views/atlas/atlas-card';
+import { AtlasLanes } from '@/components/views/atlas/atlas-lanes';
+import { useAtlasActivity } from '@/components/views/atlas/use-atlas-activity';
 import { AtlasFocusSheet } from '@/components/views/atlas/atlas-focus-sheet';
 import { useAtlasCards } from '@/components/views/atlas/use-atlas-cards';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
@@ -31,6 +34,22 @@ import { usePlannerPreviewing, usePlannerSettled } from '@/lib/planner-ready';
 import { ATLAS_CARD_H, ATLAS_CARD_W, seedPlaces } from '@/lib/atlas-seed';
 import { ATLAS_COPY } from '@/lib/atlas-copy';
 import type { AtlasCard as AtlasCardModel } from '@/lib/atlas-model';
+import type { AtlasBand } from '@/lib/atlas-positions';
+import { useViewStore } from '@/lib/view-store';
+import { effectiveAtlasLayout } from '@/lib/view-options';
+import { bandLabel, momentumBand, type MomentumResult } from '@/lib/atlas-momentum';
+import { feedsOf, laneFor } from '@/lib/atlas-by-goal';
+import {
+  filterCards,
+  laneAt,
+  createPositionSharer,
+  layoutPositions,
+  type AtlasLayoutResult,
+} from '@/lib/atlas-layouts';
+import { timelinePlace } from '@/lib/atlas-timeline';
+import { dropCard, goalDayAtClamped } from '@/lib/atlas-drop';
+import { formatDay } from '@/lib/active';
+import { prefersReducedMotion } from '@/lib/zen-transition';
 
 /**
  * The viewport seeding lays a grid out against. Fixed rather than measured, so
@@ -60,7 +79,13 @@ const SEED_VIEWPORT: Viewport = { w: 1600, h: 900 };
  */
 export function AtlasView({ activeId }: { activeId?: string | null }) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const { cards, todayStr, milestoneIds, collectionsShown, goalsShown } = useAtlasCards();
+  const { cards, todayStr, tz, milestoneIds, collectionsShown, goalsShown, goals, seasons } = useAtlasCards();
+  const layoutPref = useViewStore((s) => s.atlasLayout);
+  const hideFinished = useViewStore((s) => s.atlasHideFinished);
+  const hideResting = useViewStore((s) => s.atlasHideResting);
+  // A remembered By goal reads as Your map while Goals is off.
+  const layout = effectiveAtlasLayout(layoutPref, goalsShown);
+  const reduced = useReducedMotion();
   const settled = usePlannerSettled();
   const previewing = usePlannerPreviewing();
   // A press inside the map focuses what it lands on; that focus must not pan
@@ -99,6 +124,197 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   }, [stored]);
   const places = useMemo(() => ({ ...seeded, ...storedXY }), [seeded, storedXY]);
 
+  // Momentum's band per card (and Hide resting's, in every layout). The
+  // activity side channel reads only while a layout or filter needs it.
+  const activity = useAtlasActivity(cards, {
+    enabled: (layout === 'momentum' || hideResting) && !!userId && settled && !previewing,
+    todayStr,
+    tz,
+  });
+  const bands = useMemo(() => {
+    const out = new Map<string, MomentumResult>();
+    for (const c of cards) {
+      out.set(c.key, momentumBand(c, activity.get(c.key), todayStr, stored[c.key]?.band ?? null, milestoneIds));
+    }
+    return out;
+  }, [cards, activity, todayStr, stored, milestoneIds]);
+  const visible = useMemo(
+    () => filterCards(cards, { hideFinished, hideResting }, bands),
+    [cards, hideFinished, hideResting, bands]
+  );
+  const lanes = useMemo(
+    () => (layout === 'goal' ? new Map(cards.map((c) => [c.key, laneFor(c, goals)])) : undefined),
+    [layout, cards, goals]
+  );
+  const goalCards = useMemo(() => cards.filter((c) => c.kind === 'goal'), [cards]);
+  const [sharePositions] = useState(createPositionSharer);
+  const computed: AtlasLayoutResult = useMemo(() => {
+    const r = layoutPositions(layout, visible, { places, bands, lanes, goalCards, seasons, todayStr });
+    return { ...r, positions: sharePositions(r.positions) };
+  }, [sharePositions, layout, visible, places, bands, lanes, goalCards, seasons, todayStr]);
+
+  // A tick in a computed layout can re-sort the card (Soon to Now, a next
+  // step moving on the Timeline, Hide finished taking it away). The layout
+  // drawn before the tick is held, as each card holds its ticked row, until
+  // ATLAS_TICK_HOLD_MS has passed and the pointer is off every card, so a
+  // second click never lands on another card's row. A drop or a layout switch
+  // lets go at once. Your map never re-sorts, so it never holds.
+  const [hold, setHold] = useState<{ layout: string; result: AtlasLayoutResult } | null>(null);
+  const result = hold && hold.layout === layout && layout !== 'map' ? hold.result : computed;
+  const positions = result.positions;
+  const lastDrawn = useRef<{ layout: string; result: AtlasLayoutResult }>({ layout, result });
+  useLayoutEffect(() => {
+    lastDrawn.current = { layout, result };
+  });
+  const overCard = useRef(false);
+  const holdTimeUp = useRef(true);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+  }, []);
+  const releaseHold = useCallback(() => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = null;
+    holdTimeUp.current = true;
+    setHold(null);
+  }, []);
+  const onTick = useCallback(() => {
+    const drawn = lastDrawn.current;
+    if (drawn.layout === 'map') return;
+    setHold((h) => (h && h.layout === drawn.layout ? h : drawn));
+    holdTimeUp.current = false;
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = setTimeout(() => {
+      holdTimer.current = null;
+      holdTimeUp.current = true;
+      if (!overCard.current) setHold(null);
+    }, ATLAS_TICK_HOLD_MS);
+  }, []);
+  const onPointerOver = (e: { target: EventTarget }) => {
+    overCard.current = !!(e.target as Element).closest?.('[data-atlas-card]');
+    if (!overCard.current && holdTimeUp.current && hold) setHold(null);
+  };
+  const onPointerLeave = () => {
+    overCard.current = false;
+    if (holdTimeUp.current && hold) setHold(null);
+  };
+
+  // Tab order follows the layout shown: cards render in reading order
+  // (Momentum column by column, the others row by row). The DOM is reordered
+  // only once a glide has finished, since moving a node mid-transition would
+  // cut its glide short.
+  const readingOrder = useMemo(() => {
+    if (layout === 'map') return cards.map((c) => c.key).join('\n');
+    const byCols = layout === 'momentum';
+    return [...cards]
+      .map((c) => ({ key: c.key, p: positions.get(c.key) }))
+      .sort((a, b) => {
+        if (!a.p || !b.p) return a.p ? -1 : b.p ? 1 : 0;
+        return byCols ? a.p.x - b.p.x || a.p.y - b.p.y : a.p.y - b.p.y || a.p.x - b.p.x;
+      })
+      .map((c) => c.key)
+      .join('\n');
+  }, [layout, cards, positions]);
+  const [domOrder, setDomOrder] = useState(readingOrder);
+  useEffect(() => {
+    if (domOrder === readingOrder) return;
+    const t = setTimeout(() => setDomOrder(readingOrder), reduced ? 0 : ATLAS_GLIDE_MS + 50);
+    return () => clearTimeout(t);
+  }, [domOrder, readingOrder, reduced]);
+  const orderedCards = useMemo(() => {
+    const rank = new Map(domOrder.split('\n').map((k, i) => [k, i]));
+    const at = (k: string) => rank.get(k) ?? Number.MAX_SAFE_INTEGER;
+    return [...cards].sort((a, b) => at(a.key) - at(b.key));
+  }, [cards, domOrder]);
+
+  // Each card's lane, said to a screen reader (the lanes layer is aria-hidden).
+  const laneLabels = useMemo(() => {
+    const out = new Map<string, string>();
+    if (layout === 'map') return out;
+    const label = new Map(result.lanes.map((l) => [l.id, l.label]));
+    for (const [key, id] of result.cardLane) {
+      const name = label.get(id);
+      if (name) out.set(key, name);
+    }
+    return out;
+  }, [layout, result]);
+
+  // The "why" line per card, in every layout but Your map.
+  const reasons = useMemo(() => {
+    const out = new Map<string, string | null>();
+    if (layout === 'map') return out;
+    const seasonsById = new Map(seasons.map((x) => [x.id, x]));
+    const goalName = new Map(goals.map((g) => [g.id, g.name]));
+    for (const c of cards) {
+      if (layout === 'momentum') out.set(c.key, bands.get(c.key)?.reason ?? null);
+      else if (layout === 'goal') {
+        if (c.kind === 'goal') continue;
+        const feeds = feedsOf(c, goals);
+        out.set(
+          c.key,
+          feeds.length === 0
+            ? ATLAS_COPY.notFeedingReason
+            : feeds.length === 1
+              ? ATLAS_COPY.feedsGoal(goalName.get(feeds[0]) ?? '')
+              : ATLAS_COPY.feedsGoals(feeds.length)
+        );
+      } else {
+        const p = timelinePlace(c, todayStr, seasonsById);
+        if (p.lane === 'repeats') out.set(c.key, ATLAS_COPY.repeats);
+        else if (p.lane === 'goals') out.set(c.key, ATLAS_COPY.targetReason(formatDay(p.day)));
+        else if (p.lane === 'dated' && p.what === 'season') {
+          const s0 = seasonsById.get(c.id);
+          const from = s0?.startsOn ? formatDay(s0.startsOn) : undefined;
+          const to = s0?.endsOn ? formatDay(s0.endsOn) : undefined;
+          out.set(c.key, from && to ? ATLAS_COPY.seasonRange(from, to) : from ? ATLAS_COPY.seasonFrom(from) : ATLAS_COPY.seasonUntil(to!));
+        } else if (p.lane === 'dated') out.set(c.key, ATLAS_COPY.nextStepDated(formatDay(p.day)));
+        else out.set(c.key, ATLAS_COPY.noDates);
+      }
+    }
+    return out;
+  }, [layout, cards, bands, goals, seasons, todayStr]);
+
+  // A card a filter hides scales down, then unmounts (D8: never a fade). Its
+  // place and pin are untouched; it just stops being drawn. Worked out while
+  // rendering, from the previous render's places (React's "previous props"
+  // pattern), and cleared by a timer.
+  const [leaving, setLeaving] = useState<Record<string, Point>>({});
+  const [drawnBefore, setDrawnBefore] = useState(positions);
+  if (drawnBefore !== positions) {
+    setDrawnBefore(positions);
+    if (!reduced) {
+      const live = new Set(cards.map((c) => c.key));
+      const gone: Record<string, Point> = {};
+      for (const [k, p] of drawnBefore) if (!positions.has(k) && live.has(k)) gone[k] = p;
+      if (Object.keys(gone).length > 0) setLeaving((prev) => ({ ...prev, ...gone }));
+    }
+  }
+  const leaveTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  useEffect(() => {
+    for (const k of Object.keys(leaving)) {
+      if (leaveTimers.current.has(k)) continue;
+      leaveTimers.current.set(
+        k,
+        setTimeout(() => {
+          leaveTimers.current.delete(k);
+          setLeaving((prev) => {
+            if (!(k in prev)) return prev;
+            const next = { ...prev };
+            delete next[k];
+            return next;
+          });
+        }, ATLAS_LEAVE_MS)
+      );
+    }
+  }, [leaving]);
+  useEffect(() => {
+    const timers = leaveTimers.current;
+    return () => {
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
+
   // Load the account's places: on the first mount once settled and not a
   // preview, memoised per account by the store.
   useEffect(() => {
@@ -136,13 +352,17 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     if (missing.length > 0) useAtlasStore.getState().placeMany(missing);
   }, [cards, places, storedXY, ready, writable]);
 
+  // What a fit frames: every drawn card, and in a computed layout its lanes
+  // (so the column and lane headings show).
   const rects = useCallback(
-    (list: readonly AtlasCardModel[]): Rect[] =>
-      list.flatMap((c) => {
-        const p = places[c.key];
+    (list: readonly AtlasCardModel[]): Rect[] => [
+      ...list.flatMap((c) => {
+        const p = positions.get(c.key);
         return p ? [{ x: p.x, y: p.y, w: ATLAS_CARD_W, h: measuredHeight(rootRef.current, c.key) }] : [];
       }),
-    [places]
+      ...result.lanes.filter((l) => l.kind !== 'timeline').map((l) => l.rect),
+    ],
+    [positions, result.lanes]
   );
 
   // The viewport, from a ResizeObserver. A resize (the rail docking) updates
@@ -162,6 +382,9 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     return () => ro.disconnect();
   }, []);
 
+  // The layout the camera last framed (a switch re-frames, below).
+  const lastLayout = useRef(layout);
+
   // First mount: fit to the cards, once per session, on the settled load (a
   // cached preview's cards would set `fitted` before the real ones arrive).
   // Never below a readable zoom: a big map opens at its top-left corner,
@@ -170,12 +393,25 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   useEffect(() => {
     const ui = useAtlasUiStore.getState();
     if (!settled || previewing || !ready) return;
-    if (ui.fitted || viewport.w <= 0 || viewport.h <= 0 || cards.length === 0) return;
+    if (ui.fitted || viewport.w <= 0 || viewport.h <= 0 || visible.length === 0) return;
     // Every card drawn first: a fit to half the map would mark it fitted.
-    if (cards.some((c) => !places[c.key])) return;
-    ui.setCamera(fitBounds(rects(cards), viewport, 48, ui.camera, ATLAS_FIT_FLOOR));
+    if (visible.some((c) => !positions.has(c.key))) return;
+    ui.setCamera(fitBounds(rects(visible), viewport, 48, ui.camera, ATLAS_FIT_FLOOR));
     ui.markFitted();
-  }, [viewport, cards, rects, places, settled, previewing, ready]);
+    lastLayout.current = layout;
+  }, [viewport, visible, rects, positions, settled, previewing, ready, layout]);
+
+  // A layout switch frames the new arrangement (the camera only: switching
+  // never edits). An open item stays open; nothing here touches ui-store.
+  useEffect(() => {
+    if (lastLayout.current === layout) return;
+    releaseHold();
+    const ui = useAtlasUiStore.getState();
+    if (!ui.fitted || viewportRef.current.w <= 0) return;
+    lastLayout.current = layout;
+    useAtlasUiStore.getState().setHotLane(null);
+    ui.setCamera(fitBounds(rects(visible), viewportRef.current, 48, ui.camera, ATLAS_FIT_FLOOR));
+  }, [layout, rects, visible, releaseHold]);
 
   // The toolbar's Fit.
   const lastFit = useRef(fitToken);
@@ -183,8 +419,8 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     if (fitToken === lastFit.current) return;
     lastFit.current = fitToken;
     const ui = useAtlasUiStore.getState();
-    ui.setCamera(fitBounds(rects(cards), viewportRef.current, 48, ui.camera));
-  }, [fitToken, cards, rects]);
+    ui.setCamera(fitBounds(rects(visible), viewportRef.current, 48, ui.camera));
+  }, [fitToken, visible, rects]);
 
   // A drop is one write, on pointerup. view-root is inert while previewing, so
   // no drag starts then; the ref is the belt to that.
@@ -192,12 +428,56 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   useEffect(() => {
     previewingRef.current = previewing;
   }, [previewing]);
+  // What a drop means is the layout's (lib/atlas-drop.ts); the callbacks are
+  // stable for memo(AtlasCard), so they read the latest layout from a ref.
+  const dropCtx = useRef({ layout, result, bands, lanes, goals, goalsShown, places, cards });
+  useLayoutEffect(() => {
+    dropCtx.current = { layout, result, bands, lanes, goals, goalsShown, places, cards };
+  });
   const onMove = useCallback((key: string, to: Point) => {
     if (previewingRef.current) return;
-    const at = key.indexOf(':');
-    if (at <= 0) return;
-    useAtlasStore.getState().place(key.slice(0, at) as AtlasPlace['kind'], key.slice(at + 1), to.x, to.y);
+    const ctx = dropCtx.current;
+    const card = ctx.cards.find((c) => c.key === key);
+    if (!card) return;
+    // The lane the card is DRAWN in, so the drop's "from" is what the screen shows.
+    const drawnLane = ctx.result.cardLane.get(key);
+    const out = dropCard({
+      layout: ctx.layout,
+      card,
+      to,
+      from: ctx.result.positions.get(key),
+      result: ctx.result,
+      band: ctx.bands.get(key),
+      mapAt: ctx.places[key],
+      lane: drawnLane && drawnLane !== 'none' ? drawnLane : null,
+      goals: ctx.goals,
+      goalsShown: ctx.goalsShown,
+    });
+    releaseHold();
+    if (out.message) toast(out.message);
+  }, [releaseHold]);
+  const onDrag = useCallback((key: string, pos: Point | null) => {
+    const ctx = dropCtx.current;
+    const ui = useAtlasUiStore.getState();
+    if (!pos || (ctx.layout !== 'momentum' && ctx.layout !== 'goal')) {
+      ui.setHotLane(null);
+      return;
+    }
+    // A goal card heads its lane and never moves; nothing lights for it.
+    if (ctx.layout === 'goal' && key.startsWith('goal:')) return;
+    // The card's own column or lane means nothing as a drop, so it never lights.
+    const id = laneAt(ctx.result, ctx.layout, pos)?.id ?? null;
+    ui.setHotLane(id !== null && id === ctx.result.cardLane.get(key) ? null : id);
   }, []);
+  const onPin = useCallback((key: string, band: AtlasBand | null) => {
+    if (previewingRef.current) return;
+    const ctx = dropCtx.current;
+    const card = ctx.cards.find((c) => c.key === key);
+    if (!card) return;
+    useAtlasStore.getState().pin(card.kind, card.id, band, ctx.places[key]);
+    toast(band ? ATLAS_COPY.pinned(card.name, bandLabel(band)) : ATLAS_COPY.unpinned(card.name));
+  }, []);
+  const dayAt = useCallback((x: number) => goalDayAtClamped(dropCtx.current.result, x), []);
   const onToggleExpanded = useCallback((key: string) => {
     useAtlasUiStore.getState().toggleExpanded(key);
   }, []);
@@ -259,7 +539,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     if (pointerDown.current) return;
     const card = (e.target as Element).closest?.('[data-atlas-card]');
     const key = card?.getAttribute('data-atlas-card');
-    const p = key ? places[key] : undefined;
+    const p = key ? positions.get(key) : undefined;
     if (!key || !p) return;
     const ui = useAtlasUiStore.getState();
     const rect = { x: p.x, y: p.y, w: ATLAS_CARD_W, h: (card as HTMLElement).offsetHeight || ATLAS_CARD_H };
@@ -273,6 +553,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
       tabIndex={-1}
       data-atlas-root=""
       data-testid="atlas-view"
+      data-atlas-layout={layout}
       // Whether a dnd-kit drag is in flight elsewhere (the braindump). Atlas
       // takes no drop until PR4; the marker is for tests.
       data-drag-active={activeId ? 'true' : undefined}
@@ -289,13 +570,20 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
       onPointerCancelCapture={() => {
         pointerDown.current = false;
       }}
+      onPointerOver={onPointerOver}
+      onPointerLeave={onPointerLeave}
       className="relative min-h-0 flex-1 outline-none"
       style={{ overflow: 'clip' }}
     >
       <AtlasSurface rootRef={rootRef} inert={sheetOpen}>
-        {cards.map((card) => {
-          const at = ready ? places[card.key] : undefined;
+        {layout !== 'map' && <AtlasLanes lanes={result.lanes} timeline={result.timeline} />}
+        {orderedCards.map((card) => {
+          const drawn = ready ? positions.get(card.key) : undefined;
+          const gone = !drawn && ready ? leaving[card.key] : undefined;
+          const at = drawn ?? gone;
           if (!at) return null;
+          const band = layout === 'momentum' ? bands.get(card.key) : undefined;
+          const timelineGoal = layout === 'timeline' && card.kind === 'goal';
           return (
             <AtlasCard
               key={card.key}
@@ -308,6 +596,19 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
               onToggleExpanded={onToggleExpanded}
               onCenter={onCenter}
               onOpenSheet={onOpenSheet}
+              glide={!reduced}
+              leaving={!!gone}
+              reason={layout === 'map' ? undefined : reasons.get(card.key)}
+              momentumBand={band?.band}
+              momentumAppBand={band?.appBand}
+              pinned={band?.pinned}
+              onPin={band ? onPin : undefined}
+              onDrag={layout === 'momentum' || layout === 'goal' ? onDrag : undefined}
+              axis={timelineGoal && card.targetOn ? 'x' : null}
+              diamond={timelineGoal && !!card.targetOn}
+              dayAt={timelineGoal ? dayAt : undefined}
+              laneLabel={laneLabels.get(card.key)}
+              onTick={layout === 'map' ? undefined : onTick}
             />
           );
         })}
@@ -335,4 +636,25 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
 function measuredHeight(root: HTMLElement | null, key: string): number {
   const el = root?.querySelector<HTMLElement>(`[data-atlas-card="${key}"]`);
   return el?.offsetHeight || ATLAS_CARD_H;
+}
+
+/**
+ * Reduced motion, from the OS or the in-app switch (`data-reduce-motion`):
+ * the glide and the scale-down are off under either.
+ */
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const read = () => setReduced(prefersReducedMotion());
+    read();
+    const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    mq?.addEventListener?.('change', read);
+    const mo = typeof MutationObserver === 'undefined' ? null : new MutationObserver(read);
+    mo?.observe(document.documentElement, { attributes: true, attributeFilter: ['data-reduce-motion'] });
+    return () => {
+      mq?.removeEventListener?.('change', read);
+      mo?.disconnect();
+    };
+  }, []);
+  return reduced;
 }
