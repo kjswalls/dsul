@@ -8,6 +8,7 @@ import { ItemMenuRow } from '@/components/planner/item-context-menu';
 import { AtlasRow } from '@/components/views/atlas/atlas-row';
 import { AtlasTileStrip } from '@/components/views/atlas/atlas-tile-strip';
 import { AtlasReason } from '@/components/views/atlas/atlas-reason';
+import { AtlasCardDrop } from '@/components/views/atlas/atlas-card-drop';
 import { MOMENTUM_BANDS, bandLabel } from '@/lib/atlas-momentum';
 import type { AtlasBand } from '@/lib/atlas-positions';
 import { useAtlasPointer } from '@/components/views/atlas/use-atlas-pointer';
@@ -224,6 +225,9 @@ export const AtlasCard = memo(function AtlasCard({
         transformOrigin: handoff && !leaving ? `${ATLAS_CARD_W / 2}px ${ATLAS_CARD_H / 2}px` : undefined,
       }}
     >
+      {/* The drop target (PR4): a braindump row, or a row from another card,
+          files into this card's container. */}
+      <AtlasCardDrop kind={card.kind} id={card.id} name={card.name} disabled={leaving} />
       {diamond && (
         <span
           aria-hidden
@@ -345,6 +349,8 @@ export const AtlasCard = memo(function AtlasCard({
                 todayStr={todayStr}
                 milestoneIds={milestoneIds}
                 onTicked={onRowTicked}
+                drag={card.kind}
+                containerId={card.id}
               />
             ))}
           </div>

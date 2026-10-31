@@ -3,6 +3,7 @@ import type { Item, TimeBucket } from '../planner-types';
 import { toDateStr } from '../recurrence';
 import { getBucketForTime } from '../time-bucket';
 import { isDropTargetOffered } from './drop-targets';
+import { parseAtlasCardDropId, type AtlasContainerRef } from './atlas-ids';
 import type { DragInput } from './sensors';
 
 /**
@@ -29,7 +30,14 @@ export type DropCommand =
   | { kind: 'unschedule'; itemId: string }
   | { kind: 'move-task-to-project-block'; taskId: string }
   | { kind: 'move-task-to-date'; taskId: string; dateStr: string }
-  | { kind: 'pause-item'; itemId: string };
+  | { kind: 'pause-item'; itemId: string }
+  /**
+   * `atlas:{kind}:{id}`: file the item into that card's container. `source` is
+   * the card a row was picked up from (an `atlasrow:` drag), absent for a row
+   * from anywhere else. What the drop writes, add or move, and whether the
+   * item's type may join that kind at all, is lib/atlas-file.ts's answer.
+   */
+  | { kind: 'file-into-container'; itemId: string; container: AtlasContainerRef; source?: AtlasContainerRef };
 
 /**
  * Where the dragged item sits right now, as far as a `list:{date}` drop cares.
@@ -174,6 +182,14 @@ export interface DropContext {
   getRefTime: (refType: 'task' | 'habit', refId: string) => string | undefined;
   /** Infer a concrete time for a drop into a scheduled section. */
   inferDropTime: (bucket: TimeBucket, position: DropPosition, refTime?: string) => string;
+  /**
+   * The item ids a container holds now (for a goal, in any role), for an
+   * `atlas:` drop: an item already there resolves to nothing, so a row let go
+   * on its own card writes nothing and arms no undo. Omitted reads as empty.
+   */
+  containerMembers?: (container: AtlasContainerRef) => ReadonlySet<string>;
+  /** The card an `atlasrow:` drag was picked up from (atlasSourceOf). */
+  atlasSource?: AtlasContainerRef | null;
 }
 
 /**
@@ -381,6 +397,17 @@ export function resolveDrop(
   if (targetId.startsWith('list:')) {
     const dateStr = targetId.slice('list:'.length);
     return listDropCommand(itemId, itemType, ctx.draggedPlacement ?? { placed: false }, dateStr);
+  }
+
+  // atlas:{kind}:{id} — an Atlas card: file into its container (see the
+  // command's note). Already there is nothing, so it springs back silently;
+  // the card's own hint has said "Already here" the whole way.
+  if (targetId.startsWith('atlas:')) {
+    const container = parseAtlasCardDropId(targetId);
+    if (!container) return null;
+    if (ctx.containerMembers?.(container).has(itemId)) return null;
+    const source = ctx.atlasSource ?? undefined;
+    return { kind: 'file-into-container', itemId, container, ...(source ? { source } : {}) };
   }
 
   // week:{yyyy-MM-dd}:{bucket}

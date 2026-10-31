@@ -4171,6 +4171,28 @@ button[data-ai-chip]:focus-visible {
   }
 }
 
+/* An Atlas card that will take the drop (components/views/atlas/atlas-card-drop.tsx):
+   the same lime and breath as .drop-armed, as a ring round the whole card. It is
+   drawn on its own element laid over the card, so the card itself never changes
+   and the lime is never under an opacity. */
+.atlas-drop-ring {
+  box-shadow: 0 0 0 2px var(--primary);
+  animation: atlas-drop-ring 1.6s ease-in-out infinite;
+}
+@keyframes atlas-drop-ring {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 2px var(--primary),
+      0 0 8px 0 color-mix(in oklab, var(--primary) 0%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px var(--primary),
+      0 0 16px 2px color-mix(in oklab, var(--primary) 55%, transparent);
+  }
+}
+
 /* The braindump's landing slot: a lime insertion line with a ring at its head,
    over a faded preview of the incoming row. The fade is on the row's own text
    and box (`.drop-ghost`), never on the element that draws the lime. */
@@ -4213,11 +4235,13 @@ button[data-ai-chip]:focus-visible {
 }
 @media (prefers-reduced-motion: reduce) {
   .drop-armed,
+  .atlas-drop-ring,
   .drop-line::before {
     animation: none;
   }
 }
 [data-reduce-motion='true'] .drop-armed,
+[data-reduce-motion='true'] .atlas-drop-ring,
 [data-reduce-motion='true'] .drop-line::before {
   animation: none;
 }

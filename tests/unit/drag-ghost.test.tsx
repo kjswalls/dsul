@@ -21,7 +21,12 @@ describe('drag ghost twin', () => {
   });
 
   it('leaves the slot hollow rather than fading the grabbed element (the lime rule)', () => {
-    for (const f of ['components/primitives/task-row.tsx', 'components/views/day-schedule.tsx', 'components/views/project-block.tsx']) {
+    for (const f of [
+      'components/primitives/task-row.tsx',
+      'components/views/day-schedule.tsx',
+      'components/views/project-block.tsx',
+      'components/views/atlas/atlas-row.tsx',
+    ]) {
       const src = readFileSync(f, 'utf8');
       expect(src, f).toMatch(/isDragging && 'drag-source'/);
       expect(src, f).not.toMatch(/isDragging && '[^']*opacity-/);

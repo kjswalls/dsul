@@ -84,7 +84,13 @@ export type DropTargetKind =
   /** `sidebar` — the braindump. */
   | 'braindump'
   /** `list:{date}` — a list-layout day: the Day × List body, a Week × List section. */
-  | 'list-day';
+  | 'list-day'
+  /**
+   * `atlas:{kind}:{id}` — an Atlas card. Offered to every input: the phone
+   * never mounts Atlas, and a finger-only withholding here would trip the
+   * one-pair rule below for nothing.
+   */
+  | 'atlas-card';
 
 const EVERY_INPUT: readonly DragInput[] = ['pointer', 'touch'];
 /** Mouse and pen only — a target a fingertip cannot aim. */
@@ -117,6 +123,7 @@ export const OFFERED_TO: Record<DropTargetKind, readonly DragInput[]> = {
   'project-block': EVERY_INPUT,
   braindump: EVERY_INPUT,
   'list-day': EVERY_INPUT,
+  'atlas-card': EVERY_INPUT,
 };
 
 const BARE_BUCKETS = new Set(['anytime', 'morning', 'afternoon', 'evening']);
@@ -144,6 +151,7 @@ export function dropTargetKind(targetId: string): DropTargetKind | null {
   if (targetId.startsWith('projectblock:')) return 'project-block';
   if (targetId === 'sidebar') return 'braindump';
   if (targetId.startsWith('list:')) return 'list-day';
+  if (targetId.startsWith('atlas:')) return 'atlas-card';
   return null;
 }
 

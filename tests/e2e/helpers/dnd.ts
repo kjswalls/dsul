@@ -228,7 +228,9 @@ export async function dragTo(
         const current = await page
           .locator('[data-dnd-over="true"]')
           .first()
-          .getAttribute('data-dnd-id')
+          // Bounded: with nothing hovered, an unbounded getAttribute waits out
+          // the whole test instead of letting the loop report what it saw.
+          .getAttribute('data-dnd-id', { timeout: 250 })
           .catch(() => null);
 
         let direction: number;

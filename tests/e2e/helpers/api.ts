@@ -191,6 +191,25 @@ export async function createTestTask(
   return task.id as string;
 }
 
+/**
+ * Create a routine via the agent API, holding `itemIds`; returns its id. Name
+ * it under the spec's prefix so cleanupTestCollections sweeps it.
+ */
+export async function createTestRoutine(
+  page: Page | APIRequestContext,
+  data: { name: string; itemIds?: string[] }
+): Promise<string> {
+  const response = await ctx(page).post(`${BASE_URL}/api/agent/routines`, {
+    headers: authHeaders(),
+    data: { itemIds: [], ...data },
+  });
+  if (!response.ok()) {
+    throw new Error(`createTestRoutine failed (${response.status()}): ${await response.text()}`);
+  }
+  const { routine } = await response.json();
+  return routine.id as string;
+}
+
 /** Create a habit via the agent API; returns its id. */
 export async function createTestHabit(
   page: Page | APIRequestContext,

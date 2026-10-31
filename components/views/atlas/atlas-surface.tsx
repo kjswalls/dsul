@@ -22,6 +22,14 @@ const WHEEL_ZOOM_STEP = 40;
 const WHEEL_LINE_PX = 16;
 
 /**
+ * Is Space held on the board? A card row's drag (atlas-row.tsx) stands down
+ * while it is, so Space+drag pans alone instead of panning under a live drag.
+ * Mirrors the surface's own flag; one surface is mounted at a time.
+ */
+let spaceHeld = false;
+export const atlasSpaceHeld = () => spaceHeld;
+
+/**
  * The pan and zoom surface: the dot grid, the pointer pans, the wheel, and
  * the one transformed node (`.atlas-world`) that holds the cards.
  *
@@ -82,15 +90,15 @@ export function AtlasSurface({
     const typing = (t: EventTarget | null) =>
       t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
     const down = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !typing(e.target)) space.current = true;
+      if (e.code === 'Space' && !typing(e.target)) space.current = spaceHeld = true;
     };
     const up = (e: KeyboardEvent) => {
-      if (e.code === 'Space') space.current = false;
+      if (e.code === 'Space') space.current = spaceHeld = false;
     };
     // A keyup that lands in another window or tab never reaches us; a held
     // Space must not outlive the focus, or every press would pan.
     const drop = () => {
-      space.current = false;
+      space.current = spaceHeld = false;
     };
     const hidden = () => {
       if (document.visibilityState !== 'visible') drop();
@@ -104,6 +112,7 @@ export function AtlasSurface({
       window.removeEventListener('keyup', up);
       window.removeEventListener('blur', drop);
       document.removeEventListener('visibilitychange', hidden);
+      spaceHeld = false;
     };
   }, []);
 

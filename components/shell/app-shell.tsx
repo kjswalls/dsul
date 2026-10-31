@@ -73,6 +73,12 @@ import {
 } from '@/lib/dnd/handle-drag-end';
 import { reorderTargetAt } from '@/lib/dnd/reorder-sections';
 import { sidebarDropPlan } from '@/lib/dnd/sidebar-drop';
+import { atlasSourceOf, dragItemIdOf, parseAtlasCardDropId } from '@/lib/dnd/atlas-ids';
+import { containerMemberIds, fileIntoContainer } from '@/lib/atlas-file';
+import { ATLAS_COPY } from '@/lib/atlas-copy';
+import { useAtlasUiStore } from '@/lib/atlas-ui-store';
+import { ATLAS_FAR_ZOOM } from '@/lib/atlas-camera';
+import { isPlannerPreviewing } from '@/lib/planner-ready';
 import type { Item } from '@/lib/planner-types';
 import { toDateStr } from '@/lib/recurrence';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
@@ -234,7 +240,9 @@ const SHELL_MEASURING = {
  * `'pointer'`. `tests/unit/dnd-touch-drop-targets.test.tsx` drives THIS.
  */
 export function beginDrag(event: DragStartEvent) {
-  useDragStore.getState().startDrag(event.active.id as string, dragInputOf(event.activatorEvent));
+  // An Atlas row's id names its card too (lib/dnd/atlas-ids.ts); the store,
+  // the ghost and every drop rule know the item by its own id.
+  useDragStore.getState().startDrag(dragItemIdOf(event.active.id as string), dragInputOf(event.activatorEvent));
   cueSound('pickup');
 }
 
@@ -247,7 +255,7 @@ export function trackReorder(event: DragMoveEvent) {
   const drag = useDragStore.getState();
   const start = event.activatorEvent as PointerEvent | null;
   if (!start || typeof start.clientY !== 'number') return;
-  const activeId = event.active.id as string;
+  const activeId = dragItemIdOf(event.active.id as string);
   const selected = useSelectionStore.getState().selectedIds;
   const moving = selected.has(activeId) && selected.size >= 2 ? [...selected] : [activeId];
   const next = reorderTargetAt(
@@ -265,6 +273,59 @@ export function trackReorder(event: DragMoveEvent) {
     return;
   }
   drag.setReorder(next);
+}
+
+/**
+ * The group drop onto an Atlas card: when the grabbed row is part of a
+ * multi-selection (2 or more), the WHOLE selection files into the card's
+ * container, one undo (lib/atlas-file.ts). A selection none of which can go
+ * there says why, and the grabbed row is not tried alone. Returns false when
+ * this is not a group drop on a card, so the shell goes on as before.
+ *
+ * At module scope and exported, like beginDrag, so
+ * tests/unit/atlas-group-drop.test.ts drives the branch the shell runs.
+ */
+export function fileSelectionOnAtlas(
+  overId: string,
+  itemId: string,
+  source: ReturnType<typeof atlasSourceOf>
+): boolean {
+  const card = parseAtlasCardDropId(overId);
+  if (!card) return false;
+  const selection = useSelectionStore.getState();
+  if (!selection.selectedIds.has(itemId) || selection.selectedIds.size < 2) return false;
+  const out = fileIntoContainer([...selection.selectedIds], card, source);
+  if (out.message) toast(out.message);
+  if (out.wrote) selection.clear();
+  return true;
+}
+
+/**
+ * What to say when a drag is let go on Atlas's board with no card under it.
+ * Nothing while the focus sheet is open or the planner is previewing (every
+ * card is off then, so even a drop right on one finds none; the sheet is the
+ * card at full size); in the far zoom the cards are clusters, so zoom in.
+ * Exported for tests/unit/atlas-card-drop.test.tsx.
+ */
+export function atlasMissMessage(): string | null {
+  const { sheet, camera } = useAtlasUiStore.getState();
+  if (sheet !== null || isPlannerPreviewing()) return null;
+  return camera.z < ATLAS_FAR_ZOOM ? ATLAS_COPY.zoomInToFile : ATLAS_COPY.dropOnCard;
+}
+
+/**
+ * Was this drag let go over Atlas's board? The pointer is where the drag
+ * started plus how far it came, as trackReorder reads it.
+ */
+function releasedOnAtlas(event: DragEndEvent): boolean {
+  if (typeof document === 'undefined') return false;
+  const root = document.querySelector('[data-atlas-root]');
+  const start = event.activatorEvent as PointerEvent | null;
+  if (!root || !start || typeof start.clientX !== 'number') return false;
+  const x = start.clientX + event.delta.x;
+  const y = start.clientY + event.delta.y;
+  const r = root.getBoundingClientRect();
+  return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 }
 
 /**
@@ -430,7 +491,14 @@ export function AppShell() {
       cueSound('drop');
       return;
     }
-    if (!over) return;
+    if (!over) {
+      // Let go on Atlas's board between cards: the collision rule gave it no
+      // target (lib/dnd/collision.ts), so it springs back, and says why.
+      // Off the board (the header, the rail) it springs back silently.
+      const miss = releasedOnAtlas(event) ? atlasMissMessage() : null;
+      if (miss) toast(miss);
+      return;
+    }
     // Landed on a target. A drop its target then declines still lands
     // somewhere the hand let go, so it sounds the same; a cancel makes none.
     cueSound('drop');
@@ -441,7 +509,9 @@ export function AppShell() {
     const planner = usePlannerStore.getState();
     const { tasks, habits, selectedDate, userTimezone } = planner;
 
-    const itemId = active.id as string;
+    // An Atlas row carries its card in its id; the item is the id's tail.
+    const itemId = dragItemIdOf(active.id as string);
+    const atlasSource = atlasSourceOf(active.id as string);
     const draggedTask = tasks.find((t) => t.id === itemId);
     const draggedHabit = habits.find((h) => h.id === itemId);
 
@@ -473,6 +543,9 @@ export function AppShell() {
           ? tasks.find((t) => t.id === refId)?.startTime
           : habits.find((h) => h.id === refId)?.startTime,
       inferDropTime,
+      // An Atlas card: already there is nothing (lib/atlas-file.ts says the rest).
+      containerMembers: (container) => containerMemberIds(planner, container),
+      atlasSource,
     };
     // The dragged item and the milestones let a canvas task's hour and
     // braindump drops ask the shared block drop rule (resolveDrop's
@@ -509,7 +582,9 @@ export function AppShell() {
       const targetTime = slot && 'time' in slot ? slot.time : undefined;
       const selectedDayStr = toDateStr(selectedDate, userTz);
       let acted = false;
-      if (overId === 'sidebar') {
+      if (fileSelectionOnAtlas(overId, itemId, atlasSource)) {
+        return;
+      } else if (overId === 'sidebar') {
         // `acted` gates the selection clear and the drop animation, so it has
         // to mean "something was written". unscheduleTasks refuses milestones
         // (their startDate is a goal's target date), so an all-milestone
@@ -635,6 +710,11 @@ export function AppShell() {
         // setItemPaused refuses an item that cannot pause or already is.
         planner.setItemPaused(command.itemId, true);
         break;
+      case 'file-into-container': {
+        const out = fileIntoContainer([command.itemId], command.container, command.source);
+        if (out.message) toast(out.message);
+        break;
+      }
     }
   };
 
