@@ -21,6 +21,7 @@ import { getSnapshotEpoch } from '@/lib/planner-snapshot';
 import { getItemNotesEpoch, useItemNotesStore } from '@/lib/item-notes-store';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 import { ATLAS_LOCAL_KEY, readLocalPlaces, writeLocalPlaces } from '@/lib/atlas-positions';
+import { cachedTouches, rememberTouches } from '@/lib/atlas-activity';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore, SIDEBAR_DEFAULT_WIDTH } from '@/lib/sidebar-store';
 import { recordReleased, releasedOn } from '@/lib/sweep-grace';
@@ -335,6 +336,34 @@ describe('the Atlas UI store', () => {
     expect(adoptLocalState(USER_B)).toBe(true);
     expect(useAtlasUiStore.getState().fitted).toBe(false);
     expect(useAtlasUiStore.getState().camera).toEqual({ x: 0, y: 0, z: 1 });
+  });
+});
+
+/**
+ * Atlas's activity cache (PR2) holds the account's item ids and when each was
+ * last touched: memory only, cleared with the account.
+ */
+describe('the Atlas activity cache', () => {
+  it('is in RAW_CLEARERS: a sign-out and an account switch both forget it', () => {
+    const value = { touches: new Map([['i1', '2026-03-01T10:00:00Z']]), eventsOk: true };
+    adoptLocalState(USER_A);
+    rememberTouches(['i1'], value);
+    expect(cachedTouches(['i1'])).toBe(value);
+    clearUserScopedLocalState();
+    expect(cachedTouches(['i1'])).toBeNull();
+
+    adoptLocalState(USER_A);
+    rememberTouches(['i1'], value);
+    expect(adoptLocalState(USER_B)).toBe(true);
+    expect(cachedTouches(['i1'])).toBeNull();
+  });
+
+  it("resets Atlas's two filters with the other view prefs on sign-out", () => {
+    useViewStore.setState({ atlasHideFinished: true, atlasHideResting: true });
+    adoptLocalState(USER_A);
+    clearUserScopedLocalState();
+    expect(useViewStore.getState().atlasHideFinished).toBe(false);
+    expect(useViewStore.getState().atlasHideResting).toBe(false);
   });
 });
 

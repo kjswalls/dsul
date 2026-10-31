@@ -3,10 +3,11 @@
 import { Maximize } from 'lucide-react';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 import { ATLAS_COPY } from '@/lib/atlas-copy';
+import { AtlasFilters } from '@/components/views/atlas/atlas-filters';
 
 /**
  * The header capsule's first row on Atlas, in place of the date nav: the
- * title, Fit, and the zoom. PR2 adds the filters, PR4 Walk.
+ * title, the two filters, Fit, and the zoom. PR4 adds Walk.
  */
 export function AtlasToolbar() {
   const z = useAtlasUiStore((s) => s.camera.z);
@@ -17,6 +18,8 @@ export function AtlasToolbar() {
       <span className="px-1.5 text-base font-semibold text-foreground" data-testid="atlas-title">
         {ATLAS_COPY.name}
       </span>
+      <AtlasFilters />
+      <div className="mx-1 h-4 w-px bg-border" aria-hidden />
       <button
         type="button"
         onClick={requestFit}

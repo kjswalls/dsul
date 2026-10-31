@@ -6,7 +6,7 @@ import type { Point } from '@/lib/atlas-camera';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
 
 /**
- * A card's position drag on Your map: Atlas's own pointer handlers, never
+ * A card's drag: Atlas's own pointer handlers, never
  * dnd-kit (design D6), so there is no drag ghost, collision pass or
  * handleDragEnd to touch.
  *
@@ -16,7 +16,8 @@ import { useAtlasUiStore } from '@/lib/atlas-ui-store';
  * - ignores a press that starts on a control or an item row, which have their
  *   own meaning;
  * - moves only this card's own transform while dragging (local state), and
- *   commits once, on pointerup (atlas-store `place`: one write per drag);
+ *   commits once, on pointerup; what the drop means is the layout's
+ *   (lib/atlas-drop.ts), and a drop that means nothing springs back;
  * - swallows the click that ends a drag, so a drop never opens or ticks.
  */
 
@@ -31,10 +32,16 @@ const INTERACTIVE = 'button, a[href], input, textarea, select, [role="checkbox"]
 export function useAtlasPointer({
   at,
   onCommit,
+  onDrag,
+  axis = null,
 }: {
   /** The card's world position at rest. */
   at: Point;
   onCommit: (to: Point) => void;
+  /** Where the card is while dragging, and null when the drag ends (lights a lane). */
+  onDrag?: (pos: Point | null) => void;
+  /** 'x' holds the card on its row (a goal on the Timeline moves in time only). */
+  axis?: 'x' | null;
 }) {
   const [drag, setDrag] = useState<Point | null>(null);
   const press = useRef<{ x: number; y: number; id: number; active: boolean } | null>(null);
@@ -77,9 +84,11 @@ export function useAtlasPointer({
         }
       }
       const z = zoomNow();
-      setDrag({ x: at.x + dx / z, y: at.y + dy / z });
+      const next = { x: at.x + dx / z, y: axis === 'x' ? at.y : at.y + dy / z };
+      setDrag(next);
+      onDrag?.(next);
     },
-    [at.x, at.y]
+    [at.x, at.y, axis, onDrag]
   );
 
   const end = useCallback(
@@ -91,11 +100,12 @@ export function useAtlasPointer({
       // Only a pointerup is followed by a click; a pointercancel is not.
       if (commit) swallowClick.current = true;
       const z = zoomNow();
-      const to = { x: at.x + (e.clientX - p.x) / z, y: at.y + (e.clientY - p.y) / z };
+      const to = { x: at.x + (e.clientX - p.x) / z, y: axis === 'x' ? at.y : at.y + (e.clientY - p.y) / z };
       setDrag(null);
+      onDrag?.(null);
       if (commit) onCommit(to);
     },
-    [at.x, at.y, onCommit]
+    [at.x, at.y, axis, onCommit, onDrag]
   );
 
   const onClickCapture = useCallback((e: ReactMouseEvent) => {

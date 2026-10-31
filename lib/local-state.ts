@@ -3,6 +3,7 @@
 import { clearBrowserPairings } from './openclaw-browser/device-store';
 import { clearAtlasUiState } from './atlas-ui-store';
 import { clearAtlasLocalState } from './atlas-positions';
+import { clearAtlasActivity } from './atlas-activity';
 import { useAISettingsStore } from './ai-settings-store';
 import { clearKeptQuestionState } from './ask-pending';
 import { useCommandUsageStore } from './command-usage-store';
@@ -224,6 +225,9 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
       'layout',
       // Atlas's layout: a closed enum about the screen, like `layout`.
       'atlasLayout',
+      // Atlas's two filters: booleans about what the screen shows.
+      'atlasHideFinished',
+      'atlasHideResting',
       'typeFilter',
       'canvasGroupBy',
       'braindumpGroupBy',
@@ -320,6 +324,8 @@ function clearRetiredEodStore(): void {
  * Atlas's per-device places (`dsul-atlas-places`, lib/atlas-positions.ts, the
  * fallback until migration 087 is applied) are keyed by container ids, so they
  * are disclosive and go too; a sign-out before 087 forgets that device's map.
+ * Atlas's activity cache (lib/atlas-activity.ts, memory only) holds the
+ * account's item ids and when each was last touched, so it goes as well.
  */
 const RAW_CLEARERS: readonly (() => void)[] = [
   clearRetiredEodStore,
@@ -333,6 +339,7 @@ const RAW_CLEARERS: readonly (() => void)[] = [
   clearItemNotesState,
   clearAtlasUiState,
   clearAtlasLocalState,
+  clearAtlasActivity,
 ];
 
 /** The account whose local state is on disk right now, or null for none. */

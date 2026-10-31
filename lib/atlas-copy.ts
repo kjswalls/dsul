@@ -15,7 +15,7 @@ export const ATLAS_COPY = {
   name: 'Atlas',
   /** The skeleton's screen-reader line while the planner loads. */
   loading: 'Loading Atlas…',
-  /** The one Atlas layout PR1 ships. */
+  /** Atlas's home layout. */
   layoutMap: 'Your map',
   /** Palette rows. */
   switchTo: 'Switch to Atlas',
@@ -94,7 +94,89 @@ export const ATLAS_COPY = {
   openAtlasLabel: 'Close Organize and open Atlas',
   /** The positions table's 2,000-row cap (087), said once a session. */
   placesFull: "Atlas can't remember more places",
+
+  /* ── PR2: layouts ─────────────────────────────────────────────────── */
+  layoutMomentum: 'Momentum',
+  layoutGoal: 'By goal',
+  layoutTimeline: 'Timeline',
+  /** By goal's note in the Layout menu while the Goals extension is off. */
+  goalsOffNote: 'Turn on Goals',
+  layoutCommand: 'Atlas layout',
+  layoutCommandDescription: 'Your map, Momentum, By goal or Timeline',
+  layoutCommandKeywords: 'atlas layout map momentum goal timeline arrange',
+  /** The shortcut rows (keys 1 to 4), as the Keyboard pane lists them. */
+  layoutShortcut: (layout: string) => `Atlas: ${layout}`,
+  layoutShortcutContext: 'Atlas only, on the desktop.',
+  /** The toolbar's filters (they carry across layouts). */
+  hideFinished: 'Hide finished',
+  hideResting: 'Hide resting',
+
+  /* Momentum's columns. */
+  bandNow: 'Now',
+  bandSoon: 'Soon',
+  bandResting: 'Resting',
+  bandNowHint: 'moving this week',
+  bandSoonHint: 'touched lately or dated this month',
+  bandRestingHint: 'parked, no pressure',
+  /* Momentum's reasons: what the app read, never a tally of idle days. */
+  tickedToday: 'ticked today',
+  dueToday: 'something on today',
+  nextDate: (day: string) => `next date ${day}`,
+  wrappingUp: 'all done, wrapping up',
+  pinnedHere: (appBand: string) => `pinned here · the app says ${appBand}`,
+  unpin: 'Unpin',
+  unpinLabel: (name: string) => `Unpin ${name}, back to the app's sort`,
+  pinTo: (band: string) => `Pin to ${band}`,
+  pinned: (name: string, band: string) => `Pinned ${name} to ${band}`,
+  unpinned: (name: string) => `${name} is back to the app's sort`,
+  dropInColumn: 'Drop it in a column to pin it there',
+
+  /* By goal. */
+  notFeeding: 'Not feeding a goal',
+  laneHintLink: 'drop a card here to link it',
+  laneHintUnlink: 'drop here to unlink',
+  feedsGoal: (goal: string) => `feeds ${goal}`,
+  feedsGoals: (n: number) => `feeds ${n} goals`,
+  notFeedingReason: 'not feeding a goal',
+  dropInLane: 'Drop it in a lane to link it',
+  goalsStay: 'Goals stay at the head of their lane',
+  nothingToLink: 'Nothing in it to link yet',
+
+  /* Timeline. */
+  laneRepeats: 'Repeats',
+  laneGoals: 'Goals',
+  laneDated: 'Dated',
+  laneNoDates: 'No dates',
+  today: 'Today',
+  targetReason: (day: string) => `target ${day}`,
+  nextStepDated: (day: string) => `next step dated ${day}`,
+  noDates: 'no dates',
+  repeats: 'repeats',
+  seasonRange: (from: string, to: string) => `${from} to ${to}`,
+  seasonFrom: (from: string) => `from ${from}`,
+  seasonUntil: (to: string) => `until ${to}`,
+  cantEndBeforeStart: (day: string) => `Can't end before it starts, ${day}`,
+  projectsFollowDates: 'Projects follow their dated steps. Open one to change a date.',
+  routineNoDate: 'A routine repeats, so it has no single date',
+  seasonsFollowDates: 'Seasons follow their own dates. Open one to change them.',
+  dropAboveNoDates: 'Drop it on a month to give it a target',
+  dragTarget: (day: string) => `target ${day}`,
+
+  /*
+   * The undo strip's sentences for Atlas's item and goal writes. Each starts
+   * with one of ATLAS_UNDO_PREFIXES, which hooks/use-undo-toast.ts counts as
+   * worth offering an Undo for.
+   */
+  linked: (n: number, goal: string) =>
+    `Linked ${n === 1 ? '1 item' : `${n} items`} to ${goal}. New items won't join on their own.`,
+  unlinked: (name: string, goal: string) => `Unlinked ${name} from ${goal}`,
+  unlinkedMany: (name: string, n: number) => `Unlinked ${name} from ${n} goals`,
+  moved: (name: string, goal: string) => `Moved ${name} to ${goal}. New items won't join on their own.`,
+  targetMoved: (goal: string, day: string) => `Target for ${goal} moved to ${day}`,
 } as const;
+
+/** The undo strip offers Undo for these (hooks/use-undo-toast.ts). */
+export const ATLAS_UNDO_PREFIXES = ['Linked ', 'Unlinked ', 'Moved ', 'Target for '] as const;
 
 /** Every string the copy holds, flattened, for the scanning test. */
 export function atlasCopyStrings(): string[] {

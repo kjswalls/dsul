@@ -7,8 +7,10 @@ import { useToday } from '@/lib/collections';
 import { useGoalsEnabled, useGoalsForDisplay } from '@/lib/extension-gates';
 import { milestoneItemIds } from '@/lib/goals';
 import { buildAtlasCards, createAtlasCardSharer, type AtlasCard } from '@/lib/atlas-model';
+import type { Goal, Season } from '@/lib/planner-types';
 
 const NO_GOALS: readonly never[] = [];
+const NO_SEASONS: readonly never[] = [];
 
 /**
  * Atlas's cards, from narrow planner subscriptions, derived once per change
@@ -19,7 +21,12 @@ const NO_GOALS: readonly never[] = [];
 export function useAtlasCards(): {
   cards: AtlasCard[];
   todayStr: string;
+  tz: string;
   milestoneIds: ReadonlySet<string>;
+  /** The goals shown (gated by the Goals extension and loaded), for By goal. */
+  goals: readonly Goal[];
+  /** Seasons as loaded (empty when routines and seasons are unavailable), for Timeline. */
+  seasons: readonly Season[];
   /** Routines and seasons can show (the empty map names only what can). */
   collectionsShown: boolean;
   /** Goals can show: the extension is on and they loaded. */
@@ -65,7 +72,10 @@ export function useAtlasCards(): {
   return {
     cards,
     todayStr,
+    tz,
     milestoneIds,
+    goals: goalsAvailable ? goals : NO_GOALS,
+    seasons: collectionsAvailable ? seasons : NO_SEASONS,
     collectionsShown: collectionsAvailable,
     goalsShown: goalsOn && goalsAvailable,
   };

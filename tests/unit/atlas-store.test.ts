@@ -290,6 +290,23 @@ describe('writes', () => {
     expect(store().places['project:a']).toEqual(P('a', 1, 1));
     expect(io.del).toHaveBeenCalledTimes(1);
   });
+
+  it('pin() on a card with no stored place writes the place it is drawn at too (PR2)', async () => {
+    io.fetch.mockResolvedValue([]);
+    await store().load('u1');
+    store().pin('project', 'b', 'resting', { x: 40, y: 60 });
+    expect(store().places['project:b']).toEqual(P('b', 40, 60, { band: 'resting' }));
+    await atlasWritesSettled();
+    const [rows, , fields] = io.upsert.mock.calls.at(-1)!;
+    expect(fields).toBe('all');
+    expect(rows).toEqual([P('b', 40, 60, { band: 'resting' })]);
+
+    // A card that has a place sends only the band, whatever it is drawn at.
+    io.upsert.mockClear();
+    store().pin('project', 'b', 'now', { x: 999, y: 999 });
+    expect(store().places['project:b']).toEqual(P('b', 40, 60, { band: 'now' }));
+    expect(io.upsert.mock.calls[0][2]).toBe('band');
+  });
 });
 
 describe('review fixes (PR1b)', () => {

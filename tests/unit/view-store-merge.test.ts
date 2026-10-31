@@ -155,6 +155,14 @@ describe('the persist merge, through a real rehydrate', () => {
     expect(useViewStore.getState().atlasLayout).toBe('map');
   });
 
+  it('keeps the PR2 layouts and the two Atlas filters, and coerces non-booleans', async () => {
+    seed({ scope: 'atlas', atlasLayout: 'timeline', atlasHideFinished: true, atlasHideResting: 'yes' });
+    await useViewStore.persist.rehydrate();
+    expect(useViewStore.getState().atlasLayout).toBe('timeline');
+    expect(useViewStore.getState().atlasHideFinished).toBe(true);
+    expect(useViewStore.getState().atlasHideResting).toBe(false);
+  });
+
   it('gives a blob that predates atlasLayout the default', async () => {
     seed({ scope: 'week' });
     await useViewStore.persist.rehydrate();

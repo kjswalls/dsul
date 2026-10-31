@@ -64,7 +64,7 @@ import { addDays, subDays } from 'date-fns';
 
 import { AskMarkIcon, AskMarkUnlitIcon } from '@/components/ai/ask-mark';
 import { usePlannerStore } from '../planner-store';
-import { useViewStore } from '../view-store';
+import { useViewStore, isAtlasLayout } from '../view-store';
 import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
 import { containerRef, namesOfKind } from '../container-registry';
 import { useUIStore, closeItemPanel, openAddDialog, openBulkAdd, openNewContainer } from '../ui-store';
@@ -107,7 +107,13 @@ import { seasonStateForSwitch } from '../scope-rail';
 import { toDateStr } from '../recurrence';
 import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from '../planner-types';
 import { isScalableLayout } from '../week-columns';
-import { CANVAS_GROUP_BY_OPTIONS, LAYOUT_OPTIONS, TYPE_OPTIONS } from '../view-options';
+import {
+  ATLAS_LAYOUT_OPTIONS,
+  CANVAS_GROUP_BY_OPTIONS,
+  LAYOUT_OPTIONS,
+  TYPE_OPTIONS,
+  atlasLayoutOptionsFor,
+} from '../view-options';
 import {
   assignBucket,
   isCancelled,
@@ -118,7 +124,7 @@ import {
   itemCommand,
 } from './entities';
 import type { Command, CommandArgOption, CommandContext, CommandProvider } from './types';
-import type { TypeFilter, ViewLayout } from '../view-store';
+import type { AtlasLayout, TypeFilter, ViewLayout } from '../view-store';
 import type { GroupBy, Priority, TimeBucket, Routine, Season, Goal } from '../planner-types';
 import { useAwayStore } from '../away-store';
 import { currentAway } from '../away';
@@ -171,6 +177,16 @@ const planner = () => usePlannerStore.getState();
 const view = () => useViewStore.getState();
 /** Atlas has no day of its own (design rule 4); a few commands step around it. */
 const onAtlas = () => view().scope === 'atlas';
+/** By goal needs Goals on and loaded; the other layouts always work. */
+const atlasGoalsShown = () => goalsEnabled() && planner().goalsAvailable;
+const atlasLayoutAllowed = (layout: AtlasLayout) => layout !== 'goal' || atlasGoalsShown();
+/** Keys 1 to 4 on Atlas. Ids are frozen once shipped: add, never rename. */
+const ATLAS_LAYOUT_SHORTCUTS: Record<AtlasLayout, { cmd: string; shortcut: string; key: string }> = {
+  map: { cmd: 'view.atlasLayoutMap', shortcut: 'atlas_layout_map', key: '1' },
+  momentum: { cmd: 'view.atlasLayoutMomentum', shortcut: 'atlas_layout_momentum', key: '2' },
+  goal: { cmd: 'view.atlasLayoutGoal', shortcut: 'atlas_layout_goal', key: '3' },
+  timeline: { cmd: 'view.atlasLayoutTimeline', shortcut: 'atlas_layout_timeline', key: '4' },
+};
 /** A date command from Atlas means "go to that day". */
 const leaveAtlasForDay = () => {
   if (onAtlas()) view().setScope('day');
@@ -795,6 +811,50 @@ export const STATIC_COMMANDS: Command[] = [
     hidden: (ctx) => ctx.isMobile,
     run: () => view().setScope('atlas'),
   },
+  {
+    id: 'view.atlasLayout',
+    label: ATLAS_COPY.layoutCommand,
+    description: ATLAS_COPY.layoutCommandDescription,
+    group: 'view',
+    icon: MapIcon,
+    keywords: ATLAS_COPY.layoutCommandKeywords,
+    // Atlas's own list (D2). view.layout is gated off Atlas, so no one
+    // command offers both lists and no alias has two owners. Not flattened:
+    // the four key commands below are the flat rows.
+    availableWhen: (ctx) => !ctx.isMobile && onAtlas(),
+    hidden: (ctx) => ctx.isMobile,
+    argument: {
+      kind: 'enum',
+      placeholder: ATLAS_COPY.layoutCommand,
+      options: () =>
+        optionsFrom(
+          atlasLayoutOptionsFor(atlasGoalsShown()).filter((o) => !o.disabled),
+          view().atlasLayout
+        ),
+    },
+    run: (_ctx, arg) => {
+      if (isAtlasLayout(arg) && atlasLayoutAllowed(arg)) view().setAtlasLayout(arg);
+    },
+  },
+  // Keys 1 to 4 on Atlas: registered commands, never an Atlas-root keydown
+  // (rule 18), so the input guard comes with the dispatcher.
+  ...ATLAS_LAYOUT_OPTIONS.map(
+    (o): Command => ({
+      id: ATLAS_LAYOUT_SHORTCUTS[o.value].cmd,
+      label: ATLAS_COPY.layoutShortcut(o.label),
+      group: 'view',
+      icon: o.icon,
+      keywords: ATLAS_COPY.layoutCommandKeywords,
+      shortcut: {
+        id: ATLAS_LAYOUT_SHORTCUTS[o.value].shortcut,
+        keys: [ATLAS_LAYOUT_SHORTCUTS[o.value].key],
+        context: ATLAS_COPY.layoutShortcutContext,
+      },
+      availableWhen: (ctx) => !ctx.isMobile && onAtlas() && atlasLayoutAllowed(o.value),
+      hidden: (ctx) => ctx.isMobile,
+      run: () => view().setAtlasLayout(o.value),
+    })
+  ),
   {
     id: 'view.toggleScope',
     label: 'Toggle Day/Week view',

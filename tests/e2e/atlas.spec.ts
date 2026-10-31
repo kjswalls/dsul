@@ -10,7 +10,9 @@ import { cleanupByTitlePrefix, cleanupTestLabels, createTestTask, specScope } fr
  * local stack applies migration 087; the per-device fallback is unit-tested).
  * PR1c: a double-clicked card grows into the focus sheet, whose rows open in
  * the rail, and Escape closes the sheet before the item; Organize's "Open
- * Atlas" door switches the scope.
+ * Atlas" door switches the scope. PR2: keys 1 to 4 switch layouts without
+ * touching an open item, and a card dragged into Momentum's Resting column
+ * is pinned there across a reload.
  *
  * Under its own prefix, swept by name like organize.spec.ts (projects are not
  * items, so the title sweep would miss them).
@@ -171,6 +173,69 @@ test.describe('atlas', () => {
     await page.getByTestId('organize-open-atlas').click();
     await expect(page.getByTestId('organize-console')).toHaveCount(0);
     await expect(page.getByTestId('atlas-view')).toBeVisible();
+    await setScope(page, 'Day');
+  });
+
+  test('keys switch layouts, and a card dragged into Resting stays pinned after a reload', async ({ page }) => {
+    const name = scope.title('Pinned');
+    const projectId = await createProject(page, name);
+    const taskId = await createTestTask(page, { title: scope.title('Some step'), project: name });
+    await reloadApp(page);
+
+    await setScope(page, 'Atlas');
+    const view = page.getByTestId('atlas-view');
+    const card = page.locator(`[data-atlas-card="project:${projectId}"]`);
+    await expect(card).toBeVisible();
+
+    // An open item stays open across a layout switch (a layout is a lens).
+    await card.locator(`[data-testid="atlas-row"][data-item-id="${taskId}"]`).click();
+    await expect(page.getByTestId('item-dialog')).toBeVisible();
+    await view.focus();
+    await page.keyboard.press('2');
+    await expect(view).toHaveAttribute('data-atlas-layout', 'momentum');
+    await expect(page.locator('[data-lane-kind="band"]')).toHaveCount(3);
+    await expect(page.getByTestId('item-dialog')).toBeVisible();
+    await page.keyboard.press('4');
+    await expect(view).toHaveAttribute('data-atlas-layout', 'timeline');
+    await page.keyboard.press('2');
+    await expect(view).toHaveAttribute('data-atlas-layout', 'momentum');
+
+    // Let the glide settle, then drag the card by its footer into Resting.
+    await page.getByRole('button', { name: 'Fit every card on screen' }).click();
+    await page.waitForTimeout(700);
+    const resting = page.locator('[data-atlas-lane="resting"]');
+    const col = (await resting.boundingBox())!;
+    const footer = (await card.getByTestId('atlas-card-footer').boundingBox())!;
+    const cardBox = (await card.boundingBox())!;
+    const from = { x: footer.x + 8, y: footer.y + footer.height / 2 };
+    const dx = col.x + col.width / 2 - (cardBox.x + cardBox.width / 2);
+    const pinned = page.waitForResponse(
+      (r) =>
+        r.url().includes('/rest/v1/atlas_positions') &&
+        r.request().method() === 'POST' &&
+        (r.request().postData() ?? '').includes('"pinned_band":"resting"')
+    );
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 10; i++) await page.mouse.move(from.x + (dx * i) / 10, from.y + 4 * i);
+    await expect(resting).toHaveAttribute('data-hot', 'true');
+    await page.mouse.up();
+    expect((await pinned).ok()).toBe(true);
+    await expect(card).toHaveAttribute('data-pinned', 'true');
+    await expect(card.getByTestId('atlas-unpin')).toBeVisible();
+
+    // The layout and the pin are both remembered.
+    await reloadApp(page);
+    const again = page.locator(`[data-atlas-card="project:${projectId}"]`);
+    await expect(page.getByTestId('atlas-view')).toHaveAttribute('data-atlas-layout', 'momentum');
+    await expect(again).toHaveAttribute('data-pinned', 'true');
+
+    // Unpin hands it back; then home to Your map.
+    await again.getByTestId('atlas-unpin').click();
+    await expect(again).not.toHaveAttribute('data-pinned', 'true');
+    await page.getByTestId('atlas-view').focus();
+    await page.keyboard.press('1');
+    await expect(page.getByTestId('atlas-view')).toHaveAttribute('data-atlas-layout', 'map');
     await setScope(page, 'Day');
   });
 
