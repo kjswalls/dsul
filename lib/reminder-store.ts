@@ -35,12 +35,26 @@ interface ReminderStore {
   stakesEnabled: boolean;
   /** HH:mm, local — settles the day BEFORE it. */
   stakesSettleTime: string;
+  /**
+   * eod_review_enabled: the switch of the retired end of day review, which the
+   * iPhone app still reads to plan its nightly local notification (until ghost
+   * rows phase 3 drops it there). The web shows no review, but this is the
+   * only off switch for that notification, so it stays writable.
+   */
+  iphoneEveningNudge: boolean;
+  /**
+   * Whether the account's stored value was ON when its settings landed. The
+   * row (`rituals.eod`) is drawn only then, so an account that never had the
+   * review sees nothing, and turning it off does not make it vanish mid-click.
+   */
+  iphoneEveningNudgeShown: boolean;
 
   setRemindersEnabled: (enabled: boolean) => void;
   setLastCallEnabled: (enabled: boolean) => void;
   setLastCallTime: (time: string) => void;
   setStakesEnabled: (enabled: boolean) => void;
   setStakesSettleTime: (time: string) => void;
+  setIphoneEveningNudge: (enabled: boolean) => void;
 }
 
 export const REMINDER_DEFAULTS = {
@@ -52,6 +66,8 @@ export const REMINDER_DEFAULTS = {
   // still counts, and a settlement that ran first would report a miss the app
   // itself does not believe in.
   stakesSettleTime: '03:00',
+  iphoneEveningNudge: false,
+  iphoneEveningNudgeShown: false,
 } as const;
 
 /**
@@ -121,5 +137,11 @@ export const useReminderStore = create<ReminderStore>((set) => ({
     set({ stakesSettleTime: time });
     const userId = usePlannerStore.getState().userId;
     if (userId) saveSettings(userId, { stakes_settle_time: time });
+  },
+
+  setIphoneEveningNudge: (enabled) => {
+    set({ iphoneEveningNudge: enabled });
+    const userId = usePlannerStore.getState().userId;
+    if (userId) saveSettings(userId, { eod_review_enabled: enabled });
   },
 }));

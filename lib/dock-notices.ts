@@ -9,7 +9,11 @@ import type { LucideIcon } from 'lucide-react';
  * free-text anchor is a notice that silently never renders anywhere.
  *
  *  - `braindump`  — pinned under the braindump header, above the rows.
- *  - `day-header` — beside the date, in the canvas header row.
+ *  - `day-header` — beside the date, in the canvas header row (inside the
+ *    date capsule's notes popover, components/notices/day-messages.tsx). No
+ *    notice asks for it since the end of day review's line retired (ghost rows
+ *    phase 2); the slot is kept as the address for the next notice about THIS
+ *    day, and costs nothing while empty (useDayHeaderNotices answers []).
  *
  * `day-foot` (the foot of today's column) was built and removed before this
  * shipped, and the reason is worth keeping: lib/use-fit-hour-px.ts sizes the

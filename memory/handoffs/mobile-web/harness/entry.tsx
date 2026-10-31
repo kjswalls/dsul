@@ -17,7 +17,6 @@ import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { DesktopShell } from '@/components/shell/desktop-shell';
 import { MobileShell } from '@/components/shell/mobile-shell';
 import { ZenStage } from '@/components/zen/zen-stage';
-import { useEODStore } from '@/lib/eod-store';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 const params = new URLSearchParams(location.search);
@@ -29,7 +28,8 @@ const preset = Number(params.get('s') ?? '0');
 const bdPreset = Number(params.get('bd') ?? '0');
 const sidebarW = Number(params.get('sw') ?? '406');
 const strict = params.get('strict') !== '0';
-const withReview = params.get('review') === '1';
+// ?review=1 used to open the end of day review; it retired with ghost rows
+// phase 2 (memory/plans/ghost-rows.md), so the param is ignored now.
 const withProgram = params.get('program') === '1';
 const withZenStage = params.get('zenstage') === '1';
 const withPanel = params.get('panel') === '1';
@@ -157,14 +157,10 @@ window.__sidebar = useSidebarStore;
 window.__nav = useMobileNavStore;
 (window as any).__ui = useUIStore;
 (window as any).__openEditFor = openEditFor;
-(window as any).__eod = useEODStore;
 (window as any).__openEdit = (id: string) => {
   const it = (usePlannerStore.getState() as any).items.find((i: any) => i.id === id);
   openEditFor(it, 'task');
 };
-if (withReview) {
-  useEODStore.setState({ _hasHydrated: true, eodReviewEnabled: true, eodReviewTime: '00:00', lastEodReviewDate: null, eodDeferredDate: null } as never);
-}
 if (withPanel) setTimeout(() => (window as any).__openEdit('t2'), 0);
 
 /** AppShell's swap: one shell at a time, on the same hook AppShell reads. */

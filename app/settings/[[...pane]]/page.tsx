@@ -346,7 +346,8 @@ export default function SettingsPage() {
   const reminderTick = useReminderStore(
     (s) =>
       `${s.remindersEnabled}|${s.lastCallEnabled}|${s.lastCallTime}|` +
-      `${s.stakesEnabled}|${s.stakesSettleTime}`
+      `${s.stakesEnabled}|${s.stakesSettleTime}|` +
+      `${s.iphoneEveningNudge}|${s.iphoneEveningNudgeShown}`
   );
   // systemPrompt rides the tick VERBATIM: the text controls commit on blur by
   // comparing their draft against the last RENDERED value, so a stale value

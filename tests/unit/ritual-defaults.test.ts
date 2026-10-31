@@ -76,8 +76,9 @@ describe('leftovers on Today default on for a new account', () => {
 
   it('the manifest default agrees with the seed, so a fresh account reads as unmodified', () => {
     expect(settingById('rituals.morningCheck')!.defaultValue).toBe(true);
-    // The review's records are gone with it.
-    expect(settingById('rituals.eod')).toBeUndefined();
+    // The review's time went with it. Its switch stays, off by default, only as
+    // the iPhone's evening nudge's off switch (iphone-evening-nudge.test.ts).
+    expect(settingById('rituals.eod')!.defaultValue).toBe(false);
     expect(settingById('rituals.eodTime')).toBeUndefined();
   });
 

@@ -398,6 +398,13 @@ export interface SettingRecord {
   dbColumn?: string;
   /** Absent rather than greyed — platform, not state. Search names the reason. */
   desktopOnly?: boolean;
+  /**
+   * Absent rather than greyed, from state: the row is drawn, and found by
+   * search, only while this answers true. For a switch kept only for the
+   * accounts that already have it on (`rituals.eod`). Read by the settings
+   * page and search, never by paneRows, which stays the full list.
+   */
+  shownWhen?: (ctx: SettingCtx) => boolean;
   /** Present but not actionable, with the reason shown inline. */
   unavailable?: (ctx: SettingCtx) => string | null;
   /**
@@ -1220,6 +1227,26 @@ export const SETTINGS: SettingRecord[] = [
     read: () => String(morning().morningAutoAgeDays),
     write: (v) => morning().setMorningAutoAgeDays(Number(v)),
     defaultValue: '30',
+  },
+  {
+    // The end of day review retired on the web (ghost rows phase 2), but the
+    // iPhone app still plans its nightly notification off eod_review_enabled
+    // and has no switch of its own. This row is that notification's only off
+    // switch until phase 3 removes the review from the iPhone (and this row
+    // with it). Drawn only for an account whose value was on when its settings
+    // landed. The id is the review's own, kept.
+    id: 'rituals.eod',
+    pane: 'rituals',
+    label: 'Evening nudge on iPhone',
+    description:
+      'The iPhone app still sends a nightly nudge for the old evening review. The review is gone, so you can switch this off.',
+    control: 'switch',
+    dbColumn: 'eod_review_enabled',
+    keywords: ['evening', 'review', 'night', 'iphone', 'notification', 'eod'],
+    read: () => reminders().iphoneEveningNudge,
+    write: (v) => reminders().setIphoneEveningNudge(Boolean(v)),
+    shownWhen: () => reminders().iphoneEveningNudgeShown,
+    defaultValue: false,
   },
   {
     id: 'rituals.reminders',

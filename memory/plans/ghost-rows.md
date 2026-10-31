@@ -131,7 +131,7 @@ rules in [app/globals.css](../../app/globals.css) beside the row rules.
   lib/eod-store.ts, lib/eod-link.ts and AppShell's `?eod=` handler (an old
   notification's `/?eod=<day>` now just opens home), the dock's "Today's review
   is waiting" line, the ⌘K `rituals.eod` and `settings.eodReview` commands, the
-  `rituals.eod` / `rituals.eodTime` settings records, the Devices list's
+  `rituals.eodTime` settings record (`rituals.eod` stays, below), the Devices list's
   "End-of-day review" switch, Ask home's "N free" (it counted to the review's
   hour; there is no day end now), and the rituals nudge's review half (it now
   introduces the leftovers alone). The `dsul-eod-store` blob is removed by
@@ -143,8 +143,9 @@ rules in [app/globals.css](../../app/globals.css) beside the row rules.
   names it and the two are held to each other by a test; a user there for it
   alone is read and skipped.
 - **Ids.** No shortcut id was involved. Command and settings ids are not
-  frozen, so `rituals.eod` and the rest are deleted rather than repointed, and
-  `eod` became an alias of `goto.overdue`, so /eod lands on the leftovers.
+  frozen, so the ⌘K `rituals.eod` and the rest are deleted rather than
+  repointed, and `eod` became an alias of `goto.overdue`, so /eod lands on the
+  leftovers. The settings record `rituals.eod` is kept under its own id (below).
 - **Columns stay**: `eod_review_enabled`, `eod_review_time`,
   `last_eod_notified_date`, `last_eod_review_date`,
   `morning_check_dismissed_date`, `morning_check_time`. settings-service still
@@ -184,6 +185,17 @@ sides, so they stay until the iPhone drops its review:
   pattern and `/?eod=` path (harmless: it opens home).
 - Nothing on the web writes `last_eod_review_date` any more, so an iPhone with
   the review on keeps ringing it nightly until phase 3 removes it there.
+- **The off switch for that nightly notification.** The iPhone reads
+  `eodReviewEnabled` from the planner payload and has no switch of its own, so
+  the settings record `rituals.eod` (permanent id) stays in the Rituals pane as
+  "Evening nudge on iPhone", writing `eod_review_enabled` through
+  lib/reminder-store.ts (`iphoneEveningNudge`, hydrated by the provider). It is
+  drawn, and found by search, only for an account whose value was on when its
+  settings landed (`shownWhen`, a new SettingRecord field read by the settings
+  page and search); turning it off keeps it on screen for the visit. The
+  server-side alternative (app-api reporting `eodReviewEnabled: false`) was not
+  taken: it changes an iPhone contract and a fixture, which is Kirby's call.
+  Phase 3 removes the row with the iPhone's review.
 
 ## Open question
 

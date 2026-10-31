@@ -75,11 +75,9 @@ export interface DayLoad {
   done: number
   /** Minutes planned across the open items; null unless at least half have a duration and they total 30 or more. */
   plannedMin: number | null
-  /** The day's end less now less `plannedMin`; null without a day's end, or under 30. */
-  freeMin: number | null
 }
 
-/** Under this, "planned" and "free" are noise, not a shape for the day. */
+/** Under this, "planned" is noise, not a shape for the day. */
 export const LOAD_FLOOR_MIN = 30
 
 function durationOf(item: Item): number {
@@ -94,13 +92,11 @@ function durationOf(item: Item): number {
  *
  * `plannedMin` needs at least half the open items to carry a duration: a sum
  * over the two of eight that have one would call an eight-thing day "About 1h
- * planned". `freeMin` needs `dayEndMin`, a day's end the caller knows; Ask
- * home passes null since the end of day review (whose hour it was) retired.
+ * planned". There is no "free" figure: it counted down to the end of day
+ * review's hour, and the review retired (ghost rows phase 2), so dsul has no
+ * day's end to count against and never invents one.
  */
-export function dayLoad(
-  ctx: OpenerContext,
-  o: { minutesNow: number; dayEndMin: number | null }
-): DayLoad {
+export function dayLoad(ctx: OpenerContext): DayLoad {
   const open = openToday(ctx)
   const done = todaysItems(ctx).filter((item) => isDoneOn(item, ctx.todayStr)).length
 
@@ -109,10 +105,7 @@ export function dayLoad(
   const plannedMin =
     open.length > 0 && timed.length * 2 >= open.length && total >= LOAD_FLOOR_MIN ? total : null
 
-  const free = plannedMin !== null && o.dayEndMin !== null ? o.dayEndMin - o.minutesNow - plannedMin : null
-  const freeMin = free !== null && free >= LOAD_FLOOR_MIN ? free : null
-
-  return { open: open.length, done, plannedMin, freeMin }
+  return { open: open.length, done, plannedMin }
 }
 
 /**
@@ -129,7 +122,6 @@ export function formatLoadMinutes(minutes: number): string {
 /**
  * The line under the greeting: the first that applies.
  *
- *   planned and free   "About 5h planned, 6h free."
  *   planned            "About 5h planned."
  *   anything open      "8 things today · 2 done."  (the TOTAL, open + done)
  *   only done          "2 done today."
@@ -140,9 +132,6 @@ export function formatLoadMinutes(minutes: number): string {
  * in the same window.
  */
 export function loadLine(load: DayLoad): string | null {
-  if (load.plannedMin !== null && load.freeMin !== null) {
-    return `About ${formatLoadMinutes(load.plannedMin)} planned, ${formatLoadMinutes(load.freeMin)} free.`
-  }
   if (load.plannedMin !== null) return `About ${formatLoadMinutes(load.plannedMin)} planned.`
   if (load.open > 0) {
     const total = load.open + load.done

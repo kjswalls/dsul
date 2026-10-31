@@ -277,6 +277,21 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
 ];
 
 /**
+ * The end of day review's persisted blob (`dsul-eod-store`: its hour, the day
+ * last reviewed, the day its line was waved away). The store is gone (ghost
+ * rows phase 2), but a browser that ran an older build still holds the blob,
+ * and nothing will ever rewrite it, so it goes the first time anything clears.
+ */
+function clearRetiredEodStore(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem('dsul-eod-store');
+  } catch {
+    // Unreadable storage holds nothing we could remove.
+  }
+}
+
+/**
  * Per-user state outside any zustand persist blob, so the audit test cannot
  * walk it by key: saved conversations are a memory-only cache (whose clear
  * also sweeps the pre-2a transcript keys, one fixed plus one per item thread),
@@ -294,21 +309,6 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
  * timeline (lib/item-notes-store.ts) are a memory-only cache of the account's
  * own writing; their clear also bumps an epoch that drops a read in flight.
  */
-/**
- * The end of day review's persisted blob (`dsul-eod-store`: its hour, the day
- * last reviewed, the day its line was waved away). The store is gone (ghost
- * rows phase 2), but a browser that ran an older build still holds the blob,
- * and nothing will ever rewrite it, so it goes the first time anything clears.
- */
-function clearRetiredEodStore(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.removeItem('dsul-eod-store');
-  } catch {
-    // Unreadable storage holds nothing we could remove.
-  }
-}
-
 const RAW_CLEARERS: readonly (() => void)[] = [
   clearRetiredEodStore,
   clearChatState,

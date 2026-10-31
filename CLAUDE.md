@@ -1,7 +1,7 @@
 # dsul
 
 A personal planning PWA — a day/week schedule grid, a braindump sidebar, recurring
-habits, an end-of-day review, and an optional AI assistant (bring your own model).
+habits, leftovers on Today, and an optional AI assistant (bring your own model).
 Next.js App Router + Supabase, deployed on Vercel.
 
 ## Commands
@@ -240,7 +240,7 @@ after the delete, never before, and never blocks it. Read
 [account-deletion.md](memory/plans/account-deletion.md) before touching it.
 
 **State.** Zustand stores in `lib/*-store.ts`, one per concern (planner, view, drag,
-sidebar, eod, morning, conversations, rail, …). `planner-store.ts` is the big one: it
+sidebar, morning, conversations, rail, …). `planner-store.ts` is the big one: it
 holds `items[]` with `tasks`/`habits` projections derived off it.
 
 **Other devices' changes reach the store through one merge.** `catchUpPlanner` in
@@ -462,8 +462,8 @@ faded in one fold at the top of Today until a verb is picked (`lib/ghost-rows.ts
 `components/planner/ghost-fold.tsx`). Ghosts are a view over `selectOverdue`, never a write; milestones
 and recurring items never ghost; today only. The `morning_check_enabled` switch ("Leftovers on Today")
 draws it, on by default for a new account (086). It replaced the dock's waiting line and the end of day
-review (phase 2: modal, dock line, push and `rituals.eod*` gone; `review.saved` now fires when the fold is
-cleared by hand). The iPhone still plans the review until phase 3. Read it before touching either.
+review (phase 2: modal, dock line, push and `rituals.eodTime` gone; `review.saved` now fires when the fold is
+cleared by hand). The iPhone still plans the review until phase 3, so `rituals.eod` stays as its off switch. Read it before touching either.
 [mods.md](memory/plans/mods.md) is the plan for **mods and recipes** (Kirby's pick,
 2026-10-03; decisions 2026-10-07): private, sandboxed mods (QuickJS-in-WASM behind a
 capability broker, host-drawn UI, never CSS), no-code recipes over `ITEM_VERBS`, and

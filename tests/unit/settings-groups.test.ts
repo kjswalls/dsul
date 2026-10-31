@@ -44,6 +44,9 @@ describe('Rituals', () => {
   it('starts a group at every root, in manifest order', () => {
     expect(groups.map((g) => g.parent.id)).toEqual([
       'rituals.morningCheck',
+      // The iPhone evening nudge's off switch, drawn only while it is on
+      // (shownWhen); paneRows is the full list.
+      'rituals.eod',
       'rituals.reminders',
       'rituals.stakes',
       'rituals.push',

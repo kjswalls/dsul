@@ -118,10 +118,9 @@ export function AskHome({ variant = 'rail' }: { variant?: 'rail' | 'mobile' }) {
     [ctx, minutesNow]
   );
 
-  // No day's end to count "free" against: it was the end of day review's
-  // hour, and the review is retired (ghost rows phase 2). dsul never invents one.
+  // Waits for the clock like the openers, so the two land together.
   const load = useMemo(
-    () => (ctx && minutesNow !== null ? loadLine(dayLoad(ctx, { minutesNow, dayEndMin: null })) : null),
+    () => (ctx && minutesNow !== null ? loadLine(dayLoad(ctx)) : null),
     [ctx, minutesNow]
   );
 

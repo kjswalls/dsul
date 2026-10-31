@@ -469,7 +469,7 @@ A quiet batch that throws still delivers the events of the writes it applied
 | Trigger | Where it runs |
 |---|---|
 | item ticked, unticked, skipped, added | browser (or the server runner for phone and reminder ticks) |
-| end-of-day review saved (`saveLastReviewDate`) | browser |
+| leftovers on Today sorted by the person (`noteLeftoversCleared`, morning-store; the id stays `review.saved`, ghost rows phase 2) | browser |
 | a new day opens, the bucket changes | browser, one app-level clock in `<ModHost>` keyed on the user's time zone, one tab per browser via `navigator.locks` |
 | at a time of day | server, a tier of `/api/cron/reminders` |
 | run from ⌘K | browser |
