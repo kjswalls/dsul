@@ -515,13 +515,21 @@ test.describe('atlas', () => {
     await expect(walk).toHaveAttribute('data-walk-card', key);
     await expect(walk.getByTestId('atlas-walk-question')).toHaveText('Still the right next step?');
     await expect(walk.getByTestId('atlas-walk-detail')).toContainText(stepTitle);
-    // The card in the cut-out is live and never dimmed: it is on top at its centre.
+    // The card in the cut-out is live and never dimmed: it is on top at its
+    // centre. Polled, because the camera flies to it (and the hole slides)
+    // after the walk names it; the poll reports what IS on top when it is not.
     const card = page.locator(`[data-atlas-card="${key}"]`);
-    const onTop = await card.evaluate((el) => {
-      const r = el.getBoundingClientRect();
-      return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('[data-atlas-card]') === el;
-    });
-    expect(onTop).toBe(true);
+    await expect
+      .poll(() =>
+        card.evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          if (hit?.closest('[data-atlas-card]') === el) return 'card';
+          const id = hit?.closest('[data-testid]')?.getAttribute('data-testid') ?? hit?.tagName ?? 'nothing';
+          return `${id} at ${Math.round(r.left + r.width / 2)},${Math.round(r.top + r.height / 2)}`;
+        }),
+      )
+      .toBe('card');
 
     // Put on Today is the reschedule verb; it goes once it has run.
     await walk.getByTestId('atlas-walk-today').click();
