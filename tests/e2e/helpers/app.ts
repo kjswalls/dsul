@@ -54,10 +54,14 @@ export async function waitForAppReady(page: Page): Promise<void> {
    * from a `mounted` state that only flips in an effect, so a non-empty value
    * proves the client took over.
    */
+  // On Atlas the capsule's row 1 is Atlas's toolbar, with no header-date, so
+  // the capsule's own `data-mounted` (set from the same effect) stands in.
   await expect(
-    page.getByTestId('header-date').first(),
+    page
+      .locator('[data-testid="header-date"][data-date^="2"], [data-header-capsule][data-mounted]')
+      .first(),
     'app never hydrated — header date stayed at its pre-mount placeholder'
-  ).toHaveAttribute('data-date', /^\d{4}-\d{2}-\d{2}$/, { timeout: 20_000 });
+  ).toBeAttached({ timeout: 20_000 });
 
   await expect(
     page.getByRole('button', { name: 'User menu' }),

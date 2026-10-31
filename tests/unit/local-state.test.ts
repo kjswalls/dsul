@@ -20,6 +20,7 @@ import { useMorningStore } from '@/lib/morning-store';
 import { getSnapshotEpoch } from '@/lib/planner-snapshot';
 import { getItemNotesEpoch, useItemNotesStore } from '@/lib/item-notes-store';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
+import { ATLAS_LOCAL_KEY, readLocalPlaces, writeLocalPlaces } from '@/lib/atlas-positions';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore, SIDEBAR_DEFAULT_WIDTH } from '@/lib/sidebar-store';
 import { recordReleased, releasedOn } from '@/lib/sweep-grace';
@@ -334,6 +335,27 @@ describe('the Atlas UI store', () => {
     expect(adoptLocalState(USER_B)).toBe(true);
     expect(useAtlasUiStore.getState().fitted).toBe(false);
     expect(useAtlasUiStore.getState().camera).toEqual({ x: 0, y: 0, z: 1 });
+  });
+});
+
+/**
+ * Atlas's per-device places (the fallback until migration 087 is applied) are
+ * keyed by the account's container ids: disclosive, so a raw clearer.
+ */
+describe('the Atlas per-device places', () => {
+  it('is in RAW_CLEARERS: a sign-out and an account switch both remove the blob', () => {
+    const place = { kind: 'project' as const, id: 'p1', x: 10, y: 20, band: null };
+    adoptLocalState(USER_A);
+    writeLocalPlaces(USER_A, [place]);
+    expect(readLocalPlaces(USER_A)).toHaveLength(1);
+    clearUserScopedLocalState();
+    expect(localStorage.getItem(ATLAS_LOCAL_KEY)).toBeNull();
+
+    adoptLocalState(USER_A);
+    writeLocalPlaces(USER_A, [place]);
+    expect(adoptLocalState(USER_B)).toBe(true);
+    expect(localStorage.getItem(ATLAS_LOCAL_KEY)).toBeNull();
+    expect(readLocalPlaces(USER_B)).toEqual([]);
   });
 });
 
@@ -856,6 +878,11 @@ describe('nothing persists per-user state outside the registry', () => {
       // number from 0 to 100. Per device on purpose (the pack and switches are
       // the account's), and it says nothing about anyone.
       'lib/sounds/volume.ts',
+      // `dsul-atlas-places`: Atlas's per-device places, `{userId, places}`, the
+      // fallback until migration 087 is applied. Keyed by the account's
+      // container ids, so clearAtlasLocalState is in RAW_CLEARERS (own test
+      // above), and another owner's blob reads as empty.
+      'lib/atlas-positions.ts',
     ].sort());
   });
 

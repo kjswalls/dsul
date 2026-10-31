@@ -16,7 +16,7 @@ import { useAtlasUiStore } from '@/lib/atlas-ui-store';
  * - ignores a press that starts on a control or an item row, which have their
  *   own meaning;
  * - moves only this card's own transform while dragging (local state), and
- *   commits once, on pointerup (PR1a: session state; PR1b: the positions table);
+ *   commits once, on pointerup (atlas-store `place`: one write per drag);
  * - swallows the click that ends a drag, so a drop never opens or ticks.
  */
 

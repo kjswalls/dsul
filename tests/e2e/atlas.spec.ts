@@ -4,9 +4,10 @@ import { reloadApp, runCommand, setScope } from './helpers/app';
 import { cleanupByTitlePrefix, cleanupTestLabels, createTestTask, specScope } from './helpers/api';
 
 /**
- * Atlas (design PR1a): the third scope, desktop only. A project shows as a
- * card with its next step; a row's right-click is the item menu. Positions are
- * memory-only until PR1b, so nothing here reloads to check a place.
+ * Atlas: the third scope, desktop only. A project shows as a card with its
+ * next step; a row's right-click is the item menu. A card dragged on Your map
+ * stays where it was put across a reload (PR1b: the account path, since the
+ * local stack applies migration 087; the per-device fallback is unit-tested).
  *
  * Under its own prefix, swept by name like organize.spec.ts (projects are not
  * items, so the title sweep would miss them).
@@ -75,6 +76,46 @@ test.describe('atlas', () => {
     await expect(page.getByTestId('item-dialog')).toBeVisible();
 
     // Back to Day.
+    await setScope(page, 'Day');
+  });
+
+  test('a dragged card stays where it was put after a reload', async ({ page }) => {
+    const name = scope.title('Placed');
+    const projectId = await createProject(page, name);
+    await reloadApp(page);
+
+    const isPlaceWrite = (r: import('@playwright/test').Response, needle: string) =>
+      r.url().includes('/rest/v1/atlas_positions') &&
+      r.request().method() === 'POST' &&
+      (r.request().postData() ?? '').includes(needle);
+
+    // Opening Atlas seeds the new card's place and writes it once.
+    const seeded = page.waitForResponse((r) => isPlaceWrite(r, projectId));
+    await setScope(page, 'Atlas');
+    const card = page.locator(`[data-atlas-card="project:${projectId}"]`);
+    await expect(card).toBeVisible();
+    expect((await seeded).ok()).toBe(true);
+    await card.scrollIntoViewIfNeeded();
+    const before = await card.evaluate((el) => (el as HTMLElement).style.transform);
+
+    // Drag by the footer (rows and controls never start a drag).
+    const box = (await card.getByTestId('atlas-card-footer').boundingBox())!;
+    const from = { x: box.x + 8, y: box.y + box.height / 2 };
+    const dropped = page.waitForResponse((r) => isPlaceWrite(r, projectId));
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i++) await page.mouse.move(from.x + i * 15, from.y + i * 10);
+    await page.mouse.up();
+    expect((await dropped).ok()).toBe(true);
+    const after = await card.evaluate((el) => (el as HTMLElement).style.transform);
+    expect(after).not.toBe(before);
+
+    // Atlas is remembered on this device, so the reload opens on it.
+    await reloadApp(page);
+    const again = page.locator(`[data-atlas-card="project:${projectId}"]`);
+    await expect(again).toBeVisible();
+    await expect.poll(() => again.evaluate((el) => (el as HTMLElement).style.transform)).toBe(after);
+
     await setScope(page, 'Day');
   });
 
