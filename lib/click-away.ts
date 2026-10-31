@@ -34,6 +34,8 @@
  * Display shelf ✕ that took its setting off, and the shelf's last line with it).
  */
 
+import { isPopperUp } from '@/lib/popper-up';
+
 export const CLICK_AWAY_SCOPE_ATTR = 'data-click-away-scope';
 
 /** Anything matching this (or inside it) is never "empty space". */
@@ -85,7 +87,7 @@ function onPointerDown(e: PointerEvent) {
     // for it too), and that is ALL it should do — the same rule the panel's
     // Escape follows. Checked here, not at click time, because by then Radix
     // has already torn the popper down.
-    !document.querySelector('[data-radix-popper-content-wrapper]') &&
+    !isPopperUp() &&
     !onScrollbar(e)
       ? { x: e.clientX, y: e.clientY }
       : null;

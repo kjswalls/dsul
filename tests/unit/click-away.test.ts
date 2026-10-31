@@ -116,6 +116,23 @@ describe('subscribeClickAway', () => {
     expect(h).not.toHaveBeenCalled();
   });
 
+  it('ignores a popover that is closed but still mounted for its exit animation', () => {
+    // Radix keeps closed content in the DOM until animationend; when that never
+    // fires, a stale wrapper must not swallow every click-away (CI, 2026-10-31).
+    const h = vi.fn();
+    off = subscribeClickAway(h);
+    const popper = document.createElement('div');
+    popper.setAttribute('data-radix-popper-content-wrapper', '');
+    popper.innerHTML = '<div data-state="closed" role="dialog"></div>';
+    document.body.appendChild(popper);
+    press(el('empty'));
+    expect(h).toHaveBeenCalledTimes(1);
+    popper.firstElementChild!.setAttribute('data-state', 'open');
+    press(el('empty'));
+    expect(h).toHaveBeenCalledTimes(1);
+    popper.remove();
+  });
+
   it('removes its document listeners with the last subscriber', () => {
     const add = vi.spyOn(document, 'addEventListener');
     const remove = vi.spyOn(document, 'removeEventListener');

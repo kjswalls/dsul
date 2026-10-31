@@ -175,6 +175,7 @@ import { heldByTrash, useTrashedNames } from '@/components/planner/organize/use-
 import { useEscapeLadder } from '@/components/planner/organize/escape-ladder';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { isPopperUp } from '@/lib/popper-up';
 
 /**
  * The one add/edit dialog for every item type, replacing AddTaskDialog /
@@ -2874,7 +2875,7 @@ function ItemDialogInner({
       }
       // Radix renders every popover and menu inside this wrapper. While one is
       // up it owns Escape, and the panel must not close out from under it.
-      if (document.querySelector('[data-radix-popper-content-wrapper]')) return;
+      if (isPopperUp()) return;
       // Non-modal means focus usually lives OUTSIDE the panel, so a bare window
       // listener would make Escape-out-of-the-braindump close the inspector
       // too. Claim the key only from inside the panel, or when nothing else

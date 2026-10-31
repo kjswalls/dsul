@@ -19,6 +19,7 @@ import { chooseNoAI } from '@/lib/no-ai';
 import { useRailStore } from '@/lib/rail-store';
 import { cn } from '@/lib/utils';
 import { useOpenerContext } from '@/hooks/use-opener-context';
+import { isPopperUp } from '@/lib/popper-up';
 
 /** How many things it could ask the setup home previews (the desktop column). */
 export const SETUP_PREVIEWS = 3;
@@ -105,7 +106,7 @@ export function AskSetup({
     if (!visible) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
-      if (document.querySelector('[data-radix-popper-content-wrapper]')) return;
+      if (isPopperUp()) return;
       const el = document.activeElement;
       if (el && el !== document.body && (!el.closest('[data-rail]') || typing(el))) return;
       park();
