@@ -160,6 +160,11 @@
   border-radius: 50%;
   background: var(--primary);
   transform: translateY(calc(var(--wm-size) * -0.08));
+  /* At rest it breathes, the relay's single-tile cousin (Kirby, 2026-10-31;
+     the keyframes are globals.css `lime-breathe`). A flavor's own dot
+     animation, or the restore, takes over while it plays. */
+  --breathe-glow: var(--primary);
+  animation: lime-breathe 3.2s ease-in-out infinite;
 }
 
 /* 1 · classic: today's mark; the shimmer, and the dot pulses once. */
