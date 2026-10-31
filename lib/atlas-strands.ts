@@ -30,11 +30,22 @@ export interface AtlasFrameSpec {
 }
 
 /**
- * Over this many strands the board stops drawing them at rest and draws only
- * the hovered or focused card's own. A hundred dashed curves crossing a
- * hundred cards read as noise, not as links; one card's handful always reads.
+ * At most this many strands at rest. Over it the board keeps drawing, but
+ * only the nearest few per goal (strandsToDraw), so there is never a count
+ * where every strand vanishes at once; the hovered or focused card's own are
+ * always drawn on top of that. A hundred dashed curves crossing a hundred
+ * cards read as noise, not as links; forty short ones and one card's handful
+ * always read.
  */
 export const ATLAS_STRAND_REST_CAP = 40;
+
+/**
+ * A season frame larger than this many times its members' own area is not
+ * drawn: a routine dragged across the board would otherwise stretch the
+ * frame under every card in between, claiming cards the season does not hold.
+ * Members sitting together (a row, a pair stacked, an L) stay well under it.
+ */
+export const ATLAS_FRAME_MAX_SPREAD = 4;
 
 /** How far a season frame stands off its members, and the room its tab takes on top. */
 export const ATLAS_FRAME_PAD = 26;
@@ -61,13 +72,43 @@ export function strandPolicy(layout: AtlasLayout): { strands: boolean; frames: b
   }
 }
 
-/** The strands to draw now: all of them, or over the cap only the hot card's. */
+/**
+ * The strands to draw now, in `links` order (a strand keeps its place, so a
+ * hot one only changes colour and its fade plays). Up to the cap: all of
+ * them. Over it: each goal's nearest feeders first, taken round robin across
+ * goals (every goal's closest, then every goal's second closest, ...) until
+ * the cap, so each goal keeps at least one strand while goals number under
+ * the cap; plus every strand with a hot end. `positions` are where the cards
+ * rest; a card without one ranks last.
+ */
 export function strandsToDraw(
   links: readonly AtlasStrandLink[],
-  hot: ReadonlySet<string>
+  hot: ReadonlySet<string>,
+  positions?: ReadonlyMap<string, Point>
 ): AtlasStrandLink[] {
   if (links.length <= ATLAS_STRAND_REST_CAP) return [...links];
-  return links.filter((l) => hot.has(l.from) || hot.has(l.to));
+  const byGoal = new Map<string, { i: number; d: number }[]>();
+  links.forEach((l, i) => {
+    const a = positions?.get(l.from);
+    const b = positions?.get(l.to);
+    const d = a && b ? Math.hypot(a.x - b.x, a.y - b.y) : Infinity;
+    const list = byGoal.get(l.from) ?? [];
+    list.push({ i, d });
+    byGoal.set(l.from, list);
+  });
+  for (const list of byGoal.values()) list.sort((x, y) => x.d - y.d || x.i - y.i);
+  const keep = new Set<number>();
+  for (let rank = 0; keep.size < ATLAS_STRAND_REST_CAP; rank++) {
+    let any = false;
+    for (const list of byGoal.values()) {
+      if (rank >= list.length) continue;
+      any = true;
+      keep.add(list[rank].i);
+      if (keep.size >= ATLAS_STRAND_REST_CAP) break;
+    }
+    if (!any) break;
+  }
+  return links.filter((l, i) => keep.has(i) || hot.has(l.from) || hot.has(l.to));
 }
 
 export function isHotStrand(link: AtlasStrandLink, hot: ReadonlySet<string>): boolean {
@@ -108,19 +149,26 @@ export function strandPath(a: Rect, b: Rect): string {
   return `M${r1(ax)} ${r1(y1)} C ${r1(ax)} ${r1(y1 + dy)}, ${r1(bx)} ${r1(y2 - dy)}, ${r1(bx)} ${r1(y2)}`;
 }
 
-/** A season frame's box round its members' rects, or null with none drawn. */
+/**
+ * A season frame's box round its members' rects, or null with none drawn, or
+ * when the members are spread too far apart to frame honestly
+ * (ATLAS_FRAME_MAX_SPREAD).
+ */
 export function frameBox(rects: readonly Rect[]): Rect | null {
   if (rects.length === 0) return null;
   let x0 = Infinity;
   let y0 = Infinity;
   let x1 = -Infinity;
   let y1 = -Infinity;
+  let own = 0;
   for (const r of rects) {
     x0 = Math.min(x0, r.x);
     y0 = Math.min(y0, r.y);
     x1 = Math.max(x1, r.x + r.w);
     y1 = Math.max(y1, r.y + r.h);
+    own += r.w * r.h;
   }
+  if (own > 0 && (x1 - x0) * (y1 - y0) > own * ATLAS_FRAME_MAX_SPREAD) return null;
   return {
     x: x0 - ATLAS_FRAME_PAD,
     y: y0 - ATLAS_FRAME_TAB,

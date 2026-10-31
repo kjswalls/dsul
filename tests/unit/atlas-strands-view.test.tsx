@@ -106,7 +106,8 @@ describe('strands on the card layer', () => {
     expect(s.dataset.hot).toBe('true');
     expect(s.style.stroke).toBe('var(--primary)');
     expect(s.style.strokeDasharray).toBe('none');
-    // The same element, moved not remounted, keeps its curve.
+    // The same element, never moved or remounted, so its colour fade plays.
+    expect(s).toBe(strands()[0]);
     expect(s.getAttribute('d')).toMatch(/^M/);
 
     fireEvent.pointerLeave(screen.getByTestId('atlas-world'));
@@ -133,6 +134,7 @@ describe('strands on the card layer', () => {
     const before = s.getAttribute('d');
     // The card moves by its own transform (a drag is the card's local state).
     el.style.transform = 'translate(2000px, 1500px)';
+    fireEvent.pointerMove(window, { pointerId: 1 });
     frame(16);
     expect(s.getAttribute('d')).not.toBe(before);
     expect(s.getAttribute('d')).toMatch(/2000/);
@@ -141,6 +143,50 @@ describe('strands on the card layer', () => {
     fireEvent.pointerUp(window, { pointerId: 1 });
     for (let i = 0; i < 30; i++) frame(40);
     expect(raf.pending()).toBe(0);
+  });
+
+  it('stops following a held press the page never hears released', () => {
+    seedGoal();
+    render(<AtlasView />);
+    for (let i = 0; i < 30; i++) frame(40);
+    const el = card('project:p1');
+    fireEvent.pointerDown(el, { button: 0, pointerId: 1 });
+    expect(raf.pending()).toBe(1);
+    // No pointerup ever comes (released outside the window): with the pointer
+    // still, the loop runs out on its own.
+    for (let i = 0; i < 30; i++) frame(40);
+    expect(raf.pending()).toBe(0);
+    // And after a window blur, a stray move no longer counts as a drag.
+    fireEvent.pointerDown(el, { button: 0, pointerId: 2 });
+    fireEvent.blur(window);
+    for (let i = 0; i < 30; i++) frame(40);
+    fireEvent.pointerMove(window, { pointerId: 2 });
+    expect(raf.pending()).toBe(0);
+  });
+
+  it('reads every card before writing any strand in a frame', () => {
+    seedGoal();
+    usePlannerStore.setState({ goals: [goal('g1', ['a', 'b'])] });
+    render(<AtlasView />);
+    expect(strands()).toHaveLength(2);
+    for (let i = 0; i < 30; i++) frame(40);
+    const log: string[] = [];
+    const gcs = window.getComputedStyle.bind(window);
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((e, p) => {
+      log.push('read');
+      return gcs(e, p);
+    });
+    for (const path of strands()) {
+      const set = path.setAttribute.bind(path);
+      vi.spyOn(path, 'setAttribute').mockImplementation((n, v) => {
+        log.push('write');
+        set(n, v);
+      });
+    }
+    fireEvent.pointerDown(card('project:p1'), { button: 0, pointerId: 1 });
+    frame(16);
+    expect(log).toContain('write');
+    expect(log.lastIndexOf('read')).toBeLessThan(log.indexOf('write'));
   });
 
   it('draws once and runs no loop under reduced motion', () => {
@@ -174,7 +220,7 @@ describe('strands on the card layer', () => {
     expect(screen.queryByTestId('atlas-strands')).toBeNull();
   });
 
-  it(`over ${ATLAS_STRAND_REST_CAP} strands, draws only the hot card's`, () => {
+  it(`over ${ATLAS_STRAND_REST_CAP} strands, still draws ${ATLAS_STRAND_REST_CAP} at rest, plus the hot card's`, () => {
     const n = ATLAS_STRAND_REST_CAP + 5;
     const projects = Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: `P${i}`, emoji: '' }) as Project);
     const items = projects.map((p, i) => task(`t${i}`, { project: p.name } as never));
@@ -182,9 +228,15 @@ describe('strands on the card layer', () => {
     usePlannerStore.setState({ goals: [goal('g1', items.map((t) => t.id))] });
     render(<AtlasView />);
     expect(screen.getAllByTestId('atlas-strands')).toHaveLength(1);
-    expect(strands()).toHaveLength(0);
-    fireEvent.pointerOver(card('project:p3'));
-    expect(strands().map((s) => s.dataset.atlasStrand)).toEqual(['goal:g1\nproject:p3']);
+    // Never a cliff to none: the nearest strands stay drawn.
+    expect(strands()).toHaveLength(ATLAS_STRAND_REST_CAP);
+    const shown = new Set(strands().map((s) => s.dataset.atlasStrand));
+    const hidden = projects.find((p) => !shown.has(`goal:g1\nproject:${p.id}`))!;
+    fireEvent.pointerOver(card(`project:${hidden.id}`));
+    expect(strands()).toHaveLength(ATLAS_STRAND_REST_CAP + 1);
+    expect(strands().filter((s) => s.dataset.hot === 'true').map((s) => s.dataset.atlasStrand)).toEqual([
+      `goal:g1\nproject:${hidden.id}`,
+    ]);
     // Hovering the goal lights all of its own, which is the point of hovering it.
     fireEvent.pointerOver(card('goal:g1'));
     expect(strands()).toHaveLength(n);

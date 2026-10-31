@@ -33,14 +33,17 @@ const linkId = (l: AtlasStrandLink) => `${l.from}\n${l.to}`;
  * Nothing here re-renders a card, and a moving card re-renders nothing here:
  * the paths' `d` and the frames' boxes are written straight to the DOM from
  * each card's live transform, in one rAF loop that runs only while something
- * can be moving (a glide after a layout change, a drag while a press is held,
- * a spring back after Escape) and stops after it. React renders this layer
- * only when the links, the frames or the hot card change.
+ * can be moving (a glide after a layout change, a drag while the pointer
+ * moves on a held card, a spring back after Escape) and stops after it. Each
+ * frame reads every card it needs first and only then writes, so a frame
+ * costs one layout, not one per strand. React renders this layer only when
+ * the links, the frames or the hot card change.
  *
  * Hot: the card under the pointer and the card holding focus. A strand with
- * either end hot turns lime (var(--primary)) at full strength, solid, on top
- * of the others. Over ATLAS_STRAND_REST_CAP strands only the hot card's are
- * drawn at all.
+ * either end hot turns lime (var(--primary)) at full strength, solid. Strands
+ * keep their order, so turning hot changes colour only and the fade plays.
+ * Over ATLAS_STRAND_REST_CAP strands the nearest few per goal are drawn at
+ * rest (lib/atlas-strands.ts strandsToDraw), plus the hot card's own.
  */
 export const AtlasStrands = memo(function AtlasStrands({
   links,
@@ -66,13 +69,9 @@ export const AtlasStrands = memo(function AtlasStrands({
   const [focus, setFocus] = useState<string | null>(null);
   const hot = useMemo(() => new Set([hover, focus].filter((k): k is string => !!k)), [hover, focus]);
 
-  const drawn = useMemo(() => strandsToDraw(links, hot), [links, hot]);
-  // Hot strands last, so they cross over the rest. One keyed list, so a
-  // strand turning hot is moved, not remounted, and keeps its curve.
-  const ordered = useMemo(
-    () => [...drawn.filter((l) => !isHotStrand(l, hot)), ...drawn.filter((l) => isHotStrand(l, hot))],
-    [drawn, hot]
-  );
+  // In `links` order, never re-sorted by heat: a node moved in the DOM is a
+  // new node to the browser, and its colour fade would not play.
+  const ordered = useMemo(() => strandsToDraw(links, hot, positions), [links, hot, positions]);
   const drawnRef = useRef(ordered);
   const framesRef = useRef(frames);
   useLayoutEffect(() => {
@@ -92,11 +91,16 @@ export const AtlasStrands = memo(function AtlasStrands({
     return el;
   }, []);
 
-  /** Write every drawn strand's curve and every frame's box from where the cards are now. */
+  /**
+   * Write every drawn strand's curve and every frame's box from where the
+   * cards are now. Two passes: every read (transform, size) first, then every
+   * write, because a read after a write forces the browser to lay out again.
+   */
   const draw = useCallback(() => {
+    // Pass 1: read.
     const seen = new Map<string, Rect | null>();
-    const rectOf = (key: string): Rect | null => {
-      if (seen.has(key)) return seen.get(key)!;
+    const read = (key: string) => {
+      if (seen.has(key)) return;
       const el = cardEl(key);
       let r: Rect | null = null;
       const at = el ? (parseTranslate(getComputedStyle(el).transform) ?? parseTranslate(el.style.transform)) : null;
@@ -105,8 +109,15 @@ export const AtlasStrands = memo(function AtlasStrands({
       // A card leaving (a filter took it) or gone: no strand to it.
       if (el?.dataset.leaving === 'true') r = null;
       seen.set(key, r);
-      return r;
     };
+    for (const l of drawnRef.current) {
+      read(l.from);
+      read(l.to);
+    }
+    for (const f of framesRef.current) f.members.forEach(read);
+    const rectOf = (key: string) => seen.get(key) ?? null;
+
+    // Pass 2: write.
     for (const l of drawnRef.current) {
       const path = paths.current.get(linkId(l));
       if (!path) continue;
@@ -129,13 +140,16 @@ export const AtlasStrands = memo(function AtlasStrands({
     }
   }, [cardEl]);
 
-  // The follow loop: one rAF at a time, until `until` has passed and no press is held.
+  // The follow loop: one rAF at a time, until `until` has passed. A held
+  // press does not keep it alive on its own: each pointer move while held
+  // pushes `until` on, so a release the page never hears (outside the window,
+  // a lost capture) costs at most FOLLOW_MS of reads, never a loop forever.
   const raf = useRef(0);
   const until = useRef(0);
   const held = useRef(false);
   const tick = useCallback(() => {
     draw();
-    if (held.current || performance.now() < until.current) raf.current = requestAnimationFrame(tick);
+    if (performance.now() < until.current) raf.current = requestAnimationFrame(tick);
     else raf.current = 0;
   }, [draw]);
   const follow = useCallback(
@@ -175,12 +189,19 @@ export const AtlasStrands = memo(function AtlasStrands({
     const down = (e: PointerEvent) => {
       if (!keyOf(e.target)) return;
       held.current = true;
-      follow(0);
+      follow(FOLLOW_MS);
+    };
+    const move = () => {
+      if (held.current) follow(FOLLOW_MS);
     };
     const up = () => {
       if (!held.current) return;
       held.current = false;
       follow(FOLLOW_MS);
+    };
+    // A press the page will never hear released: stop treating it as held.
+    const drop = () => {
+      held.current = false;
     };
     // Escape mid-drag springs the card back by its glide.
     const key = (e: KeyboardEvent) => {
@@ -191,8 +212,11 @@ export const AtlasStrands = memo(function AtlasStrands({
     world.addEventListener('focusin', focusIn, true);
     world.addEventListener('focusout', focusOut, true);
     world.addEventListener('pointerdown', down, true);
+    window.addEventListener('pointermove', move, true);
     window.addEventListener('pointerup', up, true);
     window.addEventListener('pointercancel', up, true);
+    window.addEventListener('blur', drop);
+    world.addEventListener('lostpointercapture', up, true);
     window.addEventListener('keydown', key, true);
     return () => {
       world.removeEventListener('pointerover', over, true);
@@ -200,8 +224,11 @@ export const AtlasStrands = memo(function AtlasStrands({
       world.removeEventListener('focusin', focusIn, true);
       world.removeEventListener('focusout', focusOut, true);
       world.removeEventListener('pointerdown', down, true);
+      window.removeEventListener('pointermove', move, true);
       window.removeEventListener('pointerup', up, true);
       window.removeEventListener('pointercancel', up, true);
+      window.removeEventListener('blur', drop);
+      world.removeEventListener('lostpointercapture', up, true);
       window.removeEventListener('keydown', key, true);
     };
   }, [follow]);
@@ -210,10 +237,10 @@ export const AtlasStrands = memo(function AtlasStrands({
   // its strands' ends: one draw per change, from a ResizeObserver.
   const endKeys = useMemo(() => {
     const s = new Set<string>();
-    for (const l of drawn) s.add(l.from).add(l.to);
+    for (const l of ordered) s.add(l.from).add(l.to);
     for (const f of frames) for (const m of f.members) s.add(m);
     return [...s].sort().join('\n');
-  }, [drawn, frames]);
+  }, [ordered, frames]);
   useEffect(() => {
     if (typeof ResizeObserver === 'undefined' || !endKeys) return;
     const ro = new ResizeObserver(() => draw());

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ATLAS_FRAME_PAD,
   ATLAS_FRAME_TAB,
+  ATLAS_FRAME_MAX_SPREAD,
   ATLAS_STRAND_REST_CAP,
   frameBox,
   isHotStrand,
@@ -57,6 +58,15 @@ describe('frameBox', () => {
   it('is null with nothing to frame', () => {
     expect(frameBox([])).toBeNull();
   });
+  it('frames members sitting together, and not members spread across the board', () => {
+    // A row, a stacked pair and a diagonal neighbour all stay framed.
+    expect(frameBox([rect(0, 0), rect(300, 0), rect(600, 0)])).not.toBeNull();
+    expect(frameBox([rect(0, 0), rect(0, 230)])).not.toBeNull();
+    expect(frameBox([rect(0, 0), rect(300, 230)])).not.toBeNull();
+    // One routine dragged far off: the box would claim every card between.
+    expect(frameBox([rect(0, 0), rect(2400, 1600)])).toBeNull();
+    expect(ATLAS_FRAME_MAX_SPREAD).toBe(4);
+  });
 });
 
 describe('parseTranslate', () => {
@@ -82,13 +92,30 @@ describe('policy and the cap', () => {
     expect(strandPolicy('goal')).toEqual({ strands: false, frames: false });
   });
 
-  it('draws every strand up to the cap, and over it only the hot card\'s', () => {
+  it('draws every strand up to the cap, and over it the nearest per goal, never none', () => {
     const few = Array.from({ length: ATLAS_STRAND_REST_CAP }, (_, i) => ({ from: 'goal:g', to: `project:${i}` }));
     expect(strandsToDraw(few, new Set())).toHaveLength(ATLAS_STRAND_REST_CAP);
     const many = [...few, { from: 'goal:h', to: 'project:x' }];
-    expect(strandsToDraw(many, new Set())).toEqual([]);
-    expect(strandsToDraw(many, new Set(['project:3']))).toEqual([{ from: 'goal:g', to: 'project:3' }]);
-    expect(strandsToDraw(many, new Set(['goal:h']))).toEqual([{ from: 'goal:h', to: 'project:x' }]);
+    // One over the cap: still the cap's worth at rest, not a cliff to zero.
+    const pos = new Map<string, { x: number; y: number }>([
+      ['goal:g', { x: 0, y: 0 }],
+      ['goal:h', { x: 5000, y: 0 }],
+      ['project:x', { x: 5300, y: 0 }],
+    ]);
+    few.forEach((l, i) => pos.set(l.to, { x: 300 + i * 100, y: 0 }));
+    const rest = strandsToDraw(many, new Set(), pos);
+    expect(rest).toHaveLength(ATLAS_STRAND_REST_CAP);
+    // Every goal keeps its nearest strand, and the farthest of g's goes.
+    expect(rest).toContainEqual({ from: 'goal:h', to: 'project:x' });
+    expect(rest).not.toContainEqual({ from: 'goal:g', to: `project:${ATLAS_STRAND_REST_CAP - 1}` });
+    // Kept in `links` order.
+    const idx = rest.map((l) => many.indexOf(l));
+    expect([...idx].sort((a, b) => a - b)).toEqual(idx);
+    // A hot end adds its own on top.
+    const far = { from: 'goal:g', to: `project:${ATLAS_STRAND_REST_CAP - 1}` };
+    const hot = strandsToDraw(many, new Set([far.to]), pos);
+    expect(hot).toHaveLength(ATLAS_STRAND_REST_CAP + 1);
+    expect(hot).toContainEqual(far);
   });
 
   it('is hot from either end', () => {
