@@ -34,6 +34,17 @@ import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
  * lib/dock-notices.ts for the shape and the membership rule.
  */
 
+/**
+ * The dock's waiting line is retired for phase 1 of the ghost rows
+ * (memory/plans/ghost-rows.md): the fold at the top of Today shows the same
+ * pile in place, and two surfaces for one pile is the noise it replaces. A
+ * named constant rather than a term that cancels out, so the retirement is a
+ * fact a test can assert; phase 2 deletes this and the tray together. While
+ * true, `wouldShow`'s own gates (the load gate among them) are unreached; the
+ * fold's load gate is pinned in tests/unit/ghost-fold.test.tsx.
+ */
+export const WAITING_LINE_RETIRED = true;
+
 /** Everything both platforms need, computed once. */
 function usePastDue() {
   const loaded = usePlannerLoaded();
@@ -112,7 +123,7 @@ function usePastDue() {
   // phase 2 deletes them; `wouldShow` is what it used to answer.
   const wouldShow =
     loaded && morningCheckEnabled && dismissedDate !== todayStr && (summary.count > 0 || isOpen);
-  const visible = wouldShow && !morningCheckEnabled;
+  const visible = wouldShow && !WAITING_LINE_RETIRED;
 
   // `isOpen` is the store's answer; `trayOpen` is the one any surface may
   // render from. `visible` deliberately keeps using the raw flag: the row must

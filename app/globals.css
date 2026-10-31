@@ -2792,15 +2792,18 @@ body {
 /* Ghost rows (components/planner/ghost-fold.tsx, memory/plans/ghost-rows.md):
    what was left on an earlier day, faded at the top of today. The box is a
    dashed outline with no fill, closing into a solid box on hover or focus.
-   Neutral inks only: nothing lime lives in a ghost row, so its fades composite
-   nothing the accent rule protects. */
+   Neutral inks only, and kept that way on purpose: the priority bars are drawn
+   muted (PriorityGlyph's `muted`, since `low` is lime) and the done line's lime
+   dot sits outside any row, so arrive's opacity composites no lime and nothing
+   here is the accent rule's exception. A box that cannot keep (disabled) never
+   closes: the solid box and its Plus would promise a no-op. */
 [data-ghost-row] .ghost-box {
   background: transparent;
   outline: 1px dashed color-mix(in oklch, var(--muted-foreground) 55%, transparent);
   outline-offset: -1px;
   transition: outline-color 0.15s, background-color 0.15s;
 }
-[data-ghost-row]:is(:hover, :has(:focus-visible)) .ghost-box {
+[data-ghost-row]:is(:hover, :has(:focus-visible)) .ghost-box:not(:disabled) {
   outline-style: solid;
   outline-color: var(--muted-foreground);
   background: var(--surface-3);

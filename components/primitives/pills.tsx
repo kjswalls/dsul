@@ -186,7 +186,18 @@ const BAR_STACK_HEIGHT = 'h-2.5';
  * not the ink: the bars only fill its lower 10px, so the glyph rendered 3px
  * below the row's optical center while every other rail item sat on it.
  */
-export function PriorityGlyph({ priority, className }: { priority: Priority; className?: string }) {
+export function PriorityGlyph({
+  priority,
+  className,
+  muted = false,
+}: {
+  priority: Priority;
+  className?: string;
+  /** Lit bars in a neutral ink instead of the priority's colour, for a row that
+   *  is drawn receded (the ghost rows): `low` is lime, and the accent may never
+   *  be faded through a parent's opacity, so a receded row mutes the fill. */
+  muted?: boolean;
+}) {
   const lit = PRIORITY_BARS[priority];
   const label = `${PRIORITY_LABEL[priority]} priority`;
   return (
@@ -200,7 +211,7 @@ export function PriorityGlyph({ priority, className }: { priority: Priority; cla
           {BAR_HEIGHT.map((h, i) => (
             <span
               key={h}
-              className={cn('w-0.5 rounded-full', h, i < lit ? PRIORITY_FILL[priority] : 'bg-muted-foreground/25')}
+              className={cn('w-0.5 rounded-full', h, i < lit ? (muted ? 'bg-muted-foreground/60' : PRIORITY_FILL[priority]) : 'bg-muted-foreground/25')}
             />
           ))}
         </span>

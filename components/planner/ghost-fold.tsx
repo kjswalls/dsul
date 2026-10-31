@@ -9,6 +9,7 @@ import { useOverdueInputs } from '@/hooks/use-overdue-today';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { addDaysToDateStr, milestoneItemIds } from '@/lib/goals';
 import { ghostFoldStartsCollapsed, ghostWeekday, selectGhostRows } from '@/lib/ghost-rows';
+import { toDateOnly } from '@/lib/overdue';
 import { canMoveToNextDay, canReschedule, canSendToBraindump, formatTargetDay } from '@/lib/row-moves';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { openEditFor } from '@/lib/ui-store';
@@ -71,8 +72,14 @@ function canLetGo(item: TaskItem): boolean {
   return getItemTypeConfig(itemTypeName(item)).allowedStatuses.includes('cancelled');
 }
 
-/** The row-move gates (lib/row-moves.ts) are asked on the ghost's own day. */
-const ghostDay = (item: TaskItem) => item.startDate ?? '';
+/**
+ * The ghost's own day, as YYYY-MM-DD. Normalised here, once, because the
+ * selector admits legacy full-ISO startDates (`items.start_date` is text, and
+ * lib/overdue.ts toDateOnly tolerates them), and formatTargetDay, the calendar
+ * and the row-move gates all read a bare date: an ISO string there throws
+ * (Intl formats an Invalid Date as a RangeError) and takes the Day view down.
+ */
+const ghostDay = (item: TaskItem) => toDateOnly(item.startDate ?? '');
 
 /** May this ghost be put on today? Reschedule's gate, as the braindump's "Move to today" asks. */
 const canKeep = (item: TaskItem) => canReschedule(item, 'task', ghostDay(item));
@@ -102,15 +109,29 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
   const [sheetFor, setSheetFor] = useState<string | null>(null);
   const sheetItem = sheetFor ? (ghosts.find((g) => g.id === sheetFor) ?? null) : null;
 
-  // "All sorted, you got this" for a few seconds once the last ghost is
-  // handled, then nothing. Keyed off the count falling to zero while this fold
-  // is mounted, so a day that never had a ghost says nothing at all.
+  // "All sorted, you got this" for a few seconds once the person handles the
+  // last ghost, then nothing. Only a verb run from THIS fold counts: `acted` is
+  // set by each one and consumed by the next change of count, so a pile
+  // emptied by anything else (the auto-age sweep at landing, another device's
+  // edit through catch-up, a paused project, an away period) goes quietly. A
+  // day that never had a ghost says nothing at all, and an undo that brings a
+  // ghost back takes the line down with it.
   const [done, setDone] = useState(false);
+  // A ghost back (an undo inside the window) ends the line at once.
+  if (done && count > 0) setDone(false);
   const prevCount = useRef(count);
+  const acted = useRef(false);
+  const act = <A extends unknown[]>(fn: (...args: A) => void) => (...args: A) => {
+    acted.current = true;
+    fn(...args);
+  };
   useEffect(() => {
     const was = prevCount.current;
+    if (was === count) return;
     prevCount.current = count;
-    if (!(was > 0 && count === 0)) return;
+    const byUs = acted.current;
+    acted.current = false;
+    if (!(was > 0 && count === 0 && byUs)) return;
     setDone(true);
     const t = window.setTimeout(() => setDone(false), GHOST_DONE_MS);
     return () => window.clearTimeout(t);
@@ -133,11 +154,11 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
     );
   }
 
-  const keep = (t: TaskItem) => moveTaskToDate(t.id, todayStr);
-  const toTomorrow = (t: TaskItem) => moveTaskToDate(t.id, tomorrow);
-  const moveTo = (t: TaskItem, day: string) => moveTaskToDate(t.id, day);
-  const toSidebar = (t: TaskItem) => unscheduleTask(t.id);
-  const letGo = (t: TaskItem) => letGoItems([t.id]);
+  const keep = act((t: TaskItem) => moveTaskToDate(t.id, todayStr));
+  const toTomorrow = act((t: TaskItem) => moveTaskToDate(t.id, tomorrow));
+  const moveTo = act((t: TaskItem, day: string) => moveTaskToDate(t.id, day));
+  const toSidebar = act((t: TaskItem) => unscheduleTask(t.id));
+  const letGo = act((t: TaskItem) => letGoItems([t.id]));
 
   // One gesture, one history entry, one undo. moveTasksToDate keeps each item's
   // own bucket and drops stale clock times (its contract); it already refuses
@@ -145,14 +166,12 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
   // unscheduleTask, under the same "Unschedule task:" label.
   const keepable = ghosts.filter(canKeep);
   const sendable = ghosts.filter((t) => canSendToBraindump(t, 'task', ghostDay(t), milestones));
-  const keepAll = () => {
+  const keepAll = act(() => {
     if (keepable.length > 0) moveTasksToDate(keepable.map((t) => t.id), todayStr);
-  };
-  const sendAll = () => {
+  });
+  const sendAll = act(() => {
     if (sendable.length > 0) unscheduleTasks(sendable.map((t) => t.id));
-  };
-
-  const pile = ghostFoldStartsCollapsed(count);
+  });
 
   return (
     <section
@@ -179,10 +198,12 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
         <span
           className={cn(
             'flex items-center gap-3 text-xs text-muted-foreground transition-opacity',
-            // A pile keeps them on screen while it is folded: they are the way
-            // through it without opening it. Otherwise caption hover or focus.
-            // On touch there is no hover, so they stay.
-            (pile && !open) || isMobile
+            // A folded fold keeps them on screen: they are the way through it
+            // without opening it. Keyed to `open` itself, not to today's count,
+            // so a pile that started folded and shrank to five still shows
+            // them. Otherwise caption hover or focus. On touch there is no
+            // hover, so they stay.
+            !open || isMobile
               ? 'opacity-100'
               : 'opacity-0 group-hover/fold:opacity-100 group-has-[:focus-visible]/fold:opacity-100'
           )}
@@ -308,7 +329,10 @@ function GhostRow({
         onClick={onKeep}
         className="ghost-box relative z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[5px] text-muted-foreground"
       >
-        <Plus className="h-2.5 w-2.5 opacity-0 transition-opacity group-hover:opacity-100" strokeWidth={2.5} />
+        {/* No Plus on a box that cannot keep: it would promise a no-op. */}
+        {keepOk && (
+          <Plus className="h-2.5 w-2.5 opacity-0 transition-opacity group-hover:opacity-100" strokeWidth={2.5} />
+        )}
       </button>
 
       {/* Opens the item, as a real row's click does. */}
@@ -346,10 +370,11 @@ function GhostRow({
                   open={picking}
                   onOpenChange={onPickingChange}
                   todayStr={todayStr}
-                  value={t.startDate}
+                  value={day}
                   label="Reschedule"
                   onPick={onMoveTo}
                   testId="ghost-reschedule"
+                  popoverTestId="ghost-reschedule-popover"
                 />
               )}
               {sidebarOk && (
@@ -383,8 +408,12 @@ function GhostRow({
         ) : (
           <span aria-hidden className="w-1.5 flex-shrink-0 lg:@min-[540px]/canvas:w-24" />
         )}
-        <span className="flex w-9 flex-shrink-0 items-center opacity-50">
-          {t.priority && <PriorityGlyph priority={t.priority} />}
+        {/* Muted bars, never faded through opacity: a low priority's bars are
+            lime (--priority-low), and the accent is never dimmed by a parent.
+            So no lime is drawn in a ghost row at all, and arrive has none to
+            composite. */}
+        <span className="flex w-9 flex-shrink-0 items-center">
+          {t.priority && <PriorityGlyph priority={t.priority} muted />}
         </span>
         <MetaText className="w-12 flex-shrink-0 text-right opacity-60">
           {t.duration ? formatDuration(t.duration) : ''}
@@ -465,7 +494,7 @@ function GhostSheet({
           <div className="flex justify-center px-4">
             <Calendar
               mode="single"
-              selected={parseDay(t.startDate)}
+              selected={parseDay(day)}
               defaultMonth={parseDay(todayStr)}
               onSelect={(date) => {
                 if (!date) return;

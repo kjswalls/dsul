@@ -57,6 +57,7 @@ import { useUndoStripStore } from '@/lib/undo-strip-store';
 import { projectItems, usePlannerStore } from '@/lib/planner-store';
 import type { Item } from '@/lib/planner-types';
 import { useMorningStore } from '@/lib/morning-store';
+import { WAITING_LINE_RETIRED } from '@/components/ai/morning-check';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { toDateStr } from '@/lib/recurrence';
 import { DockNotices } from '@/components/sidebar/dock-notices';
@@ -937,7 +938,12 @@ describe('the notice verbs wait for the planner to load', () => {
       useMorningStore.setState({ morningCheckEnabled: false });
     });
 
-    it('is not there while previewing cached rows, or over a failed load', () => {
+    // While the line is retired (WAITING_LINE_RETIRED, below) it is down in
+    // every state, so this case no longer exercises the preview/load gate on
+    // its own: it only says the line stays down there too. The load gate the
+    // pile is now drawn behind is pinned by ghost-fold.test.tsx's "draws
+    // nothing before the planner has loaded".
+    it('is not there while previewing cached rows, or over a failed load, either', () => {
       for (const state of [previewing, failed]) {
         usePlannerStore.setState(state);
         const { unmount } = render(<DockNotices />);
@@ -950,7 +956,12 @@ describe('the notice verbs wait for the planner to load', () => {
     // answered to now turns on the fold at the top of Today, which shows the
     // same pile in place, so the dock's line stays down even once loaded. The
     // fold's own gates are pinned in ghost-fold.test.tsx.
-    it('stays down once loaded: the ghost fold on Today replaces it', () => {
+    it('is retired by a named switch, not by the leftovers setting cancelling itself', () => {
+      expect(WAITING_LINE_RETIRED).toBe(true);
+    });
+
+    it('stays down once loaded, with the setting on and an item waiting: the ghost fold on Today replaces it', () => {
+      expect(useMorningStore.getState().morningCheckEnabled).toBe(true);
       usePlannerStore.setState(loaded);
       render(<DockNotices />);
       expect(screen.queryByTestId('morning-bar')).toBeNull();

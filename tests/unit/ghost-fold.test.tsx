@@ -269,3 +269,138 @@ describe('on the phone', () => {
     expect(taskById('thu').startDate).toBe(TOMORROW);
   });
 });
+
+describe('a legacy full-ISO start date', () => {
+  // items.start_date is text, and the selector admits these on purpose
+  // (lib/overdue.ts toDateOnly). Every date the fold formats is normalised, so
+  // the weekday, its tooltip, the gates and the phone sheet all survive one.
+  const ISO = [task('iso', '2026-07-10T00:00:00.000Z')];
+
+  it('renders, with its weekday', async () => {
+    await load(ISO);
+    render(<GhostFold dateStr={TODAY} />);
+    expect(within(row('iso')).getByTestId('ghost-day')).toHaveTextContent('Fri');
+    expect(within(row('iso')).getByTestId('ghost-keep')).toBeInTheDocument();
+  });
+
+  it('opens its phone sheet, which names the day it was for', async () => {
+    mobile.on = true;
+    await load(ISO);
+    render(<GhostFold dateStr={TODAY} />);
+    fireEvent.click(within(row('iso')).getByTestId('ghost-actions-button'));
+    expect(screen.getByTestId('ghost-sheet')).toHaveTextContent(/Planned for/);
+    fireEvent.click(screen.getByTestId('ghost-sheet-reschedule'));
+    expect(screen.getByTestId('ghost-sheet')).toBeInTheDocument();
+  });
+});
+
+describe('“All sorted” is for the person’s own last verb', () => {
+  it('stays quiet when the pile empties from outside the fold', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    // As a catch-up fold or the auto-age sweep would: no verb here.
+    act(() => store().unscheduleTasks(['thu', 'mon']));
+    expect(screen.queryByTestId('ghost-fold-done')).toBeNull();
+    expect(screen.queryByTestId('ghost-fold')).toBeNull();
+  });
+
+  it('stays quiet when only some of the emptying was the fold’s', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    fireEvent.click(within(row('thu')).getByTestId('ghost-keep'));
+    expect(rows()).toHaveLength(1);
+    act(() => store().moveTaskToDate('mon', TODAY));
+    expect(screen.queryByTestId('ghost-fold-done')).toBeNull();
+  });
+
+  it('an undo of the last keep brings the row back and takes the line down', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    fireEvent.click(screen.getByTestId('ghost-keep-all'));
+    expect(screen.getByTestId('ghost-fold-done')).toBeInTheDocument();
+    act(() => store().undo());
+    expect(rows()).toHaveLength(2);
+    expect(screen.queryByTestId('ghost-fold-done')).toBeNull();
+    act(() => vi.advanceTimersByTime(GHOST_DONE_MS + 10));
+    expect(rows()).toHaveLength(2);
+  });
+});
+
+describe('the pile rule is judged at first sight', () => {
+  const bulk = () => screen.getByTestId('ghost-keep-all').parentElement!;
+
+  it('six shrinking to five stays closed, with the bulk verbs still on screen', async () => {
+    await load(Array.from({ length: 6 }, (_, i) => task(`p${i}`, `2026-07-0${i + 1}`)));
+    render(<GhostFold dateStr={TODAY} />);
+    expect(bulk().className).toContain('opacity-100');
+    act(() => store().moveTaskToDate('p0', TODAY));
+    expect(screen.getByTestId('ghost-fold-count')).toHaveTextContent('5');
+    expect(screen.getByTestId('ghost-fold')).toHaveAttribute('data-ghost-fold', 'closed');
+    expect(rows()).toHaveLength(0);
+    expect(bulk().className).toContain('opacity-100');
+    expect(bulk().className).not.toContain('opacity-0');
+  });
+
+  it('an open fold keeps them behind hover', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    expect(bulk().className).toContain('opacity-0');
+  });
+});
+
+describe('a ghost inside a project block', () => {
+  beforeEach(async () => {
+    await load([task('blocked', '2026-07-10', { inProjectBlock: true }), task('free', '2026-07-09')]);
+  });
+
+  it('offers only Let it go, and its box neither keeps nor shows a Plus', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    const r = row('blocked');
+    for (const id of ['ghost-keep', 'ghost-tomorrow', 'ghost-reschedule', 'ghost-sidebar']) {
+      expect(within(r).queryByTestId(id)).toBeNull();
+    }
+    expect(within(r).getByTestId('ghost-let-go')).toBeInTheDocument();
+    const box = within(r).getByTestId('ghost-box');
+    expect(box).toBeDisabled();
+    expect(box.querySelector('svg')).toBeNull();
+  });
+
+  it('is skipped by Keep all and by Send all to sidebar', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    fireEvent.click(screen.getByTestId('ghost-keep-all'));
+    expect(taskById('free').startDate).toBe(TODAY);
+    expect(taskById('blocked').startDate).toBe('2026-07-10');
+    act(() => store().undo());
+    fireEvent.click(screen.getByTestId('ghost-send-all'));
+    expect(taskById('free').isScheduled).toBe(false);
+    expect(taskById('blocked').isScheduled).toBe(true);
+    expect(taskById('blocked').startDate).toBe('2026-07-10');
+  });
+});
+
+describe('Reschedule', () => {
+  it('moves it to the day picked in the calendar', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    fireEvent.click(within(row('thu')).getByTestId('ghost-reschedule'));
+    const popover = screen.getByTestId('ghost-reschedule-popover');
+    fireEvent.click(within(popover).getByRole('button', { name: /July 20/ }));
+    expect(taskById('thu').startDate).toBe('2026-07-20');
+    expect(store().actionLog[0]?.label).toMatch(/^Move task to /);
+  });
+
+  it('on the phone, through the sheet’s calendar', () => {
+    mobile.on = true;
+    render(<GhostFold dateStr={TODAY} />);
+    fireEvent.click(within(row('thu')).getByTestId('ghost-actions-button'));
+    fireEvent.click(screen.getByTestId('ghost-sheet-reschedule'));
+    fireEvent.click(within(screen.getByTestId('ghost-sheet')).getByRole('button', { name: /July 20/ }));
+    expect(taskById('thu').startDate).toBe('2026-07-20');
+  });
+});
+
+describe('the accent', () => {
+  it('draws no lime in a ghost row: a low priority’s bars are muted, not faded', async () => {
+    await load([task('low', '2026-07-10', { priority: 'low' })]);
+    render(<GhostFold dateStr={TODAY} />);
+    const r = row('low');
+    expect(r.querySelector('[class*="bg-priority"]')).toBeNull();
+    expect(r.querySelector('[class*="bg-primary"]')).toBeNull();
+    expect(within(r).getByRole('img', { name: /priority/ }).parentElement!.className).not.toMatch(/opacity-/);
+  });
+});

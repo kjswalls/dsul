@@ -27,8 +27,11 @@ rules in [app/globals.css](../../app/globals.css) beside the row rules.
   shrinking to five never springs the fold open under the pointer.
 - **Rows are the real row's geometry.** TaskRow's 16px box column, the title,
   the start-time slot, the reserved day-dots slot, tag / priority / duration
-  rails at reduced opacity. The title is muted ink. The box is a **dashed
-  outline, no fill**, that closes into a solid box with a Plus on hover; the
+  rails at reduced opacity. The title is muted ink. **No lime in a ghost row**:
+  a low priority's bars are lime, so the priority glyph is drawn `muted` (never
+  faded through opacity), and arrive's fade composites no accent. The box is a
+  **dashed outline, no fill**, that closes into a solid box with a Plus on hover
+  (never on a box that cannot keep, e.g. inside a project block); the
   item's original weekday ("Thu") sits in the start-time slot, its full date in
   the tooltip. Clicking the title opens the item (`openEditFor`) and writes
   nothing.
@@ -61,7 +64,9 @@ rules in [app/globals.css](../../app/globals.css) beside the row rules.
 - **Copy.** "From earlier", "Keep all", "Send all to sidebar", "Keep for today",
   "Move to tomorrow", "Reschedule", "Send to sidebar", "Let it go", and after the
   last ghost "All sorted, you got this" with one small lime dot (`bg-primary`,
-  never faded) for a few seconds (`GHOST_DONE_MS`), then nothing. No em dashes,
+  never faded) for a few seconds (`GHOST_DONE_MS`), then nothing. Only when a
+  verb in the fold emptied it: a pile emptied by the auto-age sweep, a catch-up
+  from another device or a pause goes quietly. No em dashes,
   no red, no overdue words.
 - **Phone.** MobileShell draws the same day views, so the fold is there too.
   No hover, so a ghost row shows the same trailing ellipsis a real row does; it
