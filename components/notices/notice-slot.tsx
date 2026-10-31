@@ -123,11 +123,13 @@ export function NoticeSlot({
 }
 
 /**
- * The day-header slot: the end-of-day line, in the date capsule's popover
+ * The day-header slot, in the date capsule's popover
  * (components/notices/day-messages.tsx) on the desktop and the phone alike.
- * (It sat beside the capsule, in the canvas header row, until 2026-10-17.)
+ * (It sat beside the capsule, in the canvas header row, until 2026-10-17.) It
+ * held the end of day review's line, which retired with ghost rows phase 2; no
+ * notice asks for it now, and it is kept for the next one about this day.
  *
- * The end-of-day line's object is the DAY, and the day's canonical handle is its
+ * Such a line's object is the DAY, and the day's canonical handle is its
  * date — not the geometric foot of a grid. This is the address SeasonNotice
  * already argued its way to ("it is bound to a date… so it belongs beside the
  * date"), and E generalises that precedent rather than inventing a second one.
@@ -173,8 +175,11 @@ export function DayHeaderNotice({
  * anchor while it is live (day scope, on today) exactly as `DayHeaderNotice`
  * does. The date capsule's icon (components/notices/day-messages.tsx) calls
  * this so the anchor stays registered while its popover is closed and the
- * slot inside it is not mounted; without it the end-of-day line would fall
- * back to the dock every time the popover shut.
+ * slot inside it is not mounted; without it an anchored line would fall back
+ * to the dock every time the popover shut. No notice asks for this anchor
+ * since the end of day review's line retired (ghost rows phase 2), so today
+ * it answers []; it is kept for the next notice about this day (see
+ * NoticeAnchor in lib/dock-notices.ts).
  */
 export function useDayHeaderNotices(scopeOverride?: 'day' | 'week'): DockNotice[] {
   const selectedDate = usePlannerStore((s) => s.selectedDate);

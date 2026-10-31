@@ -41,7 +41,7 @@ vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), err
 vi.mock('@/lib/completion-confetti', () => ({ celebrateCompletion: vi.fn() }));
 
 import { batchHistory, getActionLog, mergeAgentStates, usePlannerStore } from '@/lib/planner-store';
-import { useEODStore } from '@/lib/eod-store';
+import { useMorningStore } from '@/lib/morning-store';
 import {
   subscribeModEvents,
   withSuppressed,
@@ -369,12 +369,37 @@ describe('⌘Z ordering', () => {
   });
 });
 
-describe('review.saved', () => {
-  it('raises when the date moves, and not for the same date again', async () => {
-    useEODStore.setState({ lastEodReviewDate: null });
-    await useEODStore.getState().saveLastReviewDate(null, TODAY);
-    await useEODStore.getState().saveLastReviewDate(null, TODAY);
+/**
+ * The end of day review's event, raised since ghost rows phase 2 by the
+ * leftovers fold cleared with the person's own verbs (morning-store's
+ * noteLeftoversCleared, called from components/planner/ghost-fold.tsx; the
+ * fold's own test drives it from a click).
+ */
+describe('review.saved, from the leftovers sorted', () => {
+  beforeEach(() => useMorningStore.setState({ leftoversClearedByUser: {} }));
+
+  it('raises once per account and day, with the day as its date', () => {
+    expect(useMorningStore.getState().noteLeftoversCleared('u1', TODAY)).toBe(true);
+    expect(useMorningStore.getState().noteLeftoversCleared('u1', TODAY)).toBe(false);
     expect(delivered()).toEqual([{ kind: 'review.saved', date: TODAY }]);
+  });
+
+  it('raises again on another day, and for another account the same day', () => {
+    useMorningStore.getState().noteLeftoversCleared('u1', '2026-08-09');
+    useMorningStore.getState().noteLeftoversCleared('u1', TODAY);
+    useMorningStore.getState().noteLeftoversCleared('u2', TODAY);
+    expect(delivered()).toEqual([
+      { kind: 'review.saved', date: '2026-08-09' },
+      { kind: 'review.saved', date: TODAY },
+      { kind: 'review.saved', date: TODAY },
+    ]);
+    // Self-pruning: only today's stamps are kept.
+    expect(useMorningStore.getState().leftoversClearedByUser).toEqual({ u1: TODAY, u2: TODAY });
+  });
+
+  it('raises nothing inside a recipe or mod run', () => {
+    withSuppressed(() => useMorningStore.getState().noteLeftoversCleared('u1', TODAY));
+    expect(delivered()).toEqual([]);
   });
 });
 
@@ -448,7 +473,7 @@ describe('the look-only preview', () => {
 /**
  * The actions that raise. The plan asks for the list: a raise from any other
  * planner-store action fails below, and the preview barrier must refuse each
- * one. eod-store's single raise is covered by the review test above.
+ * one. morning-store's single raise is covered by the review.saved tests above.
  */
 const RAISING_ACTIONS = [
   'addItem',
@@ -482,7 +507,7 @@ describe('raise sites', () => {
     expect([...found].sort()).toEqual([...ALLOWED].sort());
   });
 
-  it('the bus is raised directly only from emit, the batch flush and saveLastReviewDate', () => {
+  it('the bus is raised directly only from emit, the batch flush and noteLeftoversCleared', () => {
     const files = readdirSync(join(process.cwd(), 'lib'), { recursive: true, encoding: 'utf8' })
       .filter((f) => /\.tsx?$/.test(f) && f !== 'mod-events.ts')
       .map((f) => `lib/${f.split(sep).join('/')}`);
@@ -494,7 +519,7 @@ describe('raise sites', () => {
       });
     }
     expect(hits).toEqual([
-      'lib/eod-store.ts: if (prev !== date) raiseModEvent({ kind: \'review.saved\', date });',
+      'lib/morning-store.ts: raiseModEvent({ kind: \'review.saved\', date });',
       'lib/planner-store.ts: else raiseModEvent(e);',
       'lib/planner-store.ts: raiseModEvents(modEvents);',
       'lib/planner-store.ts: else raiseModEvents(effects.modEvents);',

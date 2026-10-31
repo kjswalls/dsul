@@ -8,7 +8,7 @@
  * being decisions and become whatever each adapter's author felt like.
  *
  * THE COPY CONTRACT. dsul does not open by telling you what you are behind
- * on — see the BarCopy note in components/ai/morning-check.tsx, and the
+ * on — see the leftovers' copy rules in memory/plans/ghost-rows.md, and the
  * "Still waiting" heading in lib/item-registry.ts that was deliberately not
  * called "Overdue". A reminder is the surface most tempted to break that rule
  * and the one where breaking it costs most: punishment reliably teaches
@@ -125,6 +125,10 @@ export function lastCallCopy(
 
 /**
  * The end-of-day review's invitation.
+ *
+ * No longer sent by the server (ghost rows phase 2 retired the review). Kept
+ * because the iPhone app still plans it locally until phase 3: its Swift port
+ * (ReminderCopy.swift `eodCopy`) and tests/fixtures/day/copy.json hold it.
  *
  * Moved here, word for word, from the cron route that used to send it on its
  * own (app/api/cron/eod-notify, folded into the scan). A constant rather than

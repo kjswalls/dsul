@@ -1,5 +1,5 @@
 /**
- * build.ts — the three nudges the scan sends, worded and named in one place.
+ * build.ts — the two nudges the scan sends, worded and named in one place.
  *
  * Two callers say the same nudge: the scan, the first time, and the retry pass
  * (lib/reminders/retry.ts), when a claimed nudge reached no device. Built
@@ -10,7 +10,7 @@
  */
 
 import type { Item } from '../planner-types'
-import { EOD_COPY, lastCallCopy, reminderCopy, type TimeFormat } from './copy'
+import { lastCallCopy, reminderCopy, type TimeFormat } from './copy'
 import { cueKey, dayKey, snoozeKey } from './cue-log'
 import { streakOf, type ReminderCandidate } from './due'
 import type { Nudge, NudgeItem } from './nudge'
@@ -61,23 +61,5 @@ export function lastCallNudge(open: readonly Item[], dateStr: string, expiresAtM
     items: open.map(toNudgeItem),
     expiresAtMs,
     logKey: dayKey('last-call', dateStr),
-  }
-}
-
-/** The end-of-day review's invitation for `dateStr`. */
-export function eodNudge(dateStr: string, expiresAtMs: number): Nudge {
-  return {
-    kind: 'eod',
-    title: EOD_COPY.title,
-    body: EOD_COPY.body,
-    // The day it invites a review of, so a tap after midnight is recorded as
-    // that day's review and not the new one's, which would retire the new
-    // day's invitation before it is sent (lib/eod.ts's reviewedDay). The app
-    // still opens the bare ?eod=1 of older pushes.
-    url: `/?eod=${dateStr}`,
-    dateStr,
-    items: [],
-    expiresAtMs,
-    logKey: dayKey('eod', dateStr),
   }
 }

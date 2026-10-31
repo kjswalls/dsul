@@ -50,7 +50,6 @@ import { itWorksFor } from '@/components/ai/ask/it-works-card';
 import { AnswererLabel } from '@/components/ai/bound-composer';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSessionUserStore } from '@/lib/session-user-store';
-import { useEODStore } from '@/lib/eod-store';
 import { useRailStore } from '@/lib/rail-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useUIStore } from '@/lib/ui-store';
@@ -146,7 +145,6 @@ beforeEach(() => {
   useSessionUserStore.setState({
     user: { id: 'u1', email: 'k@example.com', displayName: 'Kirby Example', avatarUrl: null },
   });
-  useEODStore.setState({ eodReviewEnabled: false, eodReviewTime: '21:00' });
   useUIStore.setState({ activeDialog: null, displacedItemId: null });
   useRailStore.getState().reset();
   useProposalStore.getState().dismiss();

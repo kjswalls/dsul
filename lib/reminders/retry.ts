@@ -21,19 +21,19 @@
  *     two overlapping ticks would both re-send (scan.ts's claimCandidates says
  *     why the same holds for cues).
  *   · ASKED AGAIN FIRST. Minutes have passed since the claim. A habit ticked
- *     in between, a review done, a last call whose last item was done: each is
- *     silence now (due.ts's wantsDoingOn, eod.ts's isEodOwed), and the row is
- *     closed for retries with a code saying why.
+ *     in between, a last call whose last item was done: each is silence now
+ *     (due.ts's wantsDoingOn), and the row is closed for retries with a code
+ *     saying why. An `eod` row (the end of day review's invitation, retired in
+ *     ghost rows phase 2) is never sent again: it is closed as not wanted.
  *   · NOT THIS TICK'S. A row is retried only once it is RETRY_AFTER_MS old,
  *     so a row another tick opened a moment ago, whose send is still in
  *     flight, is never taken for a lost one.
  */
 
 import type { ActivationContext } from '../active'
-import { isEodOwed, minutesOfDay as eodMinutesOfDay } from '../eod'
 import type { Item } from '../planner-types'
 import type { createServiceClient } from '../supabase-service'
-import { cueNudge, eodNudge, lastCallNudge } from './build'
+import { cueNudge, lastCallNudge } from './build'
 import { sendNudgeToDevices } from './channels/push'
 import type { LocalClock } from './clock'
 import type { TimeFormat } from './copy'
@@ -107,7 +107,6 @@ export interface RetryUser {
   timeFormat: TimeFormat
   remindersOn: boolean
   lastCallOn: boolean
-  eod: { enabled: boolean; time: string | null; lastReviewDate: string | null }
   /** The user's items and their activation context, read once and only if a row needs them. */
   world: () => Promise<{ items: Item[]; ctx: ActivationContext }>
 }
@@ -126,17 +125,9 @@ export async function nudgeForRow(row: OpenCueRow, user: RetryUser): Promise<Nud
   const expiresAtMs = Date.parse(row.window_end)
   if (!Number.isFinite(expiresAtMs)) return 'malformed'
 
-  if (row.kind === 'eod') {
-    const due = user.eod.time ? eodMinutesOfDay(user.eod.time) : null
-    const owed =
-      due !== null &&
-      isEodOwed(
-        { eodReviewEnabled: user.eod.enabled, eodReviewTime: user.eod.time ?? '', lastEodReviewDate: user.eod.lastReviewDate },
-        row.date_str,
-        Math.max(user.clock.nowMinutes, due),
-      )
-    return owed ? eodNudge(row.date_str, expiresAtMs) : 'not_wanted'
-  }
+  // The review's invitation is no longer sent (ghost rows phase 2), so a row
+  // an older build claimed and lost is closed, not re-sent.
+  if (row.kind === 'eod') return 'not_wanted'
 
   if (row.kind === 'last-call') {
     if (!user.remindersOn || !user.lastCallOn) return 'not_wanted'

@@ -53,7 +53,6 @@ import { READY_AFTER_MS } from '@/hooks/use-agent-question';
 import { AskGreeting } from '@/components/ai/ask/ask-greeting';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSessionUserStore } from '@/lib/session-user-store';
-import { useEODStore } from '@/lib/eod-store';
 import { useRailStore } from '@/lib/rail-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useUIStore } from '@/lib/ui-store';
@@ -153,7 +152,6 @@ beforeEach(() => {
   useSessionUserStore.setState({
     user: { id: 'u1', email: 'k@example.com', displayName: 'Kirby Example', avatarUrl: null },
   });
-  useEODStore.setState({ eodReviewEnabled: false, eodReviewTime: '21:00' });
   useUIStore.setState({ activeDialog: null, displacedItemId: null });
   useRailStore.getState().reset();
   useProposalStore.getState().dismiss();
@@ -220,15 +218,10 @@ describe('the load line', () => {
     expect(loadEl()).toHaveTextContent(/^8 things today · 2 done\.$/);
   });
 
-  it('offers the hours free only while the end-of-day review is on', () => {
+  it('offers no hours free: with the review retired there is no day end to count to', () => {
     setItems([task('a', { duration: 180 }), task('b', { duration: 120 })]);
-    const { unmount } = render(<AskHome />);
-    expect(loadEl()).toHaveTextContent(/^About 5h planned\.$/);
-    unmount();
-
-    useEODStore.setState({ eodReviewEnabled: true, eodReviewTime: '21:00' });
     render(<AskHome />);
-    expect(loadEl()).toHaveTextContent(/^About 5h planned, 6h free\.$/);
+    expect(loadEl()).toHaveTextContent(/^About 5h planned\.$/);
   });
 
   it('is not there on an empty day', () => {

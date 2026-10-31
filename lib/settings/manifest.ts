@@ -18,7 +18,6 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore, type TypeMode, type ScheduleMarkStyle, type BucketStyle } from '@/lib/view-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
-import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { getAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
@@ -399,6 +398,13 @@ export interface SettingRecord {
   dbColumn?: string;
   /** Absent rather than greyed — platform, not state. Search names the reason. */
   desktopOnly?: boolean;
+  /**
+   * Absent rather than greyed, from state: the row is drawn, and found by
+   * search, only while this answers true. For a switch kept only for the
+   * accounts that already have it on (`rituals.eod`). Read by the settings
+   * page and search, never by paneRows, which stays the full list.
+   */
+  shownWhen?: (ctx: SettingCtx) => boolean;
   /** Present but not actionable, with the reason shown inline. */
   unavailable?: (ctx: SettingCtx) => string | null;
   /**
@@ -427,7 +433,6 @@ const planner = () => usePlannerStore.getState();
 const view = () => useViewStore.getState();
 const sidebar = () => useSidebarStore.getState();
 const morning = () => useMorningStore.getState();
-const eod = () => useEODStore.getState();
 const reminders = () => useReminderStore.getState();
 const ai = () => useAISettingsStore.getState();
 const aiConn = () => useAIConnectionStore.getState();
@@ -1184,8 +1189,9 @@ export const SETTINGS: SettingRecord[] = [
     keywords: ['leftovers', 'ghost', 'ghost rows', 'from earlier', 'overdue', 'past due', 'waiting', 'yesterday', 'morning check', 'stale', 'backlog'],
     read: () => morning().morningCheckEnabled,
     write: (v) => morning().setMorningCheckEnabled(Boolean(v)),
-    // Rituals are opt-in for a new account (migration 054).
-    defaultValue: false,
+    // On for a new account since migration 086 (Kirby, 2026-10-31): the
+    // leftovers replaced both the morning line and the end of day review.
+    defaultValue: true,
   },
   {
     id: 'rituals.autoAge',
@@ -1223,31 +1229,24 @@ export const SETTINGS: SettingRecord[] = [
     defaultValue: '30',
   },
   {
+    // The end of day review retired on the web (ghost rows phase 2), but the
+    // iPhone app still plans its nightly notification off eod_review_enabled
+    // and has no switch of its own. This row is that notification's only off
+    // switch until phase 3 removes the review from the iPhone (and this row
+    // with it). Drawn only for an account whose value was on when its settings
+    // landed. The id is the review's own, kept.
     id: 'rituals.eod',
     pane: 'rituals',
-    label: 'End-of-day review',
-    description: 'Review what you got through before the day closes.',
+    label: 'Evening nudge on iPhone',
+    description:
+      'The iPhone app still sends a nightly nudge for the old evening review. The review is gone, so you can switch this off.',
     control: 'switch',
     dbColumn: 'eod_review_enabled',
-    // 'eod' is a KEYWORD, not an alias: the palette already claims /eod, and
-    // aliases are a single global namespace the moment these two surfaces are
-    // generated from one declaration. A keyword still finds it here.
-    keywords: ['evening', 'reflect', 'wrap up', 'review', 'night', 'shutdown', 'eod'],
-    read: () => eod().eodReviewEnabled,
-    write: (v) => eod().setEodReviewEnabled(Boolean(v)),
+    keywords: ['evening', 'review', 'night', 'iphone', 'notification', 'eod'],
+    read: () => reminders().iphoneEveningNudge,
+    write: (v) => reminders().setIphoneEveningNudge(Boolean(v)),
+    shownWhen: () => reminders().iphoneEveningNudgeShown,
     defaultValue: false,
-  },
-  {
-    id: 'rituals.eodTime',
-    pane: 'rituals',
-    label: 'Review at',
-    control: 'time',
-    dependsOn: 'rituals.eod',
-    dbColumn: 'eod_review_time',
-    keywords: ['when', 'hour', 'evening', 'schedule'],
-    read: () => eod().eodReviewTime,
-    write: (v) => eod().setEodReviewTime(String(v)),
-    defaultValue: '21:00',
   },
   {
     id: 'rituals.reminders',
@@ -1311,7 +1310,7 @@ export const SETTINGS: SettingRecord[] = [
     pane: 'rituals',
     label: 'Settle at',
     description:
-      'Settles the day before. Late enough that nothing is still in flight, since an end-of-day review can credit yesterday after midnight.',
+      'Settles the day before. Late enough that nothing is still in flight.',
     control: 'time',
     dependsOn: 'rituals.stakes',
     dbColumn: 'stakes_settle_time',

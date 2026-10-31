@@ -227,10 +227,8 @@ export const DesktopShell = memo(function DesktopShell() {
             view (Figma x=103 align).
 
             The two [DEV] emoji triggers that used to sit on the right are gone:
-            "Show overdue tasks" and "Start end-of-day review" are real commands
-            in the palette now, and the morning one no longer pokes store state
-            (which left the server-side dismissal in place, so the reset died on
-            the next reload). */}
+            "Show leftovers" is a real command in the palette now, and the end
+            of day review it once sat beside is retired (ghost rows phase 2). */}
         {/* data-wide tracks the body view: the week column grids drop the
             1100px cap so seven columns can actually fit, and this row drops it
             with them — the point of canvas-container is that the capsule and

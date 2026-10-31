@@ -4,7 +4,10 @@
  * Events are raised ONLY from the user's own store actions: toggleTaskStatus,
  * toggleHabitStatus, setItemsCompleted, setItemSkipped, addItem, addTask,
  * addHabit, addTasksBulk (planner-store, through its `emit`) and
- * saveLastReviewDate (eod-store). Undo (applyHistoryState) and agent merges
+ * noteLeftoversCleared (morning-store), which raises `review.saved` when the
+ * person's own verbs clear the leftovers fold on Today. That kind is the
+ * retired end of day review's (its Done raised it); stored recipes and mods
+ * name it, so the moment moved and the name stayed (ghost rows phase 2). Undo (applyHistoryState) and agent merges
  * (mergeAgentStates) never pass those sites, so they raise nothing. Each site
  * raises once per real transition, after its set(); a write that changed
  * nothing says nothing.
@@ -60,7 +63,15 @@ export type ModEvent =
       /** The item's startDate, when it has one. */
       date?: string;
     }
-  | { kind: 'review.saved'; date: string };
+  | {
+      /**
+       * The leftovers on Today all sorted by the person (once a day). The
+       * name is the retired end of day review's, kept for what is stored.
+       */
+      kind: 'review.saved';
+      /** Today, yyyy-MM-dd, in the user's saved timezone. */
+      date: string;
+    };
 
 /**
  * May be async (a returned thenable's rejection is logged); see the

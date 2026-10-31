@@ -9,7 +9,11 @@ import type { LucideIcon } from 'lucide-react';
  * free-text anchor is a notice that silently never renders anywhere.
  *
  *  - `braindump`  — pinned under the braindump header, above the rows.
- *  - `day-header` — beside the date, in the canvas header row.
+ *  - `day-header` — beside the date, in the canvas header row (inside the
+ *    date capsule's notes popover, components/notices/day-messages.tsx). No
+ *    notice asks for it since the end of day review's line retired (ghost rows
+ *    phase 2); the slot is kept as the address for the next notice about THIS
+ *    day, and costs nothing while empty (useDayHeaderNotices answers []).
  *
  * `day-foot` (the foot of today's column) was built and removed before this
  * shipped, and the reason is worth keeping: lib/use-fit-hour-px.ts sizes the
@@ -84,7 +88,7 @@ export type DockNotice = {
    * The expanded body, if this notice has one. A function of the variant
    * because the two shells present it differently — a Popover growing upward
    * out of the dock on desktop, a Drawer on touch — and the bodies genuinely
-   * differ (see MorningTriageList's `variant`).
+   * differ (ai-work-notice.tsx's question round is one).
    */
   tray?: (variant: NoticeTrayVariant) => ReactNode;
   /** Drawer heading on touch. Required whenever `tray` is set. */

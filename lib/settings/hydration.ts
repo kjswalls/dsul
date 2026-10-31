@@ -17,7 +17,7 @@
  * usePlannerStore.getState().userId — equal is the only value that means
  * 'these settings are this user's'"). One set() means the stamp can never
  * disagree with the values, and supabase-provider's `hydrateSettings` applies
- * the planner / sidebar / eod / reminder / theme / palette values in the same
+ * the planner / sidebar / reminder / theme / palette values in the same
  * synchronous block — so the stamp speaks for all of them, not just morning's.
  *
  * WHAT IS DELIBERATELY NOT AN INPUT: planner-store's `isLoading`. That flag

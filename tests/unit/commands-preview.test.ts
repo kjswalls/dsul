@@ -107,7 +107,6 @@ const GATED_DURING_PREVIEW: Record<string, boolean> = {
   // Opens Settings → Make with its box focused: chrome in the 'mods' group (PREVIEW_CHROME_IDS).
   'make.write': false,
   'make.write-mod': false,
-  'rituals.eod': true,
   'workspace.toggleChat': false,
   'workspace.doStuff': false,
   'workspace.toggleSidebar': false,
@@ -125,7 +124,6 @@ const GATED_DURING_PREVIEW: Record<string, boolean> = {
   'settings.typeface': false,
   'settings.animations': false,
   'settings.morningCheck': false,
-  'settings.eodReview': false,
   // Switches off what a person made (user_mods), never a planner row: the safety switch stays live.
   'settings.modsOff': false,
   'history.undo': true,

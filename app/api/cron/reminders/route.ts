@@ -10,10 +10,11 @@ import { sendWakes, type WakeSummary } from '@/lib/devices/wake';
  * GET /api/cron/reminders
  *
  * The reminder tick, and the only cron route there is. Runs every 5 minutes;
- * works out whose end-of-day review is owed, whose per-item cue is due in
- * their own local minute, whose streak-at-risk last call is owed, and whose
- * stakes day is ready to settle. The review had a route of its own,
- * /api/cron/eod-notify, until it was folded into the scan as a tier.
+ * works out whose per-item cue is due in their own local minute, whose
+ * streak-at-risk last call is owed, and whose stakes day is ready to settle.
+ * The end of day review's invitation had a route of its own,
+ * /api/cron/eod-notify, then a tier in the scan, and was retired with the
+ * review (ghost rows phase 2).
  *
  * Everything real lives in lib/reminders/scan.ts — this route is auth, a clock,
  * one log line and a JSON summary, so the scan stays testable without a
@@ -43,7 +44,7 @@ export const maxDuration = 60;
 function tickLine(summary: ScanSummary): string {
   return (
     `[cron/reminders] users=${summary.users} cues=${summary.cues} lastCalls=${summary.lastCalls} ` +
-    `eod=${summary.eod} unreached=${summary.unreached} retried=${summary.retried} ` +
+    `unreached=${summary.unreached} retried=${summary.retried} ` +
     `daysSettled=${summary.daysSettled} ` +
     `notes=${summary.notes.length}`
   );

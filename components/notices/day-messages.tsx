@@ -30,10 +30,11 @@ import { cn } from '@/lib/utils';
  * The popover's rows are the same components the lines always were, so each
  * keeps its own words, verbs and test ids. Out here their hooks are asked only
  * whether there is anything to say, plus one thing the closed popover cannot do
- * for itself: the end-of-day line is an anchored notice, and its anchor must
- * stay registered while the popover (and the slot inside it) is unmounted, or
- * the line would fall back to the dock every time the popover shut
- * (useDayHeaderNotices).
+ * for itself: a notice anchored to `day-header` needs its anchor registered
+ * while the popover (and the slot inside it) is unmounted, or it would fall
+ * back to the dock every time the popover shut (useDayHeaderNotices). No
+ * notice uses that anchor since the end of day review's line retired (ghost
+ * rows phase 2); the slot is kept for the next one about this day.
  *
  * It costs the capsule nothing in height: an h-8 key in a row of h-8 keys.
  *
@@ -69,7 +70,7 @@ export function DayMessages({
   const away = useAwayLine();
   const back = useBackToday(scope);
 
-  // Most pressing first: an answerable notice (the review), then the day's
+  // Most pressing first: an answerable anchored notice, then the day's
   // statement, then the trip, which is about you rather than the day.
   const glyphs: { key: string; Icon: ComponentType<{ className?: string }>; className?: string }[] = [
     ...dayNotices.map((n) => ({ key: n.id, Icon: n.icon, className: n.iconClassName })),
@@ -83,7 +84,7 @@ export function DayMessages({
 
   const label = glyphs.length === 1 ? '1 note about this day' : `${glyphs.length} notes about this day`;
 
-  // Every row's action leads somewhere else (a console, a card, the review), so
+  // Every row's action leads somewhere else (a console, a card), so
   // any button pressed inside closes the popover behind it.
   const closeOnAction = (e: MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) setOpen(false);

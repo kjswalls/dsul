@@ -3,7 +3,6 @@ import {
   ACTIVITY_WINDOW_MS,
   MAX_ACTIVITY_ROWS,
   activityRows,
-  dayEndFromReview,
   dayLoad,
   dayPart,
   formatLoadMinutes,
@@ -115,8 +114,6 @@ describe('greeting', () => {
 /* ── the day's load ────────────────────────────────────────────────────── */
 
 describe('dayLoad', () => {
-  const at = { minutesNow: 10 * 60, dayEndMin: null };
-
   it('counts the openers’ day: open and done today, nothing else', () => {
     const items = [
       ...Array.from({ length: 6 }, (_, i) => task(`open${i}`)),
@@ -130,8 +127,8 @@ describe('dayLoad', () => {
       task('undated', { startDate: undefined }),
       task('paused'),
     ];
-    const load = dayLoad(ctx(items, new Set(['paused'])), at);
-    expect(load).toEqual({ open: 6, done: 2, plannedMin: null, freeMin: null });
+    const load = dayLoad(ctx(items, new Set(['paused'])));
+    expect(load).toEqual({ open: 6, done: 2, plannedMin: null });
     expect(loadLine(load)).toBe('8 things today · 2 done.');
   });
 
@@ -152,72 +149,32 @@ describe('dayLoad', () => {
         repeatFrequency: 'daily',
       } as unknown as Item,
     ];
-    expect(dayLoad(ctx(items), at)).toMatchObject({ open: 1, done: 1 });
+    expect(dayLoad(ctx(items))).toMatchObject({ open: 1, done: 1 });
     // Not skipped, the same two count.
     const kept = items.map((i) => ({ ...i, skippedDates: [] }) as Item);
-    expect(dayLoad(ctx(kept), at)).toMatchObject({ open: 3, done: 1 });
+    expect(dayLoad(ctx(kept))).toMatchObject({ open: 3, done: 1 });
   });
 
   it('sums durations only when at least half the open items carry one', () => {
     const half = [task('a', { duration: 30 }), task('b', { duration: 30 }), task('c'), task('d')];
-    expect(dayLoad(ctx(half), at).plannedMin).toBe(60);
+    expect(dayLoad(ctx(half)).plannedMin).toBe(60);
 
     const quarter = [task('a', { duration: 60 }), task('b'), task('c'), task('d')];
-    expect(dayLoad(ctx(quarter), at).plannedMin).toBeNull();
+    expect(dayLoad(ctx(quarter)).plannedMin).toBeNull();
   });
 
   it('calls under 30 minutes planned no plan at all', () => {
-    expect(dayLoad(ctx([task('a', { duration: 10 }), task('b', { duration: 10 })]), at).plannedMin).toBeNull();
-    expect(dayLoad(ctx([task('a', { duration: 15 }), task('b', { duration: 15 })]), at).plannedMin).toBe(30);
+    expect(dayLoad(ctx([task('a', { duration: 10 }), task('b', { duration: 10 })])).plannedMin).toBeNull();
+    expect(dayLoad(ctx([task('a', { duration: 15 }), task('b', { duration: 15 })])).plannedMin).toBe(30);
   });
 
   it('counts a done item’s duration out of what is planned', () => {
     const items = [task('a', { duration: 60 }), task('b', { duration: 120, status: 'completed' })];
-    expect(dayLoad(ctx(items), at).plannedMin).toBe(60);
+    expect(dayLoad(ctx(items)).plannedMin).toBe(60);
   });
 
-  it('offers hours free only with a day’s end, and only 30 minutes or more', () => {
-    const items = [task('a', { duration: 300 })];
-    expect(dayLoad(ctx(items), { minutesNow: 600, dayEndMin: null }).freeMin).toBeNull();
-    expect(dayLoad(ctx(items), { minutesNow: 600, dayEndMin: 1260 }).freeMin).toBe(360);
-    expect(dayLoad(ctx([task('a', { duration: 30 })]), { minutesNow: 1200, dayEndMin: 1260 }).freeMin).toBe(30);
-    expect(dayLoad(ctx([task('a', { duration: 30 })]), { minutesNow: 1210, dayEndMin: 1260 }).freeMin).toBeNull();
-    // Past the day's end: no negative hours, no line about them.
-    expect(dayLoad(ctx(items), { minutesNow: 1300, dayEndMin: 1260 }).freeMin).toBeNull();
-  });
-
-  it('never offers free time without a plan to subtract', () => {
-    expect(dayLoad(ctx([task('a')]), { minutesNow: 600, dayEndMin: 1260 }).freeMin).toBeNull();
-  });
-});
-
-describe('"6h free" only while the end-of-day review is on', () => {
-  const items = [task('a', { duration: 180 }), task('b', { duration: 120 })];
-  const line = (enabled: boolean) =>
-    loadLine(dayLoad(ctx(items), { minutesNow: 600, dayEndMin: dayEndFromReview(enabled, '21:00') }));
-
-  it('reads the plan and the hours free with the review on', () => {
-    expect(line(true)).toBe('About 5h planned, 6h free.');
-  });
-
-  it('reads the plan alone with it off, its default', () => {
-    expect(line(false)).toBe('About 5h planned.');
-  });
-});
-
-describe('dayEndFromReview', () => {
-  it.each([
-    [true, '21:00', 1260],
-    [true, '9:30', 570],
-    [true, ' 22:15 ', 1335],
-    [false, '21:00', null],
-    [true, '', null],
-    [true, null, null],
-    [true, '25:00', null],
-    [true, '21:60', null],
-    [true, 'nine', null],
-  ])('enabled %s at %j is %j', (enabled, time, expected) => {
-    expect(dayEndFromReview(enabled, time)).toBe(expected);
+  it('offers no free figure: there is no day’s end to count against', () => {
+    expect(Object.keys(dayLoad(ctx([task('a', { duration: 300 })])))).toEqual(['open', 'done', 'plannedMin']);
   });
 });
 
@@ -239,8 +196,8 @@ describe('formatLoadMinutes', () => {
 
 describe('loadLine', () => {
   it('says each shape of day, in its first form that applies', () => {
-    const l = (o: Partial<DayLoad>) => loadLine({ open: 0, done: 0, plannedMin: null, freeMin: null, ...o });
-    expect(l({ open: 3, plannedMin: 300, freeMin: 360 })).toBe('About 5h planned, 6h free.');
+    const l = (o: Partial<DayLoad>) => loadLine({ open: 0, done: 0, plannedMin: null, ...o });
+    expect(l({ open: 3, plannedMin: 300 })).toBe('About 5h planned.');
     expect(l({ open: 3, plannedMin: 45 })).toBe('About 45m planned.');
     expect(l({ open: 1 })).toBe('1 thing today.');
     expect(l({ open: 6, done: 2 })).toBe('8 things today · 2 done.');
@@ -259,20 +216,18 @@ describe('loadLine', () => {
     for (const open of [0, 1, 2, 6, 12]) {
       for (const done of [0, 1, 2, 9]) {
         for (const plannedMin of [null, 30, 45, 59, 60, 74, 75, 90, 300, 330, 600]) {
-          for (const freeMin of plannedMin === null ? [null] : [null, 30, 45, 60, 360, 720]) {
-            const line = loadLine({ open, done, plannedMin, freeMin });
-            if (open === 0 && done === 0 && plannedMin === null) {
-              expect(line).toBeNull();
-              continue;
-            }
-            expect(line).toMatch(SHAPE);
-            expect(line).not.toMatch(BANNED);
-            lines++;
+          const line = loadLine({ open, done, plannedMin });
+          if (open === 0 && done === 0 && plannedMin === null) {
+            expect(line).toBeNull();
+            continue;
           }
+          expect(line).toMatch(SHAPE);
+          expect(line).not.toMatch(BANNED);
+          lines++;
         }
       }
     }
-    expect(lines).toBeGreaterThan(400);
+    expect(lines).toBeGreaterThan(200);
   });
 });
 

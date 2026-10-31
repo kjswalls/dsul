@@ -240,7 +240,8 @@ describe('aliases', () => {
     expect(top('tomorrow').command.id).toBe('goto.tomorrow');
     expect(top('yesterday').command.id).toBe('goto.yesterday');
     expect(top('week').command.id).toBe('view.scopeWeek');
-    expect(top('eod').command.id).toBe('rituals.eod');
+    // The end of day review's token, since it retired: /eod is the leftovers.
+    expect(top('eod').command.id).toBe('goto.overdue');
     expect(top('inbox').command.id).toBe('goto.braindump');
   });
 });
@@ -652,11 +653,11 @@ describe('dynamic commands', () => {
   });
 
   it('does not let a user-named type steal an alias another command promised', () => {
-    // "review" is the end-of-day ritual's alias. A type of that name gets a
-    // row and keywords, but not the token.
-    seedStore([], [typeDef('review')]);
-    expect(findCommand('create.type.review', ctx)?.aliases).toBeUndefined();
-    expect(matchCommands('review', ctx)[0].command.id).toBe('rituals.eod');
+    // "inbox" is the braindump's alias. A type of that name gets a row and
+    // keywords, but not the token.
+    seedStore([], [typeDef('inbox')]);
+    expect(findCommand('create.type.inbox', ctx)?.aliases).toBeUndefined();
+    expect(matchCommands('inbox', ctx)[0].command.id).toBe('goto.braindump');
 
     seedStore([], [typeDef('goal')]);
     expect(findCommand('create.type.goal', ctx)?.aliases).toEqual(['goal']);

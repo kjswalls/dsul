@@ -337,8 +337,8 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
           // decision, not a copy tidy-up. These lines are Beacon's prompt, so the
           // heading is the frame it answers in: handed a section called Overdue,
           // it opens by telling the user what they are behind on, which is the one
-          // thing every other surface here has just stopped doing (see the copy
-          // contract on BarCopy in components/ai/morning-check.tsx).
+          // thing every other surface here has just stopped doing (see
+          // the leftovers' copy rules in memory/plans/ghost-rows.md).
           //
           // No information is withheld from the model: same items, same order,
           // same dates, and "from Jul 10" carries the age exactly as well as "was

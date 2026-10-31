@@ -94,7 +94,8 @@ export const TRIGGER_WORDS: Record<RecipeTrigger['on'], string> = {
   'item.uncompleted': 'when the person unticks an item',
   'item.skipped': 'when the person skips an item for today',
   'item.created': 'when the person adds an item',
-  'review.saved': "when the person saves the day's review",
+  'review.saved':
+    'when the person sorts the last thing left over from an earlier day at the top of Today, at most once a day',
   'day.opened': 'when a new day starts',
   'bucket.changed': 'when morning, afternoon or evening starts',
   time: "at a time of day, on dsul's server, even with dsul closed",

@@ -149,7 +149,6 @@ describe('the rituals nudge (#86)', () => {
     tourShowing: false,
     hasTasks: true,
     morningCheckEnabled: false,
-    eodReviewEnabled: false,
     setupOrUndoUp: false,
   };
 
@@ -157,7 +156,7 @@ describe('the rituals nudge (#86)', () => {
     expect(nudgeDef(NUDGE_RITUALS_INTRO)?.settingsFocusId).toBe('rituals.morningCheck');
   });
 
-  it('fires once there is something planned and both rituals are still off', () => {
+  it('fires once there is something planned and the leftovers are still off', () => {
     expect(ritualsNudgeReady(READY)).toBe(true);
   });
 
@@ -166,8 +165,7 @@ describe('the rituals nudge (#86)', () => {
     ['the onboarding answer has not come back', { tourAnswered: false }],
     ['the tour is up', { tourShowing: true }],
     ['nothing is planned yet', { hasTasks: false }],
-    ['the morning check is already on', { morningCheckEnabled: true }],
-    ['the review is already on', { eodReviewEnabled: true }],
+    ['the leftovers are already on', { morningCheckEnabled: true }],
     // The tour's Set up AI ends with no toast: the intro waits out setup, the
     // "It works." it ends on, and an undo row such as No AI's.
     ['AI setup, "It works." or an undo row is up', { setupOrUndoUp: true }],

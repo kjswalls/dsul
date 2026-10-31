@@ -83,7 +83,6 @@ describe('applyServerSettings stamps the account and the values together', () =>
     useMorningStore.getState().applyServerSettings('user-a', {
       morningCheckEnabled: true,
       morningCheckTime: '06:45',
-      morningCheckDismissedDate: null,
       morningAutoAgeEnabled: false,
       morningAutoAgeDays: 30,
     });

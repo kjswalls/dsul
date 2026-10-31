@@ -90,9 +90,9 @@ afterEach(() => {
 });
 
 const titles = () => sonner.toast.mock.calls.map((c: unknown[]) => c[0]);
-const RITUALS = 'Two quiet rituals, if you want them';
+const RITUALS = 'Leftovers on Today, if you want them';
 
-/** An account the rituals intro is ready for: something planned, no habit, both rituals off. */
+/** An account the rituals intro is ready for: something planned, no habit, the leftovers off. */
 function seedRitualsReady() {
   seed({ habits: [] });
   usePlannerStore.setState({ tasks: [TASK] });
@@ -186,7 +186,7 @@ describe('the first-run toasts in the shell', () => {
     usePlannerStore.setState({ tasks: [TASK] });
     useMorningStore.setState({ settingsHydratedUserId: USER });
     render(<FirstRunNudges tourAnsweredFor={USER} tourShowing={false} />);
-    expect(titles()).toEqual(['Two quiet rituals, if you want them']);
+    expect(titles()).toEqual(['Leftovers on Today, if you want them']);
   });
 
   it('with a habit, the streak toast goes first and the rituals one waits its turn', () => {
@@ -196,7 +196,7 @@ describe('the first-run toasts in the shell', () => {
     render(<FirstRunNudges tourAnsweredFor={USER} tourShowing={false} />);
     expect(titles()).toEqual(['Streaks are on']);
     act(() => useNudgeStore.setState({ dismissed: ['streaks-on'] }));
-    expect(titles()).toEqual(['Streaks are on', 'Two quiet rituals, if you want them']);
+    expect(titles()).toEqual(['Streaks are on', 'Leftovers on Today, if you want them']);
   });
 
   it('is what AppShell mounts, fed the tour answer from the onboarding read', () => {

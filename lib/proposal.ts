@@ -952,7 +952,7 @@ function ordinal(n: number): string {
  *
  * Phrased as what the user gets, not what they failed to do: "Move to Thu Aug 6",
  * never "overdue since Monday". Same copy contract as the "Still waiting"
- * heading in item-registry.ts and BarCopy in components/ai/morning-check.tsx.
+ * heading in item-registry.ts and the leftovers on Today (memory/plans/ghost-rows.md).
  */
 export function describeOperation(operation: ProposalOperation, ctx: ProposalContext): string {
   if (operation.kind === 'container') return describeContainerOp(operation, ctx)

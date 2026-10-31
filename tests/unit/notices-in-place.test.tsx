@@ -57,17 +57,13 @@ import { useUndoStripStore } from '@/lib/undo-strip-store';
 import { projectItems, usePlannerStore } from '@/lib/planner-store';
 import type { Item } from '@/lib/planner-types';
 import { useMorningStore } from '@/lib/morning-store';
-import { WAITING_LINE_RETIRED } from '@/components/ai/morning-check';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { toDateStr } from '@/lib/recurrence';
 import { DockNotices } from '@/components/sidebar/dock-notices';
 import { SidebarDock } from '@/components/sidebar/sidebar-dock';
 import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
-import { DayHeaderNotice } from '@/components/notices/notice-slot';
-import { useEODStore } from '@/lib/eod-store';
 import { useViewStore } from '@/lib/view-store';
 import { NoticeSlot } from '@/components/notices/notice-slot';
-import { DayMessages } from '@/components/notices/day-messages';
 import { UndoStrip } from '@/components/notices/undo-strip';
 import { TypewriterText } from '@/components/primitives/typewriter-text';
 
@@ -521,117 +517,6 @@ describe('the undo strip', () => {
 });
 
 
-/* ── the day's date ───────────────────────────────────── */
-
-describe('the end-of-day line', () => {
-  beforeEach(() => {
-    resetNoticeAnchors();
-    usePlannerStore.setState({
-      userId: 'u1',
-      userTimezone: 'UTC',
-      error: null,
-      selectedDate: new Date(),
-    });
-    useViewStore.setState({ scope: 'day' });
-    useSidebarStore.setState({ leftSidebarOpen: true });
-    useEODStore.setState({
-      _hasHydrated: true,
-      eodReviewEnabled: true,
-      eodReviewTime: '00:00',
-      lastEodReviewDate: null,
-      eodDeferredDate: null,
-    });
-  });
-  afterEach(() => {
-    cleanup();
-    useEODStore.setState({ eodReviewEnabled: false, _hasHydrated: false });
-  });
-
-  it('stands beside today’s date, in the canvas header row', () => {
-    render(<DayHeaderNotice />);
-
-    const placed = screen.getByTestId('in-place-notice');
-    expect(placed).toHaveAttribute('data-notice-id', 'eod-review');
-    expect(placed).toHaveAttribute('data-notice-anchor', 'day-header');
-  });
-
-  it('goes back to the dock when you arrow to another day', () => {
-    // The anchor is "the date this is about". Beside a Thursday it would be a
-    // line about a day that is not on screen, which is the failure SeasonNotice
-    // refuses for the same reason.
-    usePlannerStore.setState({ selectedDate: new Date('2026-09-17T12:00:00Z') });
-    render(
-      <>
-        <DayHeaderNotice />
-        <DockNotices />
-      </>
-    );
-
-    expect(screen.queryByTestId('in-place-notice')).toBeNull();
-    expect(screen.getByTestId('dock-notice')).toHaveAttribute('data-notice-id', 'eod-review');
-  });
-
-  it('goes back to the dock in a week scope, where there is no one date', () => {
-    useViewStore.setState({ scope: 'week' });
-    render(
-      <>
-        <DayHeaderNotice />
-        <DockNotices />
-      </>
-    );
-
-    expect(screen.queryByTestId('in-place-notice')).toBeNull();
-    expect(screen.getByTestId('dock-notice')).toHaveAttribute('data-notice-id', 'eod-review');
-  });
-
-  it('takes a scope override, for the day-only mobile shell', () => {
-    // MobileViewRouter hardcodes day; a stale `scope: 'week'` can sit in that
-    // shell's persisted blob with no writer able to correct it.
-    useViewStore.setState({ scope: 'week' });
-    render(<DayHeaderNotice scope="day" />);
-
-    expect(screen.getByTestId('in-place-notice')).toHaveAttribute(
-      'data-notice-id',
-      'eod-review'
-    );
-  });
-
-  it('lives behind the date capsule’s glyph, and keeps the dock clear while shut', () => {
-    // The popover is closed, so the slot inside it is not mounted. The anchor
-    // must still be held, or the line falls back to the dock every time the
-    // popover shuts (useDayHeaderNotices).
-    render(
-      <>
-        <DayMessages />
-        <DockNotices />
-      </>
-    );
-
-    const key = screen.getByTestId('day-messages');
-    expect(key).toHaveAttribute('data-count', '1');
-    expect(screen.queryByTestId('dock-notice')).toBeNull();
-    expect(screen.queryByTestId('in-place-notice')).toBeNull();
-
-    fireEvent.click(key);
-    expect(screen.getByTestId('in-place-notice')).toHaveAttribute('data-notice-id', 'eod-review');
-  });
-
-  it('shows no glyph on another day, where the dock takes the line', () => {
-    usePlannerStore.setState({ selectedDate: new Date('2026-09-17T12:00:00Z') });
-    render(
-      <>
-        <DayMessages />
-        <DockNotices />
-      </>
-    );
-
-    expect(screen.queryByTestId('day-messages')).toBeNull();
-    expect(screen.getByTestId('dock-notice')).toHaveAttribute('data-notice-id', 'eod-review');
-  });
-});
-
-/* ── the dock's one line, and where the strip hangs ──────────────────── */
-
 describe('the dock', () => {
   beforeEach(() => {
     resetNoticeAnchors();
@@ -660,27 +545,6 @@ describe('the dock', () => {
     const fold = screen.getByTestId('dock-notice-overflow');
     expect(fold).toHaveAttribute('data-overflow-count', '1');
     expect(fold).toHaveTextContent('1 more');
-  });
-
-  it('still folds everything when nothing is blocked', () => {
-    // The overrun is for `blocked` alone. Two ordinary notices get the one row
-    // the cap allows, spent on the summary rather than on one of them.
-    usePlannerStore.setState({ error: null, loadFailedUserId: null });
-    useEODStore.setState({
-      _hasHydrated: true,
-      eodReviewEnabled: true,
-      eodReviewTime: '00:00',
-      lastEodReviewDate: null,
-      eodDeferredDate: null,
-    });
-    useViewStore.setState({ scope: 'week' }); // no day-header anchor to take it
-    render(<DockNotices />);
-
-    expect(screen.queryAllByTestId('dock-notice')).toHaveLength(0);
-    const fold = screen.getByTestId('dock-notice-overflow');
-    expect(fold).toHaveAttribute('data-overflow-count', '2');
-    expect(fold).toHaveTextContent('2 to answer');
-    useEODStore.setState({ eodReviewEnabled: false, _hasHydrated: false });
   });
 
   it('hangs the strip OUTSIDE the capsule, which is the whole geometry fix', () => {
@@ -793,7 +657,6 @@ describe('the notice verbs wait for the planner to load', () => {
     cleanup();
     usePlannerStore.setState({ restoreScheduling: pristineRestore, ...loaded });
     useMorningStore.setState({ morningAutoAgeReceiptByUser: {} });
-    useEODStore.setState({ eodReviewEnabled: false, _hasHydrated: false, isOpen: false });
   });
 
   describe('the sweep receipt', () => {
@@ -850,73 +713,10 @@ describe('the notice verbs wait for the planner to load', () => {
     });
   });
 
-  describe('the end-of-day line', () => {
-    beforeEach(() => {
-      usePlannerStore.setState({ userId: 'u1', userTimezone: 'UTC' });
-      useEODStore.setState({
-        _hasHydrated: true,
-        eodReviewEnabled: true,
-        eodReviewTime: '00:00',
-        lastEodReviewDate: null,
-        eodDeferredDate: null,
-        isOpen: false,
-      });
-    });
-
-    it('reads Syncing… beside the date while previewing, and pressing it opens nothing', () => {
-      usePlannerStore.setState(previewing);
-      render(<DayHeaderNotice />);
-
-      expect(screen.getByTestId('in-place-notice')).toHaveTextContent('Syncing…');
-      fireEvent.click(screen.getByText('Syncing…'));
-      expect(useEODStore.getState().isOpen).toBe(false);
-    });
-
-    it('offers no verb on the dock after a failed load (nothing is syncing), and pressing it opens nothing', () => {
-      usePlannerStore.setState(failed);
-      useViewStore.setState({ scope: 'week' }); // no day-header anchor: the dock takes it
-      render(<DockNotices />);
-      fireEvent.click(screen.getByTestId('dock-notice-overflow'));
-
-      const row = document.querySelector('[data-notice-id="eod-review"]') as HTMLElement;
-      expect(row).toHaveTextContent('Today’s review is waiting');
-      expect(row).not.toHaveTextContent('Syncing…');
-      expect(row).not.toHaveTextContent('Start');
-      fireEvent.click(within(row).getByText('Today’s review is waiting'));
-      expect(useEODStore.getState().isOpen).toBe(false);
-      // ✕ ("Not tonight") is still there to wave it away.
-      expect(within(row).queryByRole('button', { name: 'Not tonight' })).not.toBeNull();
-    });
-
-    it('offers no verb in place after a failed load either', () => {
-      usePlannerStore.setState(failed);
-      render(<DayHeaderNotice />);
-
-      const row = screen.getByTestId('in-place-notice');
-      expect(row).not.toHaveTextContent('Syncing…');
-      expect(row).not.toHaveTextContent('Start');
-      fireEvent.click(within(row).getByText('Today’s review is waiting'));
-      expect(useEODStore.getState().isOpen).toBe(false);
-    });
-
-    it('keeps “Not tonight” live while syncing', () => {
-      usePlannerStore.setState(previewing);
-      render(<DayHeaderNotice />);
-
-      fireEvent.click(screen.getByRole('button', { name: 'Not tonight' }));
-      expect(useEODStore.getState().eodDeferredDate).toBe(TODAY);
-    });
-
-    it('starts the review once loaded', () => {
-      usePlannerStore.setState(loaded);
-      render(<DayHeaderNotice />);
-
-      fireEvent.click(screen.getByText('Start'));
-      expect(useEODStore.getState().isOpen).toBe(true);
-    });
-  });
-
-  describe('the waiting line', () => {
+  // The waiting line and its tray are deleted (ghost rows phase 2,
+  // memory/plans/ghost-rows.md): the fold at the top of Today shows the pile.
+  // Whatever the switch and the pile, the dock says nothing about it.
+  describe('the waiting line, deleted', () => {
     const waiting: Item = {
       type: 'task',
       id: 'late-1',
@@ -931,40 +731,21 @@ describe('the notice verbs wait for the planner to load', () => {
 
     beforeEach(() => {
       usePlannerStore.setState({ userId: 'u1', userTimezone: 'UTC', ...projectItems([waiting]) });
-      useMorningStore.setState({ morningCheckEnabled: true, morningCheckDismissedDate: null });
+      useMorningStore.setState({ morningCheckEnabled: true });
     });
     afterEach(() => {
       usePlannerStore.setState({ ...projectItems([]) });
       useMorningStore.setState({ morningCheckEnabled: false });
     });
 
-    // While the line is retired (WAITING_LINE_RETIRED, below) it is down in
-    // every state, so this case no longer exercises the preview/load gate on
-    // its own: it only says the line stays down there too. The load gate the
-    // pile is now drawn behind is pinned by ghost-fold.test.tsx's "draws
-    // nothing before the planner has loaded".
-    it('is not there while previewing cached rows, or over a failed load, either', () => {
-      for (const state of [previewing, failed]) {
+    it('never draws, previewing, failed or loaded, with the setting on and an item waiting', () => {
+      for (const state of [previewing, failed, loaded]) {
         usePlannerStore.setState(state);
         const { unmount } = render(<DockNotices />);
         expect(screen.queryByTestId('morning-bar')).toBeNull();
+        expect(document.querySelector('[data-notice-id="waiting"]')).toBeNull();
         unmount();
       }
-    });
-
-    // Ghost rows, phase 1 (memory/plans/ghost-rows.md): the switch this line
-    // answered to now turns on the fold at the top of Today, which shows the
-    // same pile in place, so the dock's line stays down even once loaded. The
-    // fold's own gates are pinned in ghost-fold.test.tsx.
-    it('is retired by a named switch, not by the leftovers setting cancelling itself', () => {
-      expect(WAITING_LINE_RETIRED).toBe(true);
-    });
-
-    it('stays down once loaded, with the setting on and an item waiting: the ghost fold on Today replaces it', () => {
-      expect(useMorningStore.getState().morningCheckEnabled).toBe(true);
-      usePlannerStore.setState(loaded);
-      render(<DockNotices />);
-      expect(screen.queryByTestId('morning-bar')).toBeNull();
     });
   });
 });

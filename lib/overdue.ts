@@ -2,7 +2,7 @@
  * overdue.ts — the ONE definition of "past due".
  *
  * Before this file the predicate lived in three places that had already drifted
- * apart: components/ai/morning-check.tsx (the banner), lib/item-registry.ts
+ * apart: the morning banner (since retired for the ghost rows), lib/item-registry.ts
  * (Beacon's chat context) and lib/commands/registry.ts (the `goto.overdue`
  * command). None of them guarded recurrence, which meant a daily chore anchored
  * to some date in April was reported as overdue every single morning forever —
@@ -25,23 +25,6 @@ import type { Item, TaskItem } from './planner-types';
  * earlier one — so 7 days is still recent and 8 is earlier.
  */
 export const RECENT_OVERDUE_DAYS = 7;
-
-/**
- * Section headings for the two cohorts, so the tray and mobile sheet agree.
- *
- * "Recent" / "Earlier", NOT "Recently missed" / "Long overdue". These headings
- * exist to make a long list navigable, and the old pair did that by ranking the
- * user's failures — every row below the second one was labelled as rotting, and
- * the heading was the first thing the eye landed on. The replacements say
- * exactly as much about CHRONOLOGY and nothing at all about the person, which
- * is the posture the whole surface is built on (see the copy contract at the
- * top of components/ai/morning-check.tsx). Sort order is unchanged; only the
- * words are.
- */
-export const OVERDUE_COHORT_LABELS = {
-  recent: 'Recent',
-  long: 'Earlier',
-} as const;
 
 const DAY_MS = 86_400_000;
 
@@ -100,8 +83,7 @@ export function daysOverdue(item: { startDate?: string }, todayStr: string): num
  * Return type note: custom-type items are date-anchored and carry-forward
  * eligible, so they DO come back from here, narrowed to `TaskItem`. That
  * narrowing is structural, not literal — CustomItem is taskShape plus a
- * `customType` — and matches what components/ai/morning-check.tsx has always
- * done. `itemTypeName(t)` still returns the real registry name at runtime.
+ * `customType` — and matches what the ghost rows (lib/ghost-rows.ts) read. `itemTypeName(t)` still returns the real registry name at runtime.
  *
  * @param items  the store's unified `items` array (NOT the `tasks` projection —
  *               the registry lookup wants the discriminated item). Accepts a
@@ -173,42 +155,4 @@ export function splitOverdueCohorts(overdue: TaskItem[], todayStr: string): Over
     (daysOverdue(item, todayStr) > RECENT_OVERDUE_DAYS ? long : recent).push(item);
   }
   return { recent, long };
-}
-
-/**
- * NO `oldestOverdueDate` HERE, deliberately, and please don't add one back.
- *
- * There used to be one, and its only consumer was the "· oldest Apr 9" tail of
- * the bar copy. A per-row date is orientation — it tells you what a line is
- * about. The MINIMUM of those dates is not: it is a single aggregate whose only
- * possible reading is how far behind you are, printed on a bar you cannot help
- * seeing every time you open the app. It answered a question nobody asked and
- * the answer was always an accusation.
- *
- * The count stays (it is a fact, and it sizes the job), the per-row stamps stay,
- * and the summary below is deliberately the whole of what a surface may know
- * about the pile in aggregate.
- */
-export interface OverdueSummary extends OverdueCohorts {
-  /** All overdue items in display order (recent cohort, then earlier cohort). */
-  items: TaskItem[];
-  /** `items.length` — the number the bar counts. */
-  count: number;
-}
-
-/**
- * One call for everything the past-due surfaces render: the ordered list, the
- * two cohorts and the count. Runs the predicate exactly once.
- */
-export function summarizeOverdue(
-  items: readonly Item[],
-  todayStr: string,
-  inactiveIds: ReadonlySet<string>,
-): OverdueSummary {
-  const overdue = selectOverdue(items, todayStr, inactiveIds);
-  return {
-    items: overdue,
-    ...splitOverdueCohorts(overdue, todayStr),
-    count: overdue.length,
-  };
 }

@@ -50,7 +50,6 @@ import {
   type SettingRecord,
 } from '@/lib/settings/manifest';
 import { useMorningStore } from '@/lib/morning-store';
-import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore, REMINDER_DEFAULTS } from '@/lib/reminder-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 
@@ -64,7 +63,6 @@ const openLedger = vi.fn();
 function Harness({ pane, focusId }: { pane: PaneId; focusId?: string }) {
   // Subscribed for the re-render alone; the records read the stores directly.
   useMorningStore();
-  useEODStore();
   useReminderStore();
   useExtensionsStore();
   const ctx: SettingCtx = {
@@ -103,7 +101,6 @@ beforeEach(() => {
     morningAutoAgeEnabled: false,
     morningAutoAgeDays: 30,
   });
-  useEODStore.setState({ eodReviewEnabled: false, eodReviewTime: '21:00' });
   useReminderStore.setState({ ...REMINDER_DEFAULTS });
   useExtensionsStore.setState({ available: true, configsLoaded: true, enabled: {}, configs: {} });
 });
@@ -124,7 +121,6 @@ describe('dependents follow their ancestors', () => {
     for (const id of [
       'rituals.autoAge',
       'rituals.autoAgeDays',
-      'rituals.eodTime',
       'rituals.lastCall',
       'rituals.lastCallTime',
       'rituals.stakesTime',
@@ -137,13 +133,11 @@ describe('dependents follow their ancestors', () => {
 
   it('draws the chips once the root is on, with no indent or rail anywhere', () => {
     act(() => {
-      useEODStore.setState({ eodReviewEnabled: true });
       useReminderStore.setState({ remindersEnabled: true, stakesEnabled: true });
     });
     render(<Harness pane="rituals" />);
     expect(row('rituals.autoAge')).not.toBeNull();
     expect(alias('rituals.autoAgeDays')).toBe(row('rituals.autoAge'));
-    expect(row('rituals.eodTime')).not.toBeNull();
     expect(alias('rituals.lastCallTime')).toBe(row('rituals.lastCall'));
     expect(row('rituals.stakesTime')).not.toBeNull();
     expect(row('rituals.ledger')).not.toBeNull();
@@ -152,9 +146,9 @@ describe('dependents follow their ancestors', () => {
 
   it('flips the chips in and out as the root changes', async () => {
     render(<Harness pane="rituals" />);
-    expect(row('rituals.eodTime')).toBeNull();
-    act(() => useEODStore.setState({ eodReviewEnabled: true }));
-    await waitFor(() => expect(row('rituals.eodTime')).not.toBeNull());
+    expect(row('rituals.stakesTime')).toBeNull();
+    act(() => useReminderStore.setState({ stakesEnabled: true }));
+    await waitFor(() => expect(row('rituals.stakesTime')).not.toBeNull());
   });
 });
 
@@ -265,26 +259,26 @@ describe('a merged chip', () => {
 
 describe('single chips', () => {
   it('a lone time opens the time list, named by its own label', async () => {
-    act(() => useEODStore.setState({ eodReviewEnabled: true }));
-    const write = spyWrite('rituals.eodTime');
+    act(() => useReminderStore.setState({ stakesEnabled: true }));
+    const write = spyWrite('rituals.stakesTime');
     render(<Harness pane="rituals" />);
 
-    const trigger = screen.getByTestId('setting-rituals.eodTime');
-    expect(trigger).toHaveAccessibleName('Review at: 9:00 PM');
-    expect(trigger.dataset.value).toBe('21:00');
-    expect(trigger.dataset.setting).toBe('eod_review_time');
+    const trigger = screen.getByTestId('setting-rituals.stakesTime');
+    expect(trigger).toHaveAccessibleName('Settle at: 3:00 AM');
+    expect(trigger.dataset.value).toBe('03:00');
+    expect(trigger.dataset.setting).toBe('stakes_settle_time');
 
     fireEvent.click(trigger);
-    fireEvent.click(await screen.findByTestId('setting-rituals.eodTime-input-option-22:30'));
-    expect(write).toHaveBeenCalledWith('22:30', expect.anything());
+    fireEvent.click(await screen.findByTestId('setting-rituals.stakesTime-input-option-04:30'));
+    expect(write).toHaveBeenCalledWith('04:30', expect.anything());
   });
 
   it('a modified lone time grows a reset with the row reset’s wording', () => {
-    act(() => useEODStore.setState({ eodReviewEnabled: true, eodReviewTime: '22:00' }));
+    act(() => useReminderStore.setState({ stakesEnabled: true, stakesSettleTime: '04:00' }));
     render(<Harness pane="rituals" />);
-    const chip = row('rituals.eodTime')!;
+    const chip = row('rituals.stakesTime')!;
     fireEvent.click(within(chip).getByRole('button', { name: /changed from its default/ }));
-    expect(useEODStore.getState().eodReviewTime).toBe('21:00');
+    expect(useReminderStore.getState().stakesSettleTime).toBe('03:00');
     expect(screen.getByTestId('settings-notice').textContent).toMatch(/reset to/i);
   });
 

@@ -63,8 +63,8 @@ type UndoStripState = {
 /**
  * A row that took focus (`focusUndo`) and leaves with it still inside would
  * drop it to <body>, where the next Tab starts over at the top of the page.
- * Hand it to the dock first, as a notice that dismisses itself under the
- * keyboard does (morning-check.tsx `useDismissWithFocus`): moved before the
+ * Hand it to the dock first (`[data-dock-surface]`, focused with tabIndex -1
+ * and preventScroll, as the retired waiting line's dismissal did): moved before the
  * row is torn down, so the removal never has a focused node to orphan. Only
  * such a row: an action-log row's Undo, clicked, leaves focus to <body> as
  * it always has, where Escape still closes the item panel and the rail.

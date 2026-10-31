@@ -16,7 +16,6 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
-import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
@@ -344,11 +343,11 @@ export default function SettingsPage() {
   const morningTick = useMorningStore(
     (s) => `${s.morningCheckEnabled}|${s.morningAutoAgeEnabled}|${s.morningAutoAgeDays}`
   );
-  const eodTick = useEODStore((s) => `${s.eodReviewEnabled}|${s.eodReviewTime}`);
   const reminderTick = useReminderStore(
     (s) =>
       `${s.remindersEnabled}|${s.lastCallEnabled}|${s.lastCallTime}|` +
-      `${s.stakesEnabled}|${s.stakesSettleTime}`
+      `${s.stakesEnabled}|${s.stakesSettleTime}|` +
+      `${s.iphoneEveningNudge}|${s.iphoneEveningNudgeShown}`
   );
   // systemPrompt rides the tick VERBATIM: the text controls commit on blur by
   // comparing their draft against the last RENDERED value, so a stale value
@@ -457,7 +456,6 @@ export default function SettingsPage() {
       viewTick,
       sidebarTick,
       morningTick,
-      eodTick,
       reminderTick,
       aiTick,
       aiConnTick,

@@ -136,35 +136,11 @@
   --ai-foreground: var(--honey-ink);
   --ai-muted: var(--honey-tint);
 
-  /* Sunrise bar — the "N items waiting" line above the day
-     (components/ai/morning-check.tsx), and the ONLY place in the app where
-     honey becomes a field rather than a glyph. It gets its own tokens because
-     it was the only consumer of `bg-ai/10` + `border-ai/35` + `text-ai-text`,
-     and one alpha of --ai cannot land right on both grounds.
-
-     Why it needed retuning at all: the bar reads as a caution strip in light
-     mode, which is the one thing this surface must never be. The cause is not
-     the fill — 10% of --ai over near-white paper is barely a tint — it is that
-     the copy was --ai-text (= --honey-ink, chroma 0.08) while this palette's
-     body ink is chroma 0.01, and that the edge was 35% of a 0.11-chroma yellow.
-     The most chromatic things on the bar were its BORDER and its BODY TEXT,
-     which is exactly what components/primitives/pills.tsx forbids: colour
-     belongs in a small glyph, never in a container and never in text.
-
-     So the copy is now plain --foreground / --muted-foreground (see the
-     component — there is deliberately no --sunrise-ink token to reach for), the
-     edge drops to 20%, the fill eases to 7%, and the whole of the warmth lives
-     in --sunrise-glyph: one 14px sun. That holds in BOTH themes on purpose —
-     amber-on-dark is if anything the more established alert convention, so
-     leaving dark's gold copy in place would have kept the alert reading while
-     fixing only half the surface, and would have made one component read as two
-     different things depending on the theme.
-
-     Both fills stay TRANSLUCENT, never a solid: the desktop bar composites onto
-     the canvas and the mobile pill onto the backdrop. Same reason the hover wash
-     above is translucent. */
-  --sunrise-bg: color-mix(in oklab, var(--honey-solid) 7%, transparent);
-  --sunrise-border: color-mix(in oklab, var(--honey-solid) 20%, transparent);
+  /* Sunrise glyph: the one warm mark the leftovers family carries (the
+     onboarding tour's row, and the waiting bar before it, which retired with
+     ghost rows phase 2). Colour lives in a small glyph, never in a container
+     and never in text (components/primitives/pills.tsx), so this is the only
+     sunrise token: the bar's own fill and edge went with the bar. */
   /* Deeper than --honey-solid (0.84), which is only ~2.4:1 against near-white
      paper — a 14px glyph carrying the surface's entire identity has to actually
      read. Dark mode keeps --honey-solid, where a light glyph already does. */
@@ -355,16 +331,8 @@
   --ai-foreground: var(--honey-ink);
   --ai-muted: var(--honey-tint);
 
-  /* Sunrise bar — see the long note in the light block for the whole rationale.
-     The fill can afford a couple more points here (a warm tint on the near-black
-     ramp loses apparent chroma the way --lime-solid does, same reason the dark
-     lime goes a notch past light's), and the edge stays heavier because a pale
-     hairline needs the weight to survive on this ground — the same asymmetry
-     --day-off and --ring carry. The glyph drops back to --honey-solid: it is
-     already light against near-black and does not need the extra depth light
-     mode gives it. The COPY is neutral in both themes; there is no ink token. */
-  --sunrise-bg: color-mix(in oklab, var(--honey-solid) 9%, transparent);
-  --sunrise-border: color-mix(in oklab, var(--honey-solid) 28%, transparent);
+  /* Sunrise glyph: drops back to --honey-solid, already light against
+     near-black, without the extra depth light mode gives it. */
   --sunrise-glyph: var(--honey-solid);
 
   /* Lime-as-text tracks the fill exactly — a separate, dimmer value here is how
@@ -615,8 +583,6 @@
   --color-ai: var(--ai);
   --color-ai-foreground: var(--ai-foreground);
   --color-ai-muted: var(--ai-muted);
-  --color-sunrise-bg: var(--sunrise-bg);
-  --color-sunrise-border: var(--sunrise-border);
   --color-sunrise-glyph: var(--sunrise-glyph);
   --color-success-text: var(--success-text);
   --color-warning-text: var(--warning-text);

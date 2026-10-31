@@ -64,7 +64,7 @@ vi.mock('@/lib/completion-confetti', () => ({ celebrateCompletion: vi.fn() }));
 
 import { toast } from 'sonner';
 import { getActionLog, usePlannerStore } from '@/lib/planner-store';
-import { useEODStore } from '@/lib/eod-store';
+import { useMorningStore } from '@/lib/morning-store';
 import { useModsStore } from '@/lib/mods-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useViewStore } from '@/lib/view-store';
@@ -220,8 +220,9 @@ describe('triggers', () => {
     expect(toastTexts()).toEqual(['on item.created']);
 
     vi.mocked(toast).mockClear();
-    useEODStore.setState({ lastEodReviewDate: null });
-    await useEODStore.getState().saveLastReviewDate(null, TODAY);
+    // The leftovers fold cleared by hand (ghost rows phase 2's stand-in).
+    useMorningStore.setState({ leftoversClearedByUser: {} });
+    useMorningStore.getState().noteLeftoversCleared(null, TODAY);
     flush();
     expect(toastTexts()).toEqual(['on review.saved']);
   });

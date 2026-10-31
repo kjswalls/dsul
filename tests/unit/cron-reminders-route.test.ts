@@ -46,7 +46,6 @@ const summary = (over: Partial<ScanSummary> = {}): ScanSummary => ({
   users: 2,
   cues: 3,
   lastCalls: 1,
-  eod: 1,
   unreached: 1,
     retried: 0,
   daysSettled: 0,
@@ -126,7 +125,7 @@ describe('GET /api/cron/reminders', () => {
   // A database without migration 032 degrades to silence, not to an alarm
   // every five minutes about a migration that has simply not run yet.
   it('answers 200 for a scan that found its migration missing', async () => {
-    runReminderScan.mockResolvedValue(summary({ users: 0, cues: 0, lastCalls: 0, eod: 0, unreached: 0, migrationMissing: true, notes: ['migration 032 not applied'] }));
+    runReminderScan.mockResolvedValue(summary({ users: 0, cues: 0, lastCalls: 0, unreached: 0, migrationMissing: true, notes: ['migration 032 not applied'] }));
     const res = await get(`Bearer ${SECRET}`);
     expect(res.status).toBe(200);
   });
@@ -159,7 +158,7 @@ describe('GET /api/cron/reminders', () => {
   // One line per tick, in the function log, whatever the tick held: the
   // counts, and how many notes there are rather than the notes themselves.
   it('logs one line per tick', async () => {
-    runReminderScan.mockResolvedValue(summary({ notes: ['u1: eod via push unreached — push: no device subscribed'] }));
+    runReminderScan.mockResolvedValue(summary({ notes: ['u1: cue via push unreached — push: no device subscribed'] }));
 
     await get(`Bearer ${SECRET}`);
 
@@ -167,7 +166,7 @@ describe('GET /api/cron/reminders', () => {
     expect(log).toHaveBeenCalledTimes(2);
     expect(log).toHaveBeenNthCalledWith(
       1,
-      '[cron/reminders] users=2 cues=3 lastCalls=1 eod=1 unreached=1 retried=0 daysSettled=0 notes=1',
+      '[cron/reminders] users=2 cues=3 lastCalls=1 unreached=1 retried=0 daysSettled=0 notes=1',
     );
     expect(log).toHaveBeenNthCalledWith(2, '[cron/recipes] users=1 runs=2 notes=0');
   });
@@ -226,7 +225,7 @@ describe('GET /api/cron/reminders: the recipe tier', () => {
     });
     expect(log).toHaveBeenNthCalledWith(
       1,
-      '[cron/reminders] users=2 cues=3 lastCalls=1 eod=1 unreached=1 retried=0 daysSettled=0 notes=0',
+      '[cron/reminders] users=2 cues=3 lastCalls=1 unreached=1 retried=0 daysSettled=0 notes=0',
     );
   });
 

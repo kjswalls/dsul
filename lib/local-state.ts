@@ -5,7 +5,6 @@ import { useAISettingsStore } from './ai-settings-store';
 import { clearKeptQuestionState } from './ask-pending';
 import { useCommandUsageStore } from './command-usage-store';
 import { clearChatState } from './conversations-store';
-import { useEODStore } from './eod-store';
 import { clearItemNotesState } from './item-notes-store';
 import { useKeyboardShortcutsStore } from './keyboard-shortcuts-store';
 import { useMorningStore } from './morning-store';
@@ -120,11 +119,13 @@ import { useViewStore } from './view-store';
  *                          server-side (v0's plaintext apiKey is dropped by
  *                          the store's v1 migration).
  *   dsul-morning-store   all DISCLOSIVE — the check TIME is the hour this
- *                          person gets up, the dismissal is a date they acted
- *                          on, the auto-age policy drives an unattended
- *                          mutation, and a receipt carries row TITLES.
- *   dsul-eod-store       all DISCLOSIVE — same reasons, at the other end of
- *                          the day.
+ *                          person gets up, the auto-age policy drives an
+ *                          unattended mutation, a receipt carries row TITLES,
+ *                          and the leftovers stamp is a date they acted on.
+ *   dsul-eod-store       RETIRED with the end of day review (ghost rows phase
+ *                          2). No store writes it; a blob an older build left
+ *                          is removed by clearRetiredEodStore, disclosive for
+ *                          the same reasons the morning store's is.
  *   dsul-sidebar-settings  leftSidebarHoverEnabled INERT. Width and
  *                          open/collapsed chrome never cleared at all.
  *   dsul-keyboard-shortcuts  overrides INERT — an id→keys map, no free text,
@@ -256,12 +257,6 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
     clear: ({ incomingUserId }) => useMorningStore.getState().clearUserScopedState(incomingUserId),
   },
   {
-    key: 'dsul-eod-store',
-    keeps: [],
-    inert: [],
-    clear: () => useEODStore.getState().clearUserScopedState(),
-  },
-  {
     key: 'dsul-sidebar-settings',
     keeps: ['leftSidebarOpen', 'askOpen', 'leftSidebarWidth'],
     inert: ['leftSidebarHoverEnabled'],
@@ -282,6 +277,21 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
 ];
 
 /**
+ * The end of day review's persisted blob (`dsul-eod-store`: its hour, the day
+ * last reviewed, the day its line was waved away). The store is gone (ghost
+ * rows phase 2), but a browser that ran an older build still holds the blob,
+ * and nothing will ever rewrite it, so it goes the first time anything clears.
+ */
+function clearRetiredEodStore(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem('dsul-eod-store');
+  } catch {
+    // Unreadable storage holds nothing we could remove.
+  }
+}
+
+/**
  * Per-user state outside any zustand persist blob, so the audit test cannot
  * walk it by key: saved conversations are a memory-only cache (whose clear
  * also sweeps the pre-2a transcript keys, one fixed plus one per item thread),
@@ -300,6 +310,7 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
  * own writing; their clear also bumps an epoch that drops a read in flight.
  */
 const RAW_CLEARERS: readonly (() => void)[] = [
+  clearRetiredEodStore,
   clearChatState,
   clearKeptQuestionState,
   clearReleased,

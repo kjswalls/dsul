@@ -61,8 +61,6 @@ import { useViewStore } from '@/lib/view-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { EMPTY_VIEW_FILTERS, NO_PRIORITY, type ViewFilters } from '@/lib/filters';
 import type { Goal } from '@/lib/planner-types';
-import { useEODStore } from '@/lib/eod-store';
-import { resetNoticeAnchors } from '@/lib/notice-anchors';
 import { enableGoalsAndOrganize } from './support/extensions';
 import { finishExit, recordResizeObservers, settle, watchLayoutReads } from './support/shelf';
 import { seedAI, CONNECTED_MODEL } from './helpers/ai-fixtures';
@@ -879,32 +877,6 @@ describe('the phone mount, at the foot of the Today card', () => {
     // take off; here every ✕ is drawn beside its words already.
     for (const el of shelf().querySelectorAll('*')) {
       expect(el.getAttribute('class') ?? '').not.toMatch(/(^|\s)group-(hover|has-\[:focus-visible\])\//);
-    }
-  });
-
-  it('leaves the review notice to the date row, so the shelf is alone under it', () => {
-    // Since 2026-10-17 the day's notes (today's review among them) are a glyph
-    // beside the date with the sentences in a popover (day-messages.tsx), so
-    // nothing about the day sits between the top row and the shelf.
-    resetNoticeAnchors();
-    seed({ canvasGroupBy: 'project' }, { selectedDate: new Date() });
-    useEODStore.setState({
-      _hasHydrated: true,
-      eodReviewEnabled: true,
-      eodReviewTime: '00:00',
-      lastEodReviewDate: null,
-      eodDeferredDate: null,
-    });
-    try {
-      renderPhoneHeader();
-
-      const card = shelf().parentElement!;
-      expect(card.firstElementChild).toBe(shelf());
-      expect(screen.queryByTestId('notice-slot')).toBeNull();
-      const key = screen.getByTestId('day-messages');
-      expect(screen.getByTestId('header-date').parentElement?.parentElement).toContainElement(key);
-    } finally {
-      useEODStore.setState({ eodReviewEnabled: false, _hasHydrated: false });
     }
   });
 
