@@ -9,7 +9,9 @@
  *   cue:<itemId>:<yyyy-MM-dd>T<HH:mm>   the day's cue (its sentKeyFor)
  *   snooze:<itemId>:<ISO instant>        a matured snooze, by the instant it was held at
  *   last-call:<yyyy-MM-dd>
- *   eod:<yyyy-MM-dd>
+ *
+ * `eod:<yyyy-MM-dd>` was the end of day review's, retired with it (ghost rows);
+ * the ack route still takes one, so an older build's ack is not a 400.
  *
  * A snooze's instant is normalised through toISOString, because PostgREST
  * renders a timestamptz as `…+00:00` and a browser writes `…Z`: the same
@@ -33,6 +35,6 @@ export function snoozeKey(itemId: string, held: string): string | null {
   return Number.isFinite(ms) ? `snooze:${itemId}:${new Date(ms).toISOString()}` : null
 }
 
-export function dayKey(kind: 'last-call' | 'eod', dateStr: string): string {
+export function dayKey(kind: 'last-call', dateStr: string): string {
   return `${kind}:${dateStr}`
 }

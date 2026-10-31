@@ -108,14 +108,12 @@ private struct RawItems: Decodable, Sendable {
         // ... and Habit reminders on, a value no default gives either (a
         // missing row is false, a database behind on its migrations null).
         #expect(p.settings.remindersEnabled == true)
-        // The last call and the review, on at hours no default gives.
+        // The last call, on at an hour no default gives.
         #expect(p.settings.lastCallEnabled == true)
         #expect(p.settings.lastCallTime == "20:45")
-        #expect(p.settings.eodReviewEnabled == true)
-        #expect(p.settings.eodReviewTime == "21:30")
-        #expect(p.settings.lastEodReviewDate == "2026-10-01")
         #expect(p.settings.reminderGraceMinutes == reminderGraceMinutes)
-        #expect(p.settings.planEod == PlanEod(enabled: true, time: "21:30", lastReviewDate: "2026-10-01"))
+        // ... and the leftovers off, which no default gives.
+        #expect(p.settings.leftoversOnToday == false)
         // The one live snooze with a day, its instant as Postgres wrote it,
         // and the item it names in the payload.
         let snoozes = try #require(p.snoozes)
@@ -428,8 +426,8 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.remindersEnabled == nil)
         // ... and the rituals and the snoozes are unknown too.
         #expect(p.settings.lastCallEnabled == nil)
-        #expect(p.settings.eodReviewEnabled == nil)
-        #expect(p.settings.planEod == nil)
+        // ... and the leftovers are on, a new account's default.
+        #expect(p.settings.leftoversOnToday)
         #expect(p.settings.reminderGraceMinutes == nil)
         #expect(p.snoozes == nil)
         // ... and a server older than vacation mode sends no trips: none.
@@ -518,26 +516,19 @@ private struct RawItems: Decodable, Sendable {
             return try decode(json).settings
         }
         let odd = try settings(
-            #"{"lastCallEnabled":"yes","lastCallTime":2030,"eodReviewEnabled":null,"eodReviewTime":false,"reminderGraceMinutes":"30"}"#
+            #"{"lastCallEnabled":"yes","lastCallTime":2030,"leftoversOnToday":"no","reminderGraceMinutes":"30"}"#
         )
         #expect(odd.lastCallEnabled == nil)
         #expect(odd.lastCallTime == nil)
-        #expect(odd.eodReviewEnabled == nil)
-        #expect(odd.eodReviewTime == nil)
         #expect(odd.reminderGraceMinutes == nil)
-        #expect(odd.planEod == nil)
-
-        // Off is off, with whatever hour is stored, so the plan withdraws a
-        // review still in the shade.
-        let off = try settings(#"{"eodReviewEnabled":false,"eodReviewTime":"21:00","lastEodReviewDate":"2026-10-01"}"#)
-        #expect(off.planEod == PlanEod(enabled: false, time: "21:00", lastReviewDate: "2026-10-01"))
-        // On with no hour is off, as the scan reads it.
-        let noHour = try settings(#"{"eodReviewEnabled":true,"eodReviewTime":null}"#)
-        #expect(noHour.planEod == PlanEod(enabled: false, time: "", lastReviewDate: nil))
-        // The looser hour lib/eod.ts reads is passed as it is, for the plan to parse.
-        let loose = try settings(#"{"eodReviewEnabled":true,"eodReviewTime":"9:15","reminderGraceMinutes":45}"#)
-        #expect(loose.planEod == PlanEod(enabled: true, time: "9:15", lastReviewDate: nil))
-        #expect(loose.reminderGraceMinutes == 45)
+        // Not a bool reads as the default, on.
+        #expect(odd.leftoversOnToday)
+        let off = try settings(#"{"leftoversOnToday":false,"reminderGraceMinutes":45}"#)
+        #expect(!off.leftoversOnToday)
+        #expect(off.reminderGraceMinutes == 45)
+        // An older server's review fields are ignored, never an error.
+        let old = try settings(#"{"eodReviewEnabled":true,"eodReviewTime":"21:30","lastEodReviewDate":"2026-10-01"}"#)
+        #expect(old.leftoversOnToday)
     }
 
     /// The snoozes: a bad element is skipped, never the payload; null or the
@@ -913,11 +904,11 @@ private struct RawItems: Decodable, Sendable {
 
         // The rituals round-trip, and unknown writes no key.
         let rituals = PlannerSettings(
-            lastCallEnabled: true, lastCallTime: "20:45", eodReviewEnabled: false, eodReviewTime: "21:30",
-            lastEodReviewDate: "2026-10-01", reminderGraceMinutes: 30
+            lastCallEnabled: true, lastCallTime: "20:45", leftoversOnToday: false, reminderGraceMinutes: 30
         )
         #expect(try JSONDecoder().decode(PlannerSettings.self, from: try JSONEncoder().encode(rituals)) == rituals)
-        let keys = ["lastCallEnabled", "lastCallTime", "eodReviewEnabled", "eodReviewTime", "lastEodReviewDate", "reminderGraceMinutes"]
+        #expect(String(decoding: defaults, as: UTF8.self).contains(#""leftoversOnToday":true"#))
+        let keys = ["lastCallEnabled", "lastCallTime", "reminderGraceMinutes"]
         for key in keys {
             #expect(!String(decoding: defaults, as: UTF8.self).contains(key), "\(key)")
         }

@@ -55,18 +55,6 @@ const lastCall = (over: Partial<Nudge> = {}): Nudge => ({
   ...over,
 });
 
-/** The end-of-day review's invitation, as the scan words it. */
-const eod = (over: Partial<Nudge> = {}): Nudge => ({
-  kind: 'eod',
-  title: 'End of day 🌙',
-  body: "How'd today go?",
-  url: '/?eod=2026-08-10',
-  dateStr: '2026-08-10',
-  items: [],
-  expiresAtMs: TICK + 10500_000,
-  ...over,
-});
-
 const ctx = (over: Partial<ChannelContext> = {}): ChannelContext => ({
   userId: 'u1',
   service: {} as never,
@@ -304,14 +292,14 @@ describe('the call channel declines ordinary cues by default', () => {
   });
 });
 
-/* ── The EOD review is push only ──────────────────────────────────────────── */
+/* ── What an outward channel takes ─────────────────────────────────────── */
 
 // Decision 12. A blank `kinds` on voice and SMS used to mean "every kind",
-// which was harmless with two kinds and a trap with three: widening NudgeKind
-// would have read "How'd today go?" aloud in every kitchen and texted it to
-// every SMS user. Blank now means REMINDER_KINDS, the cue and the last call,
-// and a list the user typed can narrow that and never add to it.
-describe('the EOD review is push only', () => {
+// which was harmless with two kinds and a trap with three. Blank now means
+// REMINDER_KINDS, the cue and the last call, and a list the user typed can
+// narrow that and never add to it. "eod", the retired review's word, is a
+// word like any other the channels do not know.
+describe('outward channels take the reminders, and a list only narrows them', () => {
   const twilio = { to: '+15551234567', from: '+15557654321' };
   const twilioSecrets = { accountSid: 'AC1', authToken: 'tok' };
   const speakers = { baseUrl: 'https://home.example.com', players: 'media_player.kitchen' };
@@ -327,142 +315,61 @@ describe('the EOD review is push only', () => {
     expect(REMINDER_KINDS).toEqual(['cue', 'last-call']);
   });
 
-  // Configured in full, so the decline is the kind's and not "not configured".
-  it.each([[undefined], [''], ['  '], [[]]])('voice with kinds %j declines it, and still speaks the reminders', async (kinds) => {
+  it.each([[undefined], [''], ['  '], [[]]])('voice with kinds %j speaks the reminders', async (kinds) => {
     const configured = ctx({ config: { ...speakers, kinds }, secrets: { token: 'tok' } });
-
-    const result = await voiceChannel.deliver(eod(), configured);
-    expect(result).toEqual({ ok: true, skipped: true, detail: 'voice declines eod' });
-    expect(fetchMock).not.toHaveBeenCalled();
-
-    // The default is the reminders, named: not nothing.
     expect(await voiceChannel.deliver(cue(), configured)).toMatchObject({ ok: true });
     expect((await voiceChannel.deliver(lastCall(), configured)).skipped).toBeFalsy();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it.each([[undefined], [''], ['  '], [[]]])('sms with kinds %j declines it, and still texts the reminders', async (kinds) => {
+  it.each([[undefined], [''], ['  '], [[]]])('sms with kinds %j texts the reminders', async (kinds) => {
     const configured = ctx({ config: { ...twilio, kinds }, secrets: twilioSecrets });
-
-    const result = await smsChannel.deliver(eod(), configured);
-    expect(result).toEqual({ ok: true, skipped: true, detail: 'sms declines eod' });
-    expect(fetchMock).not.toHaveBeenCalled();
-
     expect((await smsChannel.deliver(cue(), configured)).skipped).toBeFalsy();
     expect((await smsChannel.deliver(lastCall(), configured)).skipped).toBeFalsy();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('the call declines it too: its default is the last call alone', async () => {
-    const result = await callChannel.deliver(eod(), ctx({ config: twilio, secrets: twilioSecrets }));
-    expect(result).toMatchObject({ ok: true, skipped: true, detail: 'call declines eod' });
-    expect(fetchMock).not.toHaveBeenCalled();
+  it('channelKinds narrows a list to the reminders, and falls back only when nothing is listed', () => {
+    expect(channelKinds(['cue', 'last-call', 'eod'])).toEqual(['cue', 'last-call']);
+    expect(channelKinds(['eod'])).toEqual([]);
+    expect(channelKinds(['last-call'])).toEqual(['last-call']);
+    expect(channelKinds([])).toEqual(REMINDER_KINDS);
+    expect(channelKinds([], ['last-call'])).toEqual(['last-call']);
+    expect(channelKinds(['eod'], ['last-call'])).toEqual([]);
   });
 
-  // Every outward channel switched on and configured, none told which kinds:
-  // the fan-out hands the review to push and to nothing else.
-  it('through deliverNudge, only push takes it', async () => {
-    const reports = await deliverNudge(
-      eod(),
-      { userId: 'u1', service: makeServiceFake().service, timeFormat: '12h', timezone: 'UTC' },
-      {
-        extensionEnabled: { 'voice-announcements': true, 'sms-nudge': true, 'phone-call': true },
-        configs: { 'voice-announcements': speakers, 'sms-nudge': twilio, 'phone-call': twilio },
-        secrets: { 'voice-announcements': { token: 'tok' }, 'sms-nudge': twilioSecrets, 'phone-call': twilioSecrets },
-      },
-    );
+  const LISTED = [['cue, last-call, eod'], [['cue', 'last-call', 'eod']]] as const;
 
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(reports.filter((r) => r.channel !== 'push')).toEqual([
-      expect.objectContaining({ channel: 'voice-announcements', skipped: true, detail: 'voice declines eod' }),
-      expect.objectContaining({ channel: 'sms-nudge', skipped: true, detail: 'sms declines eod' }),
-      expect.objectContaining({ channel: 'phone-call', skipped: true, detail: 'call declines eod' }),
-    ]);
-    expect(reports.find((r) => r.channel === 'push')?.skipped).toBe(false);
+  it.each(LISTED)('voice with kinds %j speaks what it knows of the list', async (kinds) => {
+    const configured = ctx({ config: { ...speakers, kinds }, secrets: { token: 'tok' } });
+    expect((await voiceChannel.deliver(cue(), configured)).skipped).toBeFalsy();
+    expect((await voiceChannel.deliver(lastCall(), configured)).skipped).toBeFalsy();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  // The kinds fields are free text, so "eod" is one word away. Listed, it used
-  // to opt the channel in: spokenLine has no branch for the review, so a
-  // kitchen speaker said "End of day 🌙. After How'd today go?." and a call
-  // said it twice. A list narrows REMINDER_KINDS and never widens it.
-  describe("listing 'eod' does not opt a channel in", () => {
-    const LISTED = [['cue, last-call, eod'], [['cue', 'last-call', 'eod']]] as const;
+  it.each(LISTED)('sms with kinds %j texts what it knows of the list', async (kinds) => {
+    const configured = ctx({ config: { ...twilio, kinds }, secrets: twilioSecrets });
+    expect((await smsChannel.deliver(cue(), configured)).skipped).toBeFalsy();
+    expect((await smsChannel.deliver(lastCall(), configured)).skipped).toBeFalsy();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 
-    it('channelKinds narrows a list to the reminders, and falls back only when nothing is listed', () => {
-      expect(channelKinds(['cue', 'last-call', 'eod'])).toEqual(['cue', 'last-call']);
-      expect(channelKinds(['eod'])).toEqual([]);
-      expect(channelKinds(['last-call'])).toEqual(['last-call']);
-      expect(channelKinds([])).toEqual(REMINDER_KINDS);
-      expect(channelKinds([], ['last-call'])).toEqual(['last-call']);
-      expect(channelKinds(['eod'], ['last-call'])).toEqual([]);
-    });
+  it.each(LISTED)('the call with kinds %j rings for what it knows of the list', async (kinds) => {
+    const configured = ctx({ config: { ...twilio, kinds }, secrets: twilioSecrets });
+    expect((await callChannel.deliver(cue(), configured)).skipped).toBeFalsy();
+    expect((await callChannel.deliver(lastCall(), configured)).skipped).toBeFalsy();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 
-    it.each(LISTED)('voice with kinds %j declines it, and still speaks what else was listed', async (kinds) => {
-      const configured = ctx({ config: { ...speakers, kinds }, secrets: { token: 'tok' } });
-
-      expect(await voiceChannel.deliver(eod(), configured)).toEqual({ ok: true, skipped: true, detail: 'voice declines eod' });
-      expect(fetchMock).not.toHaveBeenCalled();
-
-      expect((await voiceChannel.deliver(cue(), configured)).skipped).toBeFalsy();
-      expect((await voiceChannel.deliver(lastCall(), configured)).skipped).toBeFalsy();
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-    });
-
-    it.each(LISTED)('sms with kinds %j declines it, and still texts what else was listed', async (kinds) => {
-      const configured = ctx({ config: { ...twilio, kinds }, secrets: twilioSecrets });
-
-      expect(await smsChannel.deliver(eod(), configured)).toEqual({ ok: true, skipped: true, detail: 'sms declines eod' });
-      expect(fetchMock).not.toHaveBeenCalled();
-
-      expect((await smsChannel.deliver(cue(), configured)).skipped).toBeFalsy();
-      expect((await smsChannel.deliver(lastCall(), configured)).skipped).toBeFalsy();
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-    });
-
-    it.each(LISTED)('the call with kinds %j declines it, and still rings for what else was listed', async (kinds) => {
-      const configured = ctx({ config: { ...twilio, kinds }, secrets: twilioSecrets });
-
-      expect(await callChannel.deliver(eod(), configured)).toEqual({ ok: true, skipped: true, detail: 'call declines eod' });
-      expect(fetchMock).not.toHaveBeenCalled();
-
-      expect((await callChannel.deliver(cue(), configured)).skipped).toBeFalsy();
-      expect((await callChannel.deliver(lastCall(), configured)).skipped).toBeFalsy();
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-    });
-
-    // "eod" alone is a list with nothing the channel speaks in it: quiet, not
-    // the default, which is what any other word it does not know gets too.
-    it.each([
-      ['voice', () => voiceChannel.deliver(cue(), ctx({ config: { ...speakers, kinds: 'eod' }, secrets: { token: 'tok' } }))],
-      ['sms', () => smsChannel.deliver(cue(), ctx({ config: { ...twilio, kinds: 'eod' }, secrets: twilioSecrets }))],
-      ['call', () => callChannel.deliver(lastCall(), ctx({ config: { ...twilio, kinds: 'eod' }, secrets: twilioSecrets }))],
-    ])("%s with kinds 'eod' alone takes nothing", async (_, send) => {
-      expect(await send()).toMatchObject({ ok: true, skipped: true });
-      expect(fetchMock).not.toHaveBeenCalled();
-    });
-
-    it('through deliverNudge, only push takes it', async () => {
-      const reports = await deliverNudge(
-        eod(),
-        { userId: 'u1', service: makeServiceFake().service, timeFormat: '12h', timezone: 'UTC' },
-        {
-          extensionEnabled: { 'voice-announcements': true, 'sms-nudge': true, 'phone-call': true },
-          configs: {
-            'voice-announcements': { ...speakers, kinds: 'cue, last-call, eod' },
-            'sms-nudge': { ...twilio, kinds: 'cue, last-call, eod' },
-            'phone-call': { ...twilio, kinds: 'cue, last-call, eod' },
-          },
-          secrets: { 'voice-announcements': { token: 'tok' }, 'sms-nudge': twilioSecrets, 'phone-call': twilioSecrets },
-        },
-      );
-
-      expect(fetchMock).not.toHaveBeenCalled();
-      expect(reports.filter((r) => r.channel !== 'push').map((r) => r.detail)).toEqual([
-        'voice declines eod',
-        'sms declines eod',
-        'call declines eod',
-      ]);
-    });
+  // "eod" alone is a list with nothing the channel speaks in it: quiet, not
+  // the default, which is what any other word it does not know gets too.
+  it.each([
+    ['voice', () => voiceChannel.deliver(cue(), ctx({ config: { ...speakers, kinds: 'eod' }, secrets: { token: 'tok' } }))],
+    ['sms', () => smsChannel.deliver(cue(), ctx({ config: { ...twilio, kinds: 'eod' }, secrets: twilioSecrets }))],
+    ['call', () => callChannel.deliver(lastCall(), ctx({ config: { ...twilio, kinds: 'eod' }, secrets: twilioSecrets }))],
+  ])("%s with kinds 'eod' alone takes nothing", async (_, send) => {
+    expect(await send()).toMatchObject({ ok: true, skipped: true });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -646,32 +553,14 @@ describe('the push channel says how long a push may wait, and how hard to wake f
     expect(sentAs().options).toEqual({ TTL: 600, urgency: 'high', topic: 'lc-20260810' });
   });
 
-  // An invitation that keeps until midnight, not an alarm: 'normal', so a push
-  // service may hold it for the phone's own next wake. Collapsed on its day,
-  // under the tag its old route sent, and with nothing to tick on it.
-  it('the EOD review: normal urgency, its DAY as the topic, and no buttons', async () => {
-    await pushChannel.deliver(eod({ expiresAtMs: TICK + 10500_000 }), oneDevice());
-
-    const { options, body } = sentAs();
-    expect(options).toEqual({ TTL: 10500, urgency: 'normal', topic: 'eod-20260810' });
-    expect(body).toMatchObject({
-      title: 'End of day 🌙',
-      body: "How'd today go?",
-      url: '/?eod=2026-08-10',
-      tag: 'dsul-eod-2026-08-10',
-      data: { url: '/?eod=2026-08-10', dateStr: '2026-08-10', kind: 'eod' },
-    });
-    expect(body).not.toHaveProperty('actions');
-  });
-
   // The expiry is an instant, so the TTL is what is left of it when the push
-  // leaves, not what was left when the tick began. A review claimed on the
+  // leaves, not what was left when the tick began. A last call claimed on the
   // 23:55 tick and sent ten seconds later, a few users down the list, stops at
   // midnight; worked out at 23:55:00, it would have been held until 00:00:10.
   it('the TTL is what is left of the nudge when it is sent, not when the tick began', async () => {
     const MIDNIGHT = Date.parse('2026-08-11T04:00:00Z');
     vi.setSystemTime(MIDNIGHT - 290_000);
-    await pushChannel.deliver(eod({ dateStr: '2026-08-10', expiresAtMs: MIDNIGHT }), oneDevice());
+    await pushChannel.deliver(lastCall({ dateStr: '2026-08-10', expiresAtMs: MIDNIGHT }), oneDevice());
     expect(sentAs().options).toMatchObject({ TTL: 290 });
     expect(sentAs().body).not.toHaveProperty('expiresAtMs');
   });
@@ -685,11 +574,11 @@ describe('the push channel says how long a push may wait, and how hard to wake f
     expect(body).toMatchObject({ tag: `dsul-item-${UUID}` });
   });
 
-  // One topic per kind per day, so however many habits a user sets, a phone
-  // that is off holds two of them at most. The pledge notice has none
+  // One topic per day, so however many habits a user sets, a phone that is
+  // off holds one last call at most. The pledge notice has none
   // (stakes.test.ts pins that), since a catch-up sends one per day.
-  it('names day topics that fit, one per kind', () => {
-    for (const prefix of ['lc', 'eod'] as const) {
+  it('names day topics that fit', () => {
+    for (const prefix of ['lc'] as const) {
       expect(dayTopic(prefix, '2026-08-10')).toMatch(TOPIC);
       expect(dayTopic(prefix, '2026-08-10')).toBe(`${prefix}-20260810`);
     }

@@ -2,9 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import {
-  EOD_IDENTIFIER,
   NOTIFICATION_BUDGET,
-  eodIdentifiers,
   identifiers,
   itemIdentifier,
   planNotifications,
@@ -13,7 +11,7 @@ import {
   type PlannedRequest,
 } from '@/lib/reminders/plan';
 import { addDays, changeoverMinutes, inMinuteRun, instantOf, localClock, weekdayOf } from '@/lib/reminders/clock';
-import { reminderCopy, EOD_COPY } from '@/lib/reminders/copy';
+import { reminderCopy } from '@/lib/reminders/copy';
 import { occursOn, wantsDoingOn } from '@/lib/reminders/due';
 import type { Item, Routine, Season } from '@dsul/types';
 import { assertContract } from './support/copy-contract';
@@ -96,11 +94,6 @@ describe('identifiers', () => {
       'dsul-item-abc#next', 'dsul-item-abc#now', 'dsul-item-abc#snooze',
     ]);
     expect(itemIdentifier('abc')).toBe('dsul-item-abc');
-    expect(eodIdentifiers()).toEqual([
-      'dsul-eod',
-      'dsul-eod#1', 'dsul-eod#2', 'dsul-eod#3', 'dsul-eod#4', 'dsul-eod#5', 'dsul-eod#6', 'dsul-eod#7',
-      'dsul-eod#next',
-    ]);
   });
 });
 
@@ -531,7 +524,6 @@ describe('planNotifications: handled today (decision 23)', () => {
   // skipped Wednesday, on a Friday ticked a week ahead.
   it('every ring of every request lands on its own minute, on a day it is wanted', () => {
     const horizon = wall('2026-12-31', '23:59');
-    const eod = { enabled: true, time: '21:00', lastReviewDate: MON };
     const autumn = (endsOn: string, startsOn?: string) =>
       ({ id: 's1', name: 'Autumn', state: 'auto', endsOn, ...(startsOn ? { startsOn } : {}), itemIds: ['h1'], routineIds: [] }) as Season;
     const worlds: { name: string; input: Partial<PlanInput> & { at?: number } }[] = [
@@ -539,7 +531,6 @@ describe('planNotifications: handled today (decision 23)', () => {
       { name: 'M/W/F done Monday at 06:00, cue 21:00', input: { items: [habit('h1', { reminderTime: '21:00', repeatFrequency: 'custom', repeatDays: [1, 3, 5], completedDates: [MON] })] } },
       { name: 'paused ten days', input: { items: [habit('h1', { pausedAt: '2026-10-01T12:00:00Z', pausedUntil: '2026-10-15' })] } },
       { name: 'monthly done today', input: { items: [habit('h1', { repeatFrequency: 'monthly', repeatMonthDay: 15, completedDates: ['2026-10-15'] })], at: wall('2026-10-15', '06:00') } },
-      { name: 'reviewed at 08:00', input: { eod, at: wall(MON, '08:00') } },
       { name: 'a season ending Thursday', input: { items: [habit('h1')], seasons: [autumn('2026-10-08')] } },
       { name: 'a season from Thursday to the next Thursday, done today', input: { items: [habit('h1', { reminderTime: '23:59', completedDates: [MON] })], seasons: [autumn('2026-10-15', '2026-10-08')] } },
       { name: 'three weekdays in a season ending Saturday', input: { items: [habit('h1', { repeatFrequency: 'custom', repeatDays: [1, 3, 5] })], seasons: [autumn('2026-10-10')] } },
@@ -560,15 +551,10 @@ describe('planNotifications: handled today (decision 23)', () => {
         for (const ring of rings) {
           const where = `${name}: ${r.id} on ${ring.dateStr}`;
           const minutes = localClock(new Date(ring.at), NY).nowMinutes;
-          if (item) {
-            const [h, m] = (item as { reminderTime: string }).reminderTime.split(':').map(Number);
-            expect(minutes, where).toBe(h * 60 + m);
-            expect(occursOn(item, ring.dateStr, NY), where).toBe(true);
-            expect(wantsDoingOn(item, ring.dateStr, ctx), where).toBe(true);
-          } else {
-            expect(minutes, where).toBe(21 * 60);
-            expect(ring.dateStr, where).not.toBe(MON);
-          }
+          const [h, m] = (item as { reminderTime: string }).reminderTime.split(':').map(Number);
+          expect(minutes, where).toBe(h * 60 + m);
+          expect(occursOn(item!, ring.dateStr, NY), where).toBe(true);
+          expect(wantsDoingOn(item!, ring.dateStr, ctx), where).toBe(true);
         }
       }
     }
@@ -684,82 +670,6 @@ describe('planNotifications: catch-up', () => {
   });
 });
 
-describe('planNotifications: the review', () => {
-  const eod = { enabled: true, time: '21:00', lastReviewDate: null };
-
-  it('is one standing daily trigger under dsul-eod, in the rituals thread', () => {
-    const r = only(plan({ eod, remindersEnabled: false }));
-    expect(r).toEqual({
-      id: EOD_IDENTIFIER,
-      kind: 'eod',
-      trigger: { type: 'calendar', hour: 21, minute: 0, repeats: true },
-      firesAt: wall(MON, '21:00'),
-      title: EOD_COPY.title,
-      body: EOD_COPY.body,
-      threadId: 'dsul.rituals',
-      summaryArgument: EOD_COPY.title,
-      categoryId: 'DSUL_EOD',
-      level: 'active',
-      relevance: 0,
-      userInfo: { kind: 'eod' },
-    });
-  });
-
-  it('reviewed today before its hour: never absent, standing on the other six days, the invitation withdrawn', () => {
-    const p = plan({
-      eod: { ...eod, lastReviewDate: MON },
-      at: wall(MON, '20:00'),
-      delivered: [{ id: 'dsul-eod', deliveredAtMs: wall('2026-10-04', '21:00') }],
-    });
-    expect(p.requests.map((r) => [r.id, r.trigger, r.dateStr ?? null])).toEqual([
-      ['dsul-eod#3', calendar(21, 0, { weekday: 3 }), null],
-      ['dsul-eod#4', calendar(21, 0, { weekday: 4 }), null],
-      ['dsul-eod#5', calendar(21, 0, { weekday: 5 }), null],
-      ['dsul-eod#6', calendar(21, 0, { weekday: 6 }), null],
-      ['dsul-eod#7', calendar(21, 0, { weekday: 7 }), null],
-      ['dsul-eod#1', calendar(21, 0, { weekday: 1 }), null],
-      ['dsul-eod#2', atDay('2026-10-12', '21:00'), '2026-10-12'],
-    ]);
-    expect(p.requests.every((r) => r.kind === 'eod')).toBe(true);
-    expect(p.withdraw).toEqual(['dsul-eod']);
-  });
-
-  it('held without room for its seven: tomorrow\'s weekday, standing, first of all, and a note', () => {
-    const p = plan({ eod: { ...eod, lastReviewDate: MON }, at: wall(MON, '20:00'), items: [habit('h1')], budget: 1 });
-    expect(p.requests.map((r) => [r.id, r.trigger, r.userInfo])).toEqual([
-      ['dsul-eod#3', calendar(21, 0, { weekday: 3 }), { kind: 'eod' }],
-    ]);
-    expect(p.notes).toEqual([
-      { code: 'over-budget', kept: 1 },
-      { code: 'over-budget', itemId: 'h1', kept: 0 },
-    ]);
-  });
-
-  it('reviewed today after its hour: the calendar trigger, first ringing tomorrow', () => {
-    const r = only(plan({ eod: { ...eod, lastReviewDate: MON }, at: wall(MON, '22:00') }));
-    expect(r.trigger.type).toBe('calendar');
-    expect(r.firesAt).toBe(wall(TUE, '21:00'));
-  });
-
-  it('reads the hour with the review\'s own parser, and notes one it cannot read', () => {
-    expect(only(plan({ eod: { ...eod, time: '9:00' } })).trigger).toEqual({ type: 'calendar', hour: 9, minute: 0, repeats: true });
-    expect(plan({ eod: { ...eod, time: 'whenever' } })).toEqual({
-      requests: [],
-      withdraw: [],
-      notes: [{ code: 'bad-time', value: 'whenever' }],
-    });
-    expect(plan({ eod: { ...eod, enabled: false } }).requests).toEqual([]);
-  });
-
-  it('a review in the small hours is one-offs, each about its own day', () => {
-    const p = plan({ eod: { ...eod, time: '1:30' }, at: wall(MON, '12:00') });
-    expect(p.requests.map((r) => [r.id, r.trigger, r.userInfo])).toEqual([
-      ['dsul-eod', { type: 'at', dateStr: TUE, hhmm: '01:30' }, { kind: 'eod', dateStr: TUE }],
-      ['dsul-eod#next', { type: 'at', dateStr: '2026-10-07', hhmm: '01:30' }, { kind: 'eod', dateStr: '2026-10-07' }],
-    ]);
-  });
-});
-
 describe('planNotifications: the shade', () => {
   const rang = (id: string, day: string, hhmm = '07:30', dateStr?: string) =>
     ({ id, deliveredAtMs: wall(day, hhmm), ...(dateStr ? { dateStr } : {}) });
@@ -820,22 +730,6 @@ describe('planNotifications: the shade', () => {
     expect(p.withdraw).toEqual(['dsul-item-h1#2']);
   });
 
-  // lib/eod.ts reviewedDay files a review finished after midnight under the
-  // night it was for, so the invitation it answered is that night's.
-  it('withdraws the review\'s invitation once its night is reviewed, after midnight too', () => {
-    const late = { enabled: true, time: '23:30', lastReviewDate: MON };
-    const shade = [rang('dsul-eod', MON, '23:30')];
-    const after = (eod: typeof late) => plan({ eod, remindersEnabled: false, at: wall(TUE, '00:15'), delivered: shade });
-    expect(after(late).withdraw).toEqual(['dsul-eod']);
-    expect(after({ ...late, lastReviewDate: '2026-10-04' }).withdraw).toEqual([]);
-    expect(after({ ...late, enabled: false }).withdraw).toEqual(['dsul-eod']);
-    // Answered on the web at 23:00 and reconciled the next morning.
-    const web = { enabled: true, time: '21:00', lastReviewDate: MON };
-    expect(plan({ eod: web, at: wall(TUE, '07:00'), delivered: [rang('dsul-eod', MON, '21:00')] }).withdraw).toEqual(['dsul-eod']);
-    // No review settings at all: nothing is assumed.
-    expect(plan({ eod: null, at: wall(TUE, '07:00'), delivered: [rang('dsul-eod', MON, '21:00')] }).withdraw).toEqual([]);
-  });
-
   it('a snooze replaces that day\'s cue in the shade, not another day\'s', () => {
     const h = habit('h1', { repeatFrequency: 'custom', repeatDays: [1, 3, 5] });
     const until = new Date(wall(WED, '07:50')).toISOString();
@@ -853,12 +747,11 @@ describe('planNotifications: the shade', () => {
 describe('planNotifications: no last call', () => {
   // Design decision 24. A list worked out at the last plan can name a habit
   // done elsewhere since, the one scold the copy contract cannot send.
-  it('plans nothing but cues, snoozes, catch-ups and the review', () => {
+  it('plans nothing but cues, snoozes and catch-ups', () => {
     const p = plan({
       items: [habit('h1', { reminderTime: undefined, streak: 40 }), habit('h2')],
-      eod: { enabled: true, time: '21:00', lastReviewDate: null },
     });
-    expect(new Set(p.requests.map((r) => r.kind))).toEqual(new Set(['cue', 'eod']));
+    expect(new Set(p.requests.map((r) => r.kind))).toEqual(new Set(['cue']));
     expect(p.requests.some((r) => r.itemId === 'h1')).toBe(false);
   });
 });
@@ -915,16 +808,6 @@ describe('planNotifications: the budget', () => {
     ]);
   });
 
-  it('spends it on the review first, and on the soonest cue next', () => {
-    const p = plan({
-      items: [habit('late', { reminderTime: '20:00' }), habit('early', { reminderTime: '07:00' })],
-      eod: { enabled: true, time: '21:00', lastReviewDate: null },
-      budget: 2,
-    });
-    expect(ids(p)).toEqual([EOD_IDENTIFIER, 'dsul-item-early']);
-    expect(p.notes).toEqual([{ code: 'over-budget', itemId: 'late', kept: 0 }]);
-  });
-
   it('puts a snooze before any item\'s cue, and a catch-up, never pending, costs nothing', () => {
     const now = wall(MON, '07:40');
     const until = new Date(wall(MON, '07:55')).toISOString();
@@ -942,17 +825,17 @@ describe('planNotifications: the budget', () => {
     ]);
   });
 
-  // Thirty cues caught up at 07:35 and twenty-nine Wednesday habits: the
+  // Thirty cues caught up at 07:35 and thirty Wednesday habits: the
   // catch-ups are delivered at once, so every item still gets its trigger.
   it('counts only what waits pending against the budget', () => {
     const items = [
       ...Array.from({ length: 30 }, (_, i) => habit(`c${String(i).padStart(2, '0')}`)),
-      ...Array.from({ length: 29 }, (_, i) => habit(`w${String(i).padStart(2, '0')}`, { repeatFrequency: 'weekly', repeatDays: [3] })),
+      ...Array.from({ length: 30 }, (_, i) => habit(`w${String(i).padStart(2, '0')}`, { repeatFrequency: 'weekly', repeatDays: [3] })),
     ];
-    const p = plan({ items, at: wall(MON, '07:35'), eod: { enabled: true, time: '21:00', lastReviewDate: null } });
+    const p = plan({ items, at: wall(MON, '07:35') });
     expect(p.requests.filter((r) => r.trigger.type === 'now')).toHaveLength(30);
     expect(p.requests.filter((r) => r.trigger.type !== 'now')).toHaveLength(NOTIFICATION_BUDGET);
-    expect(new Set(p.requests.map((r) => r.itemId ?? 'eod')).size).toBe(60);
+    expect(new Set(p.requests.map((r) => r.itemId)).size).toBe(60);
     expect(p.notes).toEqual([]);
   });
 });
@@ -965,7 +848,6 @@ describe('planNotifications: invariants', () => {
     timezone: NY,
     remindersEnabled: true,
     timeFormat: '12h',
-    eod: { enabled: true, time: '21:30', lastReviewDate: null },
     items: [
       habit('a', { streak: 3 }),
       habit('b', { repeatFrequency: 'weekdays', reminderAnchor: 'after lunch', reminderTime: '13:00' }),
@@ -984,7 +866,7 @@ describe('planNotifications: invariants', () => {
     expect(new Set(all).size).toBe(all.length);
     expect(all.length).toBeLessThanOrEqual(NOTIFICATION_BUDGET);
     for (const r of p.requests) {
-      expect(r.itemId ? identifiers(r.itemId) : eodIdentifiers()).toContain(r.id);
+      expect(identifiers(r.itemId!)).toContain(r.id);
     }
     const fires = p.requests.map((r) => r.firesAt);
     expect(fires).toEqual([...fires].sort((x, y) => x - y));
@@ -996,16 +878,12 @@ describe('planNotifications: invariants', () => {
     for (const timeFormat of ['12h', '24h'] as const) {
       const p = planNotifications({ ...input, timeFormat });
       for (const r of p.requests) {
-        if (r.kind === 'eod') {
-          expect({ title: r.title, body: r.body }).toEqual(EOD_COPY);
-        } else {
-          const item = input.items.find((i) => i.id === r.itemId)!;
-          const at = 'reminderTime' in item ? item.reminderTime : undefined;
-          const anchor = ('reminderAnchor' in item ? item.reminderAnchor : undefined) || undefined;
-          expect({ title: r.title, body: r.body }).toEqual(
-            reminderCopy({ item, at: at ?? '', anchor, snoozed: r.kind === 'snoozed' }, timeFormat),
-          );
-        }
+        const item = input.items.find((i) => i.id === r.itemId)!;
+        const at = 'reminderTime' in item ? item.reminderTime : undefined;
+        const anchor = ('reminderAnchor' in item ? item.reminderAnchor : undefined) || undefined;
+        expect({ title: r.title, body: r.body }).toEqual(
+          reminderCopy({ item, at: at ?? '', anchor, snoozed: r.kind === 'snoozed' }, timeFormat),
+        );
         expect(r.summaryArgument).toBe(r.title);
         assertContract({ title: r.title, body: r.body });
       }

@@ -280,10 +280,7 @@ export function searchSettings(
 
   // A row hidden by platform is absent from the index, not greyed in it —
   // otherwise search deep-links to a control that will never render.
-  // The same for a row hidden by state (`shownWhen`).
-  const available = SETTINGS.filter(
-    (r) => !(r.desktopOnly && options.isMobile) && (r.shownWhen?.(ctx) ?? true)
-  );
+  const available = SETTINGS.filter((r) => !(r.desktopOnly && options.isMobile));
 
   const settings: SettingHit[] = [];
   for (const record of available) {

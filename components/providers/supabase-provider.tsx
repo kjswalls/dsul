@@ -303,11 +303,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // (morningAutoAgeLastRunByUser) — not hydrated.
       });
 
-      // The end of day review is retired on the web (ghost rows phase 2), but
-      // the iPhone app still plans its nightly notification off
-      // eod_review_enabled, so that one column is hydrated into the reminder
-      // store below as the notification's off switch (`rituals.eod`).
-      // eod_review_time is no longer read here. The columns stay.
+      // The end of day review is retired everywhere (ghost rows), so its
+      // columns (eod_review_enabled, eod_review_time) are no longer hydrated.
+      // The columns stay.
 
       // Reminder settings (migration 032). setState rather than an action: the store holds no user-scoped derived state that a
       // stamp would have to guard, because it is not persisted — see its note.
@@ -317,9 +315,6 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         lastCallTime: settings.habit_last_call_time ?? REMINDER_DEFAULTS.lastCallTime,
         stakesEnabled: settings.stakes_enabled ?? REMINDER_DEFAULTS.stakesEnabled,
         stakesSettleTime: settings.stakes_settle_time ?? REMINDER_DEFAULTS.stakesSettleTime,
-        // Only true is on, as the iPhone and the scan read it.
-        iphoneEveningNudge: settings.eod_review_enabled === true,
-        iphoneEveningNudgeShown: settings.eod_review_enabled === true,
       });
 
       if (settings.theme) {

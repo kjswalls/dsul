@@ -146,8 +146,8 @@ final class NotificationScheduler {
     /// Plans for `userId` from `snapshot` and makes the center match: every
     /// planned request pending (one already pending with the same signature
     /// is left alone), every other dsul request removed, the plan's stale
-    /// notifications withdrawn from the shade, and a catch-up delivered and
-    /// remembered. Nothing at all while this iPhone doesn't allow dsul to
+    /// notifications withdrawn from the shade (the retired review's among
+    /// them), and a catch-up delivered and remembered. Nothing at all while this iPhone doesn't allow dsul to
     /// notify: nothing would ring, and a user who allows it later gets a plan
     /// on the next return to the app. Answers the plan, or nil when none ran.
     @discardableResult
@@ -188,7 +188,6 @@ final class NotificationScheduler {
             away: snapshot.away,
             timeFormat: snapshot.settings.timeFormat,
             remindersEnabled: snapshot.settings.remindersEnabled == true,
-            eod: snapshot.settings.planEod,
             snoozes: Self.merged(snapshot.snoozes, current.localSnoozes),
             localSentKeys: sent,
             delivered: shade.map { PlanDelivered(id: $0.id, deliveredAtMs: $0.deliveredAtMs, dateStr: $0.dateStr) },
@@ -215,7 +214,10 @@ final class NotificationScheduler {
             }
             try? await center.add(scheduled)
         }
-        if !plan.withdraw.isEmpty { center.removeDelivered(plan.withdraw) }
+        // The retired review's notifications (an older build armed them):
+        // pending ones went with the stale above, and any in the shade go now.
+        let withdraw = plan.withdraw + shade.map(\.id).filter(NotificationKeys.isRetiredReview)
+        if !withdraw.isEmpty { center.removeDelivered(withdraw) }
 
         let pendingAfter = await center.pending()
         current.armed = pendingAfter.compactMap(Self.armed)
@@ -313,7 +315,7 @@ final class NotificationScheduler {
     }
 
     /// A pending request worth remembering: a cue at its own minute (not a
-    /// snooze, which rings at another, and not the review).
+    /// snooze, which rings at another).
     nonisolated static func armed(_ pending: PendingNotification) -> ArmedCue? {
         guard NotificationKeys.isDsul(pending.id), !pending.id.hasSuffix("#snooze"), pending.itemId != nil,
               let at = pending.at, let next = pending.nextFireMs

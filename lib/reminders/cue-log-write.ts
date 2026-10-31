@@ -42,8 +42,14 @@ export const MAX_ATTEMPTS = 5
 /** How many results a row keeps: the latest, so a retried row stays well under 067's 8 KB check. */
 const MAX_RESULTS = 20
 
-/** cue_log's `kind`: a cue's matured snooze is its own. 067's CHECK. */
-export type CueLogKind = 'cue' | 'snooze' | 'last-call' | 'eod' | 'pledge'
+/**
+ * cue_log's `kind` as the scan writes it: a cue's matured snooze is its own.
+ * 067's CHECK also holds 'eod', the retired review's, which only an old row
+ * carries (`StoredCueLogKind`).
+ */
+export type CueLogKind = 'cue' | 'snooze' | 'last-call' | 'pledge'
+/** A kind a stored row may carry: what is written now, or an old review row's. */
+export type StoredCueLogKind = CueLogKind | 'eod'
 
 /** One entry in `results`: a channel's answer, or a device's. Codes only, never a provider's words. */
 export interface CueLogResult {

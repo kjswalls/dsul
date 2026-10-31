@@ -619,14 +619,11 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
     public var lastCallEnabled: Bool?
     /// `habit_last_call_time`, "HH:mm" as stored; nil when unset or unknown.
     public var lastCallTime: String?
-    /// The end-of-day review's switch (`eod_review_enabled`): only true is on.
-    /// Nil from a server older than the field.
-    public var eodReviewEnabled: Bool?
-    /// `eod_review_time` as stored: "HH:mm", or the looser "H:mm" lib/eod.ts
-    /// reads. Nil when unset, or from a server older than the field.
-    public var eodReviewTime: String?
-    /// `last_eod_review_date`: the day the last review was FOR.
-    public var lastEodReviewDate: String?
+    /// "Leftovers on Today" (`morning_check_enabled`, `rituals.morningCheck`):
+    /// the switch for the "From earlier" fold of ghost rows at the top of Today
+    /// (memory/plans/ghost-rows.md). True, the account default since migration
+    /// 086, when missing (a server older than the field) or not a bool.
+    public var leftoversOnToday: Bool
     /// The scan's grace after a cue's minute (`REMINDER_GRACE_MINUTES`), the
     /// catch-up window. Nil from a server older than the field, where the
     /// plan's own `reminderGraceMinutes` stands in.
@@ -644,9 +641,7 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         remindersEnabled: Bool? = nil,
         lastCallEnabled: Bool? = nil,
         lastCallTime: String? = nil,
-        eodReviewEnabled: Bool? = nil,
-        eodReviewTime: String? = nil,
-        lastEodReviewDate: String? = nil,
+        leftoversOnToday: Bool = true,
         reminderGraceMinutes: Int? = nil
     ) {
         self.timezone = timezone
@@ -660,28 +655,14 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         self.remindersEnabled = remindersEnabled
         self.lastCallEnabled = lastCallEnabled
         self.lastCallTime = lastCallTime
-        self.eodReviewEnabled = eodReviewEnabled
-        self.eodReviewTime = eodReviewTime
-        self.lastEodReviewDate = lastEodReviewDate
+        self.leftoversOnToday = leftoversOnToday
         self.reminderGraceMinutes = reminderGraceMinutes
-    }
-
-    /// The review as `planNotifications` takes it. Nil while its switch is
-    /// unknown (a server older than the field), which plans no review and
-    /// withdraws none. A review switched on with no hour is off, as the scan
-    /// reads it (lib/reminders/scan.ts asks for a time before it rings).
-    public var planEod: PlanEod? {
-        guard let enabled = eodReviewEnabled else { return nil }
-        guard enabled, let time = eodReviewTime else {
-            return PlanEod(enabled: false, time: eodReviewTime ?? "", lastReviewDate: lastEodReviewDate)
-        }
-        return PlanEod(enabled: true, time: time, lastReviewDate: lastEodReviewDate)
     }
 
     enum CodingKeys: String, CodingKey {
         case timezone, showCompletedTasks, appIcon, weekStartDay, timeFormat, streaksEnabled, remindersEnabled
         case organizeEnabled, goalsEnabled
-        case lastCallEnabled, lastCallTime, eodReviewEnabled, eodReviewTime, lastEodReviewDate, reminderGraceMinutes
+        case lastCallEnabled, lastCallTime, leftoversOnToday, reminderGraceMinutes
     }
 
     public init(from decoder: Decoder) throws {
@@ -697,9 +678,7 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         self.remindersEnabled = c.lenientBool(.remindersEnabled)
         self.lastCallEnabled = c.lenientBool(.lastCallEnabled)
         self.lastCallTime = c.lenientString(.lastCallTime)
-        self.eodReviewEnabled = c.lenientBool(.eodReviewEnabled)
-        self.eodReviewTime = c.lenientString(.eodReviewTime)
-        self.lastEodReviewDate = c.lenientString(.lastEodReviewDate)
+        self.leftoversOnToday = c.lenientBool(.leftoversOnToday) ?? true
         self.reminderGraceMinutes = c.lenientInt(.reminderGraceMinutes)
     }
 
@@ -716,9 +695,7 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         try c.encodeIfPresent(remindersEnabled, forKey: .remindersEnabled)
         try c.encodeIfPresent(lastCallEnabled, forKey: .lastCallEnabled)
         try c.encodeIfPresent(lastCallTime, forKey: .lastCallTime)
-        try c.encodeIfPresent(eodReviewEnabled, forKey: .eodReviewEnabled)
-        try c.encodeIfPresent(eodReviewTime, forKey: .eodReviewTime)
-        try c.encodeIfPresent(lastEodReviewDate, forKey: .lastEodReviewDate)
+        try c.encode(leftoversOnToday, forKey: .leftoversOnToday)
         try c.encodeIfPresent(reminderGraceMinutes, forKey: .reminderGraceMinutes)
     }
 }

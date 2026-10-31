@@ -535,15 +535,12 @@ export function SettingsShell({
   // still draws them (the key and model through rowFor with a "Set up" that
   // opens the panel, setUpAction; Use AI in dsul as UseAIRow; the rest as the
   // ordinary rows they are).
-  // A row hidden by state (`shownWhen`, e.g. rituals.eod) is left out here
-  // too; search applies the same rule.
-  const rows = (
+  const rows =
     pane === 'beacon'
       ? paneOwn.rows.filter((r) => !AI_PANE_RECORD_IDS.has(r.id))
       : pane === 'look'
         ? paneOwn.rows.filter((r) => !LOOK_PICKER_RECORD_IDS.has(r.id))
-        : paneOwn.rows
-  ).filter((r) => r.shownWhen?.(ctx) ?? true);
+        : paneOwn.rows;
   // Only the store itself runs past 600px; search results and an extension's
   // own rows keep the column every other pane has. (Look stays in it too: its
   // gallery would gain, but its rows sit in and under the picker and would

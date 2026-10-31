@@ -3,7 +3,6 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import path from 'path';
 import {
   NOTIFICATION_BUDGET,
-  eodIdentifiers,
   identifiers,
   planNotifications,
   type NotificationPlan,
@@ -11,7 +10,7 @@ import {
 } from '@/lib/reminders/plan';
 import { snoozeFireInstant } from '@/lib/reminders/snooze';
 import { addDays, changeoverMinutes, instantOf, localClock, weekdayOf, type MinuteRun } from '@/lib/reminders/clock';
-import { EOD_COPY, reminderCopy } from '@/lib/reminders/copy';
+import { reminderCopy } from '@/lib/reminders/copy';
 import { occursOn, wantsDoingOn } from '@/lib/reminders/due';
 import { SNOOZE_MINUTES } from '@/lib/reminders/channels/push';
 import type { Item, Routine, Season } from '@/lib/planner-types';
@@ -87,7 +86,7 @@ const iso = (ms: number) => new Date(ms).toISOString();
 
 // ── identifiers ──────────────────────────────────────────────────────────────
 
-type IdentifiersCase = { name: string; itemId: string | null; expected: string[] };
+type IdentifiersCase = { name: string; itemId: string; expected: string[] };
 
 // ── snoozeFireInstant ────────────────────────────────────────────────────────
 
@@ -167,7 +166,6 @@ function buildPlans(): PlanCase[] {
     return { name, input, expected: planNotifications(input) };
   };
   const vitamins = (over: Record<string, unknown> = {}) => habit(1001, 'Vitamins', over);
-  const eod = { enabled: true, time: '21:00', lastReviewDate: null };
   const until = (hhmm: string) => iso(wall(MON, hhmm));
   const season = (id: string, over: Partial<Season>): Season =>
     ({ id, name: id, state: 'auto', itemIds: [], routineIds: [], ...over }) as Season;
@@ -249,10 +247,9 @@ function buildPlans(): PlanCase[] {
       items: [vitamins({ reminderTime: '02:30' })],
       nowMs: wall(MON, '06:00', 'Asia/Kolkata'),
     }),
-    make('UTC never changes: a small-hours review stands', {
+    make('UTC never changes: a small-hours cue stands', {
       timezone: 'UTC',
-      eod: { enabled: true, time: '2:30', lastReviewDate: null },
-      remindersEnabled: false,
+      items: [vitamins({ reminderTime: '02:30' })],
       nowMs: wall(MON, '06:00', 'UTC'),
     }),
 
@@ -455,68 +452,9 @@ function buildPlans(): PlanCase[] {
       snoozes: [{ itemId: uid(1001), until: until('07:55'), date: MON }],
     }),
 
-    // The review.
-    make('review: one standing trigger', { eod, remindersEnabled: false }),
-    make('review done before its hour: standing on the other six days, never absent', {
-      eod: { ...eod, lastReviewDate: MON },
-      nowMs: wall(MON, '20:00'),
-      delivered: [{ id: 'dsul-eod', deliveredAtMs: wall('2026-10-04', '21:00') }],
-    }),
-    make('review done at 08:00 before its hour: every ring at the hour', {
-      eod: { ...eod, lastReviewDate: MON },
-      nowMs: wall(MON, '08:00'),
-    }),
-    make('review done before its hour, room for one: tomorrow\'s weekday and a note', {
-      eod: { ...eod, lastReviewDate: MON },
-      nowMs: wall(MON, '20:00'),
-      items: [vitamins()],
-      budget: 1,
-    }),
-    make('review done after its hour: the calendar, first ringing tomorrow', {
-      eod: { ...eod, lastReviewDate: MON },
-      nowMs: wall(MON, '22:00'),
-    }),
-    make('review done yesterday: standing', { eod: { ...eod, lastReviewDate: '2026-10-04' }, nowMs: wall(MON, '20:00') }),
-    make('review at 9:00, the loose form', { eod: { ...eod, time: '9:00' } }),
-    make('review at an unreadable hour: a note', { eod: { ...eod, time: 'whenever' } }),
-    make('review switched off: nothing', { eod: { ...eod, enabled: false } }),
-    make('review in the small hours: one-offs', { eod: { ...eod, time: '1:30' }, nowMs: wall(MON, '12:00') }),
-    make('review beside cues', { eod, items: [vitamins(), habit(1005, 'Reading', { reminderTime: '21:00', streak: 30 })] }),
-    make('review answered after midnight: the night it answered withdrawn', {
-      eod: { ...eod, time: '23:30', lastReviewDate: MON },
-      remindersEnabled: false,
-      nowMs: wall('2026-10-06', '00:15'),
-      delivered: [{ id: 'dsul-eod', deliveredAtMs: wall(MON, '23:30') }],
-    }),
-    make('review answered on the web, reconciled next morning: withdrawn', {
-      eod: { ...eod, lastReviewDate: MON },
-      remindersEnabled: false,
-      nowMs: wall('2026-10-06', '07:00'),
-      delivered: [{ id: 'dsul-eod', deliveredAtMs: wall(MON, '21:00') }],
-    }),
-    make('review still owed for its night: left in the shade', {
-      eod: { ...eod, time: '23:30', lastReviewDate: '2026-10-04' },
-      remindersEnabled: false,
-      nowMs: wall('2026-10-06', '00:15'),
-      delivered: [{ id: 'dsul-eod', deliveredAtMs: wall(MON, '23:30') }],
-    }),
-    make('review switched off: its invitation withdrawn', {
-      eod: { ...eod, enabled: false },
-      remindersEnabled: false,
-      nowMs: wall('2026-10-06', '07:00'),
-      delivered: [{ id: 'dsul-eod', deliveredAtMs: wall(MON, '21:00') }],
-    }),
-    // G14: a review recorded for a day ahead of today holds that day.
-    make('review recorded for tomorrow: that weekday a week out', {
-      eod: { ...eod, lastReviewDate: '2026-10-06' },
-      remindersEnabled: false,
-      nowMs: wall(MON, '22:00'),
-    }),
-
     // No last call (decision 24).
     make('a streak with no cue: no last call', {
       items: [vitamins({ reminderTime: undefined, streak: 40 })],
-      eod,
       nowMs: wall(MON, '20:30'),
     }),
 
@@ -539,12 +477,6 @@ function buildPlans(): PlanCase[] {
     make('Santiago, a 00:30 cue on its midnight changeover: one-offs, and a note', {
       timezone: SANTIAGO,
       items: [vitamins({ reminderTime: '00:30' })],
-      nowMs: wall('2026-09-05', '12:00', SANTIAGO),
-    }),
-    make('Santiago, a review at 0:30 on the same changeover: one-offs, and a note', {
-      timezone: SANTIAGO,
-      eod: { ...eod, time: '0:30' },
-      remindersEnabled: false,
       nowMs: wall('2026-09-05', '12:00', SANTIAGO),
     }),
     // G1: a held 00:30 daily the night before Santiago's changeover: one note.
@@ -590,11 +522,6 @@ function buildPlans(): PlanCase[] {
       ],
       budget: 5,
     }),
-    make('the review first, then the soonest cue', {
-      items: [habit(1013, 'Late', { reminderTime: '20:00' }), habit(1014, 'Early', { reminderTime: '07:00' })],
-      eod,
-      budget: 2,
-    }),
     make('a snooze first, and a catch-up costs no pending room', {
       items: [habit(1015, 'A'), habit(1016, 'Z', { reminderTime: '06:00' })],
       nowMs: wall(MON, '07:40'),
@@ -603,21 +530,19 @@ function buildPlans(): PlanCase[] {
       budget: 1,
     }),
 
-    make('a catch-up for thirty and twenty-nine Wednesday habits: every item still armed', {
+    make('a catch-up for thirty habits beside thirty Wednesday ones: every item still armed', {
       items: [
         ...Array.from({ length: 30 }, (_, i) => habit(1200 + i, `Morning ${i + 1}`)),
-        ...Array.from({ length: 29 }, (_, i) => habit(1300 + i, `Wednesday ${i + 1}`, { repeatFrequency: 'weekly', repeatDays: [3] })),
+        ...Array.from({ length: 30 }, (_, i) => habit(1300 + i, `Wednesday ${i + 1}`, { repeatFrequency: 'weekly', repeatDays: [3] })),
       ],
-      eod,
       nowMs: wall(MON, '07:35'),
     }),
-    make('a held review, a held daily, three weekdays and a daily in six places', {
+    make('a held daily, three weekdays and a daily in six places', {
       items: [
         habit(1030, 'Held', { reminderTime: '07:00', completedDates: [MON] }),
         habit(1031, 'Gym', { repeatFrequency: 'custom', repeatDays: [1, 3, 5], reminderTime: '07:15' }),
         habit(1032, 'Read', { reminderTime: '07:45' }),
       ],
-      eod: { ...eod, lastReviewDate: MON },
       nowMs: wall(MON, '06:00'),
       budget: 6,
     }),
@@ -633,22 +558,13 @@ function buildPlans(): PlanCase[] {
       ],
       budget: 8,
     }),
-    // G13: a held review takes all seven when they fit, and says nothing.
-    make('a held review in exactly seven places: all seven, no note', {
-      eod: { ...eod, lastReviewDate: MON },
-      remindersEnabled: false,
-      nowMs: wall(MON, '20:00'),
-      budget: 7,
-    }),
-    // G3: two one-off series in three places: the sooner second, the review's or not.
+    // G3: two one-off series in three places: the sooner second.
     make('two one-off series in three places: the sooner second', {
-      items: [habit(2010, 'Night', { reminderTime: '01:10' })],
-      eod: { ...eod, time: '2:50' },
+      items: [habit(2010, 'Night', { reminderTime: '01:10' }), habit(2011, 'Later', { reminderTime: '02:50' })],
       budget: 3,
     }),
-    make('a review at 3:50 stands in New York beside a 01:10 series', {
-      items: [habit(2010, 'Night', { reminderTime: '01:10' })],
-      eod: { ...eod, time: '3:50' },
+    make('a cue at 03:50 stands in New York beside a 01:10 series', {
+      items: [habit(2010, 'Night', { reminderTime: '01:10' }), habit(2011, 'Later', { reminderTime: '03:50' })],
       budget: 3,
     }),
     // G5: one place, three habits: the soonest, and the notes sorted by id.
@@ -701,9 +617,10 @@ function buildPlans(): PlanCase[] {
         { id: 'another-app-1', deliveredAtMs: wall(MON, '07:30') },
       ],
     }),
-    make('reminders switched off: every cue withdrawn, the review kept', {
+    // An older build's review is no item's identifier: the plan leaves it, and
+    // the hosted scheduler takes it out (NotificationScheduler.swift).
+    make('reminders switched off: every cue withdrawn, an old review left to the scheduler', {
       items: [vitamins()],
-      eod,
       remindersEnabled: false,
       nowMs: wall('2026-10-06', '06:00'),
       delivered: [
@@ -725,7 +642,7 @@ function buildPlans(): PlanCase[] {
     make('a subtask: nothing', { items: [task(1020, 'Sub', { startDate: '2026-10-09', parentItemId: uid(1021) })] }),
     make('reminders off: no cue', { items: [vitamins()], remindersEnabled: false }),
     make('a cue time that is not HH:mm: a note', { items: [vitamins({ reminderTime: '7:30' })] }),
-    make('a zone the runtime does not know: nothing, a note', { items: [vitamins()], eod, timezone: 'Not/AZone' }),
+    make('a zone the runtime does not know: nothing, a note', { items: [vitamins()], timezone: 'Not/AZone' }),
   ];
 }
 
@@ -742,7 +659,6 @@ function buildFixture(): PlanFixture {
   return {
     identifiers: [
       { name: 'an item', itemId: uid(1001), expected: identifiers(uid(1001)) },
-      { name: 'the review', itemId: null, expected: eodIdentifiers() },
     ],
     snoozeFireInstant: buildSnoozes(),
     changeoverMinutes: buildChangeovers(),
@@ -789,7 +705,7 @@ describe('notification plan fixtures shared with DsulCore', () => {
       expect(pending.length, name).toBeLessThanOrEqual(input.budget ?? NOTIFICATION_BUDGET);
       expect(new Set(all).size, name).toBe(all.length);
       for (const r of expected.requests) {
-        expect(r.itemId ? identifiers(r.itemId) : eodIdentifiers(), name).toContain(r.id);
+        expect(identifiers(r.itemId!), name).toContain(r.id);
       }
       const delivered = new Set((input.delivered ?? []).map((d) => d.id));
       for (const id of expected.withdraw) expect(delivered.has(id), `${name}: ${id}`).toBe(true);
@@ -798,13 +714,9 @@ describe('notification plan fixtures shared with DsulCore', () => {
     }
   });
 
-  it('every body is reminderCopy\'s, or the review\'s, and keeps the contract', () => {
+  it('every body is reminderCopy\'s, and keeps the contract', () => {
     for (const { name, input, expected } of fixture.plans) {
       for (const r of expected.requests) {
-        if (r.kind === 'eod') {
-          expect({ title: r.title, body: r.body }, name).toEqual(EOD_COPY);
-          continue;
-        }
         const item = input.items.find((i) => i.id === r.itemId)!;
         const at = 'reminderTime' in item ? item.reminderTime : undefined;
         const anchor = ('reminderAnchor' in item ? item.reminderAnchor : undefined) || undefined;
@@ -818,7 +730,7 @@ describe('notification plan fixtures shared with DsulCore', () => {
 
   it('the cases reach every rule', () => {
     const requests = fixture.plans.flatMap((c) => c.expected.requests);
-    expect(new Set(requests.map((r) => r.kind))).toEqual(new Set(['cue', 'snoozed', 'catchUp', 'eod']));
+    expect(new Set(requests.map((r) => r.kind))).toEqual(new Set(['cue', 'snoozed', 'catchUp']));
     expect(new Set(requests.map((r) => r.trigger.type))).toEqual(new Set(['calendar', 'at', 'afterMs', 'now']));
     const notes = fixture.plans.flatMap((c) => c.expected.notes);
     expect(new Set(notes.map((n) => n.code))).toEqual(new Set(['bad-zone', 'bad-time', 'dst-gap', 'over-budget']));
@@ -847,9 +759,6 @@ describe('notification plan fixtures shared with DsulCore', () => {
     const midnight = byName('Santiago, a 00:30 cue on its midnight changeover: one-offs, and a note').expected;
     expect(midnight.notes).toEqual([{ code: 'dst-gap', itemId: uid(1001), dateStr: '2026-09-06', at: '00:30' }]);
     expect(midnight.requests.map((r) => r.trigger.type)).toEqual(['at', 'at']);
-    expect(byName('Santiago, a review at 0:30 on the same changeover: one-offs, and a note').expected.notes).toEqual([
-      { code: 'dst-gap', dateStr: '2026-09-06', at: '00:30' },
-    ]);
     expect(byName('Santiago, done before a 00:30 cue the night before its changeover: one note').expected.notes).toEqual([
       { code: 'dst-gap', itemId: uid(1001), dateStr: '2026-09-06', at: '00:30' },
     ]);
@@ -862,7 +771,7 @@ describe('notification plan fixtures shared with DsulCore', () => {
     expect(types('03:00 is standing: past New York\'s changeover')).toEqual(['calendar']);
     expect(types('a cue in New York\'s changeover minutes: one-offs')).toEqual(['at', 'at']);
     expect(types('Kolkata never changes its clocks: a small-hours cue stands')).toEqual(['calendar']);
-    expect(types('UTC never changes: a small-hours review stands')).toEqual(['calendar']);
+    expect(types('UTC never changes: a small-hours cue stands')).toEqual(['calendar']);
     // A next wanted cue past the first two months.
     const away = byName('paused until January: the next wanted cue is looked for a year ahead');
     expect(away.expected.requests.length).toBeGreaterThan(0);
@@ -881,21 +790,24 @@ describe('notification plan fixtures shared with DsulCore', () => {
     expect(types('a season ending Thursday: one-offs up to Thursday, nothing after')).toEqual(['at', 'at', 'at', 'at']);
     expect(types('a season ending more than a month past the next ring: still standing')).toEqual(['calendar']);
     // A catch-up is never charged: thirty of them beside sixty pending.
-    const caught = byName('a catch-up for thirty and twenty-nine Wednesday habits: every item still armed').expected;
+    const caught = byName('a catch-up for thirty habits beside thirty Wednesday ones: every item still armed').expected;
     expect(caught.requests.filter((r) => r.trigger.type === 'now')).toHaveLength(30);
     expect(caught.requests.filter((r) => r.trigger.type !== 'now')).toHaveLength(NOTIFICATION_BUDGET);
     expect(caught.notes).toEqual([]);
-    // A held review under a full budget still stands, and says so if cut.
-    expect(byName('a held review in exactly seven places: all seven, no note').expected.requests).toHaveLength(7);
     // The shade: a day ticked elsewhere after its cue rang is withdrawn.
     expect(byName('done elsewhere after it rang yesterday: withdrawn').expected.withdraw).toEqual([`dsul-item-${uid(1001)}`]);
     expect(byName('Monday still open when Wednesday is ticked: only Wednesday\'s withdrawn').expected.withdraw).toEqual([
       `dsul-item-${uid(1001)}#4`,
     ]);
-    expect(byName('review answered after midnight: the night it answered withdrawn').expected.withdraw).toEqual(['dsul-eod']);
+    // An older build's review is left in the shade for the scheduler.
+    expect(byName('reminders switched off: every cue withdrawn, an old review left to the scheduler').expected.withdraw).not.toContain(
+      'dsul-eod',
+    );
+    // Nothing plans the retired review.
+    expect(requests.some((r) => r.id.startsWith('dsul-eod'))).toBe(false);
   });
 
-  // Every request rings on its item's cue minute (or the review's hour), on a
+  // Every request rings on its item's cue minute, on a
   // day the item occurs: what a drifting repeating interval broke. A calendar
   // trigger rings at its own hour and minute on its own days, so holding its
   // first ring and its components here holds every ring. And every ring in
@@ -907,9 +819,8 @@ describe('notification plan fixtures shared with DsulCore', () => {
       for (const r of expected.requests) {
         if (r.trigger.type === 'afterMs' || r.trigger.type === 'now') continue;
         const where = `${name}: ${r.id}`;
-        const item = input.items.find((i) => i.id === r.itemId);
-        const at = item && 'reminderTime' in item ? item.reminderTime : undefined;
-        const want = r.kind === 'eod' ? input.eod!.time.padStart(5, '0') : at;
+        const item = input.items.find((i) => i.id === r.itemId)!;
+        const want = 'reminderTime' in item ? item.reminderTime : undefined;
         const got = r.trigger.type === 'at'
           ? r.trigger.hhmm
           : `${String(r.trigger.hour).padStart(2, '0')}:${String(r.trigger.minute).padStart(2, '0')}`;
@@ -920,8 +831,7 @@ describe('notification plan fixtures shared with DsulCore', () => {
         if (r.trigger.type === 'calendar' && r.trigger.weekday !== undefined) {
           expect(weekdayOf(clock.dateStr) + 1, where).toBe(r.trigger.weekday);
         }
-        if (item) expect(occursOn(item, clock.dateStr, input.timezone), `${where} on ${clock.dateStr}`).toBe(true);
-        if (r.kind === 'eod') expect(clock.dateStr, where).not.toBe(input.eod!.lastReviewDate);
+        expect(occursOn(item, clock.dateStr, input.timezone), `${where} on ${clock.dateStr}`).toBe(true);
 
         const ctx = { userTimezone: input.timezone, routines: input.routines, seasons: input.seasons, away: input.away };
         const t = r.trigger;
@@ -933,8 +843,7 @@ describe('notification plan fixtures shared with DsulCore', () => {
             .filter((d, i) => i < 2 || d <= addDays(clock.dateStr, 31))
           : [clock.dateStr];
         for (const d of days) {
-          if (item) expect(wantsDoingOn(item, d, ctx), `${where} rings on ${d}`).toBe(true);
-          else expect(d, `${where} rings on ${d}`).not.toBe(input.eod!.lastReviewDate);
+          expect(wantsDoingOn(item, d, ctx), `${where} rings on ${d}`).toBe(true);
         }
       }
     }

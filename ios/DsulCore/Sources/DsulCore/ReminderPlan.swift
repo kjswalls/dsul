@@ -5,11 +5,9 @@ import Foundation
 // is drift, and the phone's lock screen and the web's plan disagree about
 // when a cue rings. Checked against the web by NotificationPlanFixtureTests
 // (tests/fixtures/day/notification-plan.json): every case's whole plan,
-// requests in order, withdrawals and notes. Also ported here: lib/eod.ts
-// `minutesOfDay` (`eodMinutesOfDay`), the review hour's looser parser.
+// requests in order, withdrawals and notes.
 //
-// On the phone the per-item cue, its snooze and the end-of-day review are
-// LOCAL notifications (memory/plans/reminders-platforms.md §2.3, Phase 2).
+// On the phone the per-item cue and its snooze are LOCAL notifications (memory/plans/reminders-platforms.md §2.3, Phase 2).
 // `planNotifications` decides the set: given the planner as the phone last saw
 // it, what is in its shade, and one instant, which UNNotificationRequests
 // should be pending, under which identifiers, with which triggers and words,
@@ -18,7 +16,7 @@ import Foundation
 //
 // It never decides whether an item wants doing (that is `wantsDoingOn`,
 // ReminderDue.swift, asked once per candidate day), never writes a sentence
-// (`reminderCopy` and `eodCopy`, ReminderCopy.swift), and plans NO last call
+// (`reminderCopy`, ReminderCopy.swift), and plans NO last call
 // (design decision 24: a list worked out at the last plan can name a habit
 // done elsewhere since, the one scold the copy contract cannot send).
 //
@@ -57,17 +55,18 @@ import Foundation
 //   belongs to its day: one that would ring past that day's local midnight
 //   has expired (`ringsOnDay`, ReminderSnooze.swift), as it has on the server;
 // - a cue armed inside its own window rings now (`#now`), once per device,
-//   never while a snooze from today is pending (armed, or expired at midnight);
-// - the review is a standing daily trigger under `dsul-eod`, held as a daily
-//   cue is (reviewed today before its hour, it splits into `dsul-eod#1` …
-//   `#7`); in the changeover minutes, one-offs (`dsul-eod`, `dsul-eod#next`).
-//   No catch-up.
+//   never while a snooze from today is pending (armed, or expired at midnight).
+//
+// There is no end of day review any more (ghost rows phase 3,
+// memory/plans/ghost-rows.md). A review request an older build armed
+// (`dsul-eod…`) is a dsul identifier no plan asks for, so the scheduler's diff
+// removes it, and the scheduler takes one in the shade back out itself
+// (NotificationScheduler.swift `retiredReviewIds`).
 //
 // THE SHADE. A delivered notification is withdrawn when the day it is about
 // (its own dateStr, or the local day it was delivered on) no longer wants
 // doing, its item is gone or no longer reminds, reminders are off on this
-// iPhone, a snooze armed for that day replaces it, or, for the review, that
-// day is reviewed or the review is off. Nothing else is touched.
+// iPhone, or a snooze armed for that day replaces it. Nothing else is touched.
 //
 // What is left, each until dsul next plans: a held weekday of a split rings
 // once, at its next wanted cue (a daily ticked before its cue is quiet on that
@@ -82,11 +81,10 @@ import Foundation
 // weekdays it kept.
 //
 // The budget: 60 PENDING requests (of the OS's 64); a catch-up is delivered at
-// once and never counted. Spent in passes: the review's soonest; live
-// snoozes; catch-ups; ONE request per item, soonest first; then everyone's
-// others, the review's among them, one at a time in the order they ring. An
-// item, or the review, that loses anything but a second one-off (`#next`)
-// gets an over-budget note.
+// once and never counted. Spent in passes: live snoozes; catch-ups; ONE
+// request per item, soonest first; then everyone's others, one at a time in
+// the order they ring. An item that loses anything but a second one-off
+// (`#next`) gets an over-budget note.
 //
 // Swift shapes: instants are epoch milliseconds (`Int`), item ids are `UUID`s
 // written lower-case in identifiers and orderings (as the server writes them;
@@ -99,14 +97,10 @@ import Foundation
 public let notificationBudget = 60
 /// `CUE_THREAD`: the thread a cue and its snooze stack under.
 public let cueThread = "dsul.cues"
-/// `RITUAL_THREAD`: the review's thread (and the last call's, once APNs brings one).
+/// `RITUAL_THREAD`: the last call's thread, pushed through APNs.
 public let ritualThread = "dsul.rituals"
 /// `CUE_CATEGORY`: Done and Snooze, without authenticationRequired.
 public let cueCategory = "DSUL_CUE"
-/// `EOD_CATEGORY`.
-public let eodCategory = "DSUL_EOD"
-/// `EOD_IDENTIFIER`: the review's identifier.
-public let eodIdentifier = "dsul-eod"
 /// `RELEVANCE_FULL_STREAK`: the streak at which a cue's relevance reaches 1.
 public let relevanceFullStreak = 30
 
@@ -121,7 +115,7 @@ let changeoverDays = 400
 
 /// lib/reminders/plan.ts `PlannedKind`. The raw values are the web's.
 public enum PlannedKind: String, Sendable, Hashable, CaseIterable {
-    case cue, snoozed, catchUp, eod
+    case cue, snoozed, catchUp
 }
 
 /// lib/reminders/plan.ts `PlannedTrigger`, in UNNotificationTrigger's own
@@ -173,8 +167,7 @@ public struct PlannedUserInfo: Sendable, Hashable {
     public var itemId: UUID?
     /// The day it is about, when it is about exactly one. A repeating trigger
     /// rings on many, so it has none, and the delegate takes the local day of
-    /// the notification's own date: Done credits that day, and the review's
-    /// link names it. A calendar trigger only rings on its slot's own days, so
+    /// the notification's own date: Done credits that day. A calendar trigger only rings on its slot's own days, so
     /// that day is one the item occurs on; whether it still wants doing there
     /// (done elsewhere since, paused since the plan) is the delegate's to ask
     /// with `wantsDoingOn` before it sends a Done.
@@ -202,7 +195,7 @@ public struct PlannedUserInfo: Sendable, Hashable {
 
 /// lib/reminders/plan.ts `PlannedRequest`: one request that should be pending.
 public struct PlannedRequest: Sendable, Hashable {
-    /// The UNNotificationRequest identifier (`identifiers(for:)`, `eodIdentifiers()`).
+    /// The UNNotificationRequest identifier (`identifiers(for:)`).
     public var id: String
     public var kind: PlannedKind
     public var itemId: UUID?
@@ -214,14 +207,14 @@ public struct PlannedRequest: Sendable, Hashable {
     public var firesAt: Int
     public var title: String
     public var body: String
-    /// `cueThread` or `ritualThread`.
+    /// `cueThread`.
     public var threadId: String
     /// The title again, so a collapsed stack names its items.
     public var summaryArgument: String
-    /// `cueCategory` or `eodCategory`.
+    /// `cueCategory`.
     public var categoryId: String
     public var level: PlannedLevel
-    /// UNNotificationContent.relevanceScore, 0…1: the streak at stake, the review 0.
+    /// UNNotificationContent.relevanceScore, 0…1: the streak at stake.
     public var relevance: Double
     public var userInfo: PlannedUserInfo
 
@@ -249,12 +242,11 @@ public struct PlannedRequest: Sendable, Hashable {
 
 /// lib/reminders/plan.ts `PlanNote`: something the plan could not do.
 /// - `badZone`: the zone is not one Foundation knows; nothing planned.
-/// - `badTime`: a cue time (or, with no item, the review's hour) is not a time.
+/// - `badTime`: a cue time is not a time.
 /// - `dstGap`: that day's cue falls in the hour a spring-forward skips.
-/// - `overBudget`: the item (no item: the review) lost a request to the
-///   budget other than a second one-off (`#next`): its first, its snooze, or
-///   a weekday of its split. `kept` is how many of its cue requests remain
-///   (the review's own, for the review).
+/// - `overBudget`: the item lost a request to the budget other than a second
+///   one-off (`#next`): its first, its snooze, or a weekday of its split.
+///   `kept` is how many of its cue requests remain.
 public enum PlanNote: Sendable, Hashable {
     case badZone(value: String)
     case badTime(itemId: UUID?, value: String)
@@ -305,21 +297,6 @@ public struct PlanSnooze: Decodable, Sendable, Hashable {
     }
 }
 
-/// lib/reminders/plan.ts `PlanEod`: the end-of-day review's three settings.
-public struct PlanEod: Sendable, Hashable {
-    public var enabled: Bool
-    /// eod_review_time: "HH:mm", or the looser "H:mm" lib/eod.ts accepts.
-    public var time: String
-    /// last_eod_review_date: the day the last review was FOR.
-    public var lastReviewDate: String?
-
-    public init(enabled: Bool, time: String, lastReviewDate: String? = nil) {
-        self.enabled = enabled
-        self.time = time
-        self.lastReviewDate = lastReviewDate
-    }
-}
-
 /// lib/reminders/plan.ts `PlanDelivered`: one notification in the shade, as
 /// getDeliveredNotifications reports it. Any app's identifiers may be passed;
 /// only dsul's are ever withdrawn.
@@ -354,10 +331,8 @@ public struct PlanInput: Sendable, Hashable {
     public var away: [AwayPeriod]
     public var timeFormat: TimeFormat
     /// habit_reminders_enabled AND this device's own switch. Off plans no cue,
-    /// no snooze and no catch-up, and withdraws every cue in the shade; the
-    /// review has its own switch.
+    /// no snooze and no catch-up, and withdraws every cue in the shade.
     public var remindersEnabled: Bool
-    public var eod: PlanEod?
     public var snoozes: [PlanSnooze]
     /// `sentKeyFor(day, at)` of every cue this device has rung or had armed at
     /// its minute. The scheduler adds a catch-up's key the moment it adds it.
@@ -376,7 +351,6 @@ public struct PlanInput: Sendable, Hashable {
         away: [AwayPeriod] = [],
         timeFormat: TimeFormat = .twelveHour,
         remindersEnabled: Bool,
-        eod: PlanEod? = nil,
         snoozes: [PlanSnooze] = [],
         localSentKeys: Set<String> = [],
         delivered: [PlanDelivered] = [],
@@ -391,7 +365,6 @@ public struct PlanInput: Sendable, Hashable {
         self.away = away
         self.timeFormat = timeFormat
         self.remindersEnabled = remindersEnabled
-        self.eod = eod
         self.snoozes = snoozes
         self.localSentKeys = localSentKeys
         self.delivered = delivered
@@ -433,37 +406,6 @@ public func identifiers(for itemId: UUID) -> [String] {
     return [base] + (1...7).map { "\(base)#\($0)" } + ["\(base)#next", "\(base)#now", "\(base)#snooze"]
 }
 
-/// lib/reminders/plan.ts `eodIdentifiers`: the review's identifiers, in the
-/// same order as an item's: its standing trigger (or its next one-off), its
-/// seven weekdays while it is held, and its second one-off.
-public func eodIdentifiers() -> [String] {
-    return [eodIdentifier] + (1...7).map { "\(eodIdentifier)#\($0)" } + ["\(eodIdentifier)#next"]
-}
-
-/// lib/eod.ts `minutesOfDay`: the review hour's parser, looser than the cue's
-/// (`/^(\d{1,2}):(\d{2})$/` after a trim, so "9:00" is 09:00), because
-/// user_settings' eod_review_time has no CHECK. Nil when malformed.
-public func eodMinutesOfDay(_ hhmm: String) -> Int? {
-    let parts = Array(jsTrim(hhmm).utf8)
-    guard let colon = parts.firstIndex(of: UInt8(ascii: ":")) else { return nil }
-    let hourDigits = parts[..<colon]
-    let minuteDigits = parts[(colon + 1)...]
-    guard (1...2).contains(hourDigits.count), minuteDigits.count == 2 else { return nil }
-    func number<C: Collection>(_ digits: C) -> Int? where C.Element == UInt8 {
-        var value = 0
-        for c in digits {
-            guard c >= UInt8(ascii: "0") && c <= UInt8(ascii: "9") else { return nil }
-            value = value * 10 + Int(c - UInt8(ascii: "0"))
-        }
-        return value
-    }
-    guard let hours = number(hourDigits), let minutes = number(minuteDigits), hours <= 23, minutes <= 59 else {
-        return nil
-    }
-    return hours * 60 + minutes
-}
-
-
 // MARK: - Internals
 
 /// One cue: the day, and the instant (epoch ms).
@@ -486,10 +428,9 @@ private enum CueCadence {
     case slots([Slot])
 }
 
-/// What one item, or the review, asks of the budget: its requests, soonest first.
+/// What one item asks of the budget: its requests, soonest first.
 private struct Ask {
-    /// The item's id; nil for the review.
-    var itemId: UUID?
+    var itemId: UUID
     var requests: [PlannedRequest]
 }
 
@@ -525,7 +466,7 @@ private func weekdaySlots(_ base: String, _ days: [Int]) -> [Slot] {
     return days.map { w in Slot(id: "\(base)#\(w + 1)", weekday: w + 1, day: nil, rings: { $0.weekday == w }) }
 }
 
-/// `dailySlot`: every day, under `base`, an item's or the review's.
+/// `dailySlot`: every day, under `base`.
 private func dailySlot(_ base: String) -> Slot {
     return Slot(id: base, weekday: nil, day: nil, rings: { _ in true })
 }
@@ -618,9 +559,9 @@ private func slotsOf(_ item: Item, today: DayString) -> CueCadence {
     }
 }
 
-/// lib/reminders/plan.ts `cadence`: how one cadence, an item's or the
-/// review's, asks the budget. `once` makes its one-off for a cue and
-/// `standing` its calendar trigger for a slot; the rest is the same for both.
+/// lib/reminders/plan.ts `cadence`: how one item's cadence asks the budget.
+/// `once` makes its one-off for a cue and `standing` its calendar trigger for
+/// a slot.
 private final class Cadence {
     let base: String
     let minutes: Int
@@ -750,10 +691,9 @@ private final class Cadence {
 /// pending at `input.nowMs`, the delivered identifiers to withdraw, and notes
 /// on what could not be planned. Pure; see the header for the rules.
 ///
-/// Every item, and the review, asks for its requests, soonest first, and the
-/// budget is spent in passes: the review's soonest request, then live snoozes,
-/// then catch-ups (free: never pending); then ONE request per item, soonest
-/// first; then everyone's others, the review's among them, one at a time in
+/// Every item asks for its requests, soonest first, and the budget is spent in
+/// passes: live snoozes, then catch-ups (free: never pending); then ONE
+/// request per item, soonest first; then everyone's others, one at a time in
 /// the order they ring.
 public func planNotifications(_ input: PlanInput) -> NotificationPlan {
     let nowMs = input.nowMs
@@ -776,7 +716,6 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
     var notes: [PlanNote] = []
     var fixed: [PlannedRequest] = []
     var asks: [Ask] = []
-    var reviewAsk: [PlannedRequest] = []
     var gapsSeen = Set<String>()
 
     /// Report a skipped spring-forward minute once, and only if it was still to come.
@@ -786,37 +725,6 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
             let key = "\(itemId.map(idString) ?? "")|\(day)"
             guard gapsSeen.insert(key).inserted else { return }
             notes.append(.dstGap(itemId: itemId, dateStr: day.description, at: clockText(minutes)))
-        }
-    }
-
-    // MARK: The review
-
-    if let eod = input.eod, eod.enabled {
-        if let minutes = eodMinutesOfDay(eod.time) {
-            func review(_ id: String, _ trigger: PlannedTrigger, _ firesAt: Int, _ dateStr: String? = nil) -> PlannedRequest {
-                return PlannedRequest(
-                    id: id, kind: .eod, itemId: nil, dateStr: dateStr, trigger: trigger, firesAt: firesAt,
-                    title: eodCopy.title, body: eodCopy.body, threadId: ritualThread,
-                    summaryArgument: eodCopy.title, categoryId: eodCategory, level: .active, relevance: 0,
-                    userInfo: PlannedUserInfo(kind: .eod, dateStr: dateStr)
-                )
-            }
-            let lastReviewDate = eod.lastReviewDate
-            let plan = Cadence(
-                base: eodIdentifier, minutes: minutes, today: today, zone: zone, nowMs: nowMs,
-                // Owed is lib/eod.ts's isEodOwed, minus the hour: any day not
-                // already recorded as reviewed.
-                wanted: { $0.description != lastReviewDate },
-                gap: gapReporter(minutes, nil),
-                once: { id, next in
-                    review(id, .at(dateStr: next.day.description, hhmm: clockText(minutes)), next.at, next.day.description)
-                },
-                standing: { slot, at in review(slot.id, calendarTrigger(minutes, weekday: slot.weekday), at) }
-            )
-            reviewAsk = (onChangeover(minutes) ? plan.series() : plan.stand([dailySlot(eodIdentifier)]))
-                .sorted(by: byFireThenId)
-        } else {
-            notes.append(.badTime(itemId: nil, value: eod.time))
         }
     }
 
@@ -936,7 +844,6 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
     var taken: [PlannedRequest] = []
     var pendingCount = 0
     var short = Set<UUID>()
-    var reviewShort = false
     /// Take `request` if it fits; a catch-up always does, since it is never pending.
     func take(_ request: PlannedRequest) -> Bool {
         if case .now = request.trigger {} else {
@@ -949,19 +856,13 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
     /// Take `request`, or note its owner short unless it was only a second one-off.
     func place(_ request: PlannedRequest) {
         if take(request) || request.id.hasSuffix("#next") { return }
-        if request.kind == .eod {
-            reviewShort = true
-        } else if let itemId = request.itemId {
-            short.insert(itemId)
-        }
+        if let itemId = request.itemId { short.insert(itemId) }
     }
 
-    // The review's soonest first (it is never absent), then snoozes (the user
-    // asked for each one by name), then catch-ups; each by when it rings.
-    if let first = reviewAsk.first { place(first) }
+    // Snoozes first (the user asked for each one by name), then catch-ups;
+    // each by when it rings.
     func rank(_ kind: PlannedKind) -> Int {
         switch kind {
-        case .eod: return 0
         case .snoozed: return 1
         case .catchUp: return 2
         case .cue: return 3
@@ -976,11 +877,10 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
     asks.sort { byFireThenId($0.requests[0], $1.requests[0]) }
     for ask in asks { place(ask.requests[0]) }
 
-    // Then everyone's others, the review's among them, in the order they ring.
-    let others = ([reviewAsk] + asks.map(\.requests)).flatMap { $0.dropFirst() }
+    // Then everyone's others, in the order they ring.
+    let others = asks.map(\.requests).flatMap { $0.dropFirst() }
     for request in others.sorted(by: byFireThenId) { place(request) }
 
-    if reviewShort { notes.append(.overBudget(itemId: nil, kept: taken.filter { $0.kind == .eod }.count)) }
     for itemId in short.sorted(by: { codeUnitLess(idString($0), idString($1)) }) {
         let kept = taken.filter { $0.itemId == itemId && $0.kind == .cue }.count
         notes.append(.overBudget(itemId: itemId, kept: kept))
@@ -989,7 +889,6 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
     // MARK: The shade
 
     var withdraw = Set<String>()
-    let eodIds = Set(eodIdentifiers())
     // The item a delivered identifier names, by the string the web compares:
     // the lower-case id, as the server writes it.
     var itemById: [String: Item] = [:]
@@ -1004,18 +903,6 @@ public func planNotifications(_ input: PlanInput) -> NotificationPlan {
         } else if abs(delivered.deliveredAtMs) <= maxDateMs {
             day = wallClock(delivered.deliveredAtMs, zone).day.description
         } else {
-            continue
-        }
-
-        if eodIds.contains(delivered.id) {
-            // Answered: the review recorded for that day or a later one
-            // (lib/eod.ts reviewedDay files a review finished after midnight
-            // under the night it was for, so the invitation it answered is
-            // that night's).
-            if let eod = input.eod {
-                let reviewed = eod.lastReviewDate.map { !codeUnitLess($0, day) } ?? false
-                if !eod.enabled || reviewed { withdraw.insert(delivered.id) }
-            }
             continue
         }
 

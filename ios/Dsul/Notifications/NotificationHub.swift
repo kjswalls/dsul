@@ -270,16 +270,12 @@ final class NotificationHub {
 
     /// willPresent: show a dsul notification in front only if it still wants
     /// doing as the planner holds it now (a habit ticked on the Mac since the
-    /// plan, a review already done). With no planner, it shows.
+    /// plan). The retired review's never shows. With no planner, it shows.
     func shouldPresent(_ info: NotificationInfo) -> Bool {
+        if NotificationKeys.isRetiredReview(info.id) { return false }
         guard NotificationKeys.isDsul(info.id), let planner, planner.isLive, planner.hasLoaded,
               let day = info.day(in: zone())
         else { return true }
-        if info.kind == .eod {
-            if planner.settings.eodReviewEnabled == false { return false }
-            if let last = planner.settings.lastEodReviewDate, last >= day { return false }
-            return true
-        }
         guard let id = info.itemId else { return true }
         guard let item = planner.item(id), let dayString = DayString(day) else { return false }
         let ctx = ActivationContext(timeZone: zone(), routines: planner.routines, seasons: planner.seasons,

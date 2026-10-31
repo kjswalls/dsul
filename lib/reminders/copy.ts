@@ -123,26 +123,6 @@ export function lastCallCopy(
   return { title: items.length === 1 ? 'Still open today' : `${items.length} still open`, body }
 }
 
-/**
- * The end-of-day review's invitation.
- *
- * No longer sent by the server (ghost rows phase 2 retired the review). Kept
- * because the iPhone app still plans it locally until phase 3: its Swift port
- * (ReminderCopy.swift `eodCopy`) and tests/fixtures/day/copy.json hold it.
- *
- * Moved here, word for word, from the cron route that used to send it on its
- * own (app/api/cron/eod-notify, folded into the scan). A constant rather than
- * a function because nothing about the user changes it: it names no item, no
- * streak and no time, only the ritual. It asks; it does not tally the day.
- * What the day held is the review's to show once it is open, and a lock
- * screen reading "3 things left" at 21:00 is the scolding the contract above
- * rules out.
- */
-export const EOD_COPY = {
-  title: 'End of day 🌙',
-  body: "How'd today go?",
-} as const
-
 /* ── Other registers ─────────────────────────────────────────────────────── */
 
 /**

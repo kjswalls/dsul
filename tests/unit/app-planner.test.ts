@@ -513,9 +513,12 @@ const SETTINGS_ROW = {
   time_format: '24h',
   app_icon: 'lime',
   habit_reminders_enabled: true,
-  // The last call and the review on, at hours no default gives.
+  // The last call on, at an hour no default gives.
   habit_last_call_enabled: true,
   habit_last_call_time: '20:45',
+  // The leftovers off, which no default gives (a new account's are on).
+  morning_check_enabled: false,
+  // The retired review's columns stay in the table; the route never reads them.
   eod_review_enabled: true,
   eod_review_time: '21:30',
   last_eod_review_date: '2026-10-01',
@@ -694,9 +697,7 @@ describe('the payload fixture shared with DsulCore', () => {
       remindersEnabled: true,
       lastCallEnabled: true,
       lastCallTime: '20:45',
-      eodReviewEnabled: true,
-      eodReviewTime: '21:30',
-      lastEodReviewDate: '2026-10-01',
+      leftoversOnToday: false,
       reminderGraceMinutes: 30,
     });
     // Each live snooze as plan.ts's PlanSnooze, the instant as Postgres wrote it;
@@ -916,8 +917,8 @@ describe('GET /api/app/planner', () => {
     expect(settings[0].calls).toContainEqual([
       'select',
       [
-        'timezone, show_completed_tasks, week_start_day, time_format, eod_review_enabled, eod_review_time, ' +
-          'last_eod_review_date, app_icon, habit_reminders_enabled, habit_last_call_enabled, habit_last_call_time',
+        'timezone, show_completed_tasks, week_start_day, time_format, morning_check_enabled, ' +
+          'app_icon, habit_reminders_enabled, habit_last_call_enabled, habit_last_call_time',
       ],
     ]);
     expect(settings[0].calls).toContainEqual(['eq', ['user_id', USER]]);
@@ -960,9 +961,8 @@ describe('GET /api/app/planner', () => {
       remindersEnabled: false,
       lastCallEnabled: false,
       lastCallTime: null,
-      eodReviewEnabled: false,
-      eodReviewTime: null,
-      lastEodReviewDate: null,
+      // No row is settings-service's first-run seed: the leftovers on.
+      leftoversOnToday: true,
       reminderGraceMinutes: 30,
     });
   });
@@ -991,9 +991,7 @@ describe('GET /api/app/planner', () => {
               show_completed_tasks: false,
               week_start_day: 'monday',
               time_format: '24h',
-              eod_review_enabled: true,
-              eod_review_time: '9:15',
-              last_eod_review_date: null,
+              morning_check_enabled: true,
             },
             error: null,
           };
@@ -1013,15 +1011,12 @@ describe('GET /api/app/planner', () => {
       remindersEnabled: null,
       lastCallEnabled: null,
       lastCallTime: null,
-      // The review's columns are older than 032, so they are read on the retry.
-      eodReviewEnabled: true,
-      eodReviewTime: '9:15',
-      lastEodReviewDate: null,
+      // morning_check_enabled is older than 032, so it is read on the retry.
+      leftoversOnToday: true,
       reminderGraceMinutes: 30,
     });
     const selects = queries.filter((q) => q.table === 'user_settings').map((q) => q.calls.find(([m]) => m === 'select')?.[1][0]);
-    const stable =
-      'timezone, show_completed_tasks, week_start_day, time_format, eod_review_enabled, eod_review_time, last_eod_review_date';
+    const stable = 'timezone, show_completed_tasks, week_start_day, time_format, morning_check_enabled';
     expect(selects).toEqual([
       `${stable}, app_icon, habit_reminders_enabled, habit_last_call_enabled, habit_last_call_time`,
       stable,
@@ -1290,10 +1285,10 @@ describe('GET /api/app/planner', () => {
     });
   });
 
-  it('answers the last call and the review off as the scan reads them: only true is on', async () => {
+  it('answers the last call and the leftovers off as the web reads them: only true is on', async () => {
     respondWith({
       user_settings: {
-        data: { ...SETTINGS_ROW, habit_last_call_enabled: null, eod_review_enabled: null, eod_review_time: '', habit_last_call_time: '' },
+        data: { ...SETTINGS_ROW, habit_last_call_enabled: null, morning_check_enabled: null, habit_last_call_time: '' },
         error: null,
       },
     });
@@ -1301,9 +1296,15 @@ describe('GET /api/app/planner', () => {
     expect(settings).toMatchObject({
       lastCallEnabled: false,
       lastCallTime: null,
-      eodReviewEnabled: false,
-      eodReviewTime: null,
+      leftoversOnToday: false,
     });
+    respondWith({ user_settings: { data: { ...SETTINGS_ROW, morning_check_enabled: true }, error: null } });
+    expect((await (await get()).json()).settings.leftoversOnToday).toBe(true);
+  });
+
+  it('sends nothing of the retired end of day review', async () => {
+    const settings = (await (await get()).json()).settings;
+    expect(Object.keys(settings).filter((k) => /eod/i.test(k))).toEqual([]);
   });
 
   it('401s a JWT PostgREST rejects, so the phone refreshes', async () => {

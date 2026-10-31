@@ -16,21 +16,6 @@
         "dsul-item-00000000-0000-4000-8000-0000000003e9#now",
         "dsul-item-00000000-0000-4000-8000-0000000003e9#snooze"
       ]
-    },
-    {
-      "name": "the review",
-      "itemId": null,
-      "expected": [
-        "dsul-eod",
-        "dsul-eod#1",
-        "dsul-eod#2",
-        "dsul-eod#3",
-        "dsul-eod#4",
-        "dsul-eod#5",
-        "dsul-eod#6",
-        "dsul-eod#7",
-        "dsul-eod#next"
-      ]
     }
   ],
   "snoozeFireInstant": [
@@ -2293,23 +2278,32 @@
       }
     },
     {
-      "name": "UTC never changes: a small-hours review stands",
+      "name": "UTC never changes: a small-hours cue stands",
       "input": {
         "nowMs": 1791180000000,
         "timezone": "UTC",
-        "items": [],
-        "remindersEnabled": false,
-        "eod": {
-          "enabled": true,
-          "time": "2:30",
-          "lastReviewDate": null
-        }
+        "items": [
+          {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-0000000003e9",
+            "title": "Vitamins",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "02:30"
+          }
+        ],
+        "remindersEnabled": true
       },
       "expected": {
         "requests": [
           {
-            "id": "dsul-eod",
-            "kind": "eod",
+            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000003e9",
             "trigger": {
               "type": "calendar",
               "hour": 2,
@@ -2317,15 +2311,17 @@
               "repeats": true
             },
             "firesAt": 1791253800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
+            "title": "Vitamins",
+            "body": "2:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Vitamins",
+            "categoryId": "DSUL_CUE",
             "level": "active",
             "relevance": 0,
             "userInfo": {
-              "kind": "eod"
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000003e9",
+              "at": "02:30"
             }
           }
         ],
@@ -7858,1159 +7854,6 @@
       }
     },
     {
-      "name": "review: one standing trigger",
-      "input": {
-        "nowMs": 1791194400000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": false,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": null
-        }
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "repeats": true
-            },
-            "firesAt": 1791248400000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          }
-        ],
-        "withdraw": [],
-        "notes": []
-      }
-    },
-    {
-      "name": "review done before its hour: standing on the other six days, never absent",
-      "input": {
-        "nowMs": 1791244800000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": "2026-10-05"
-        },
-        "delivered": [
-          {
-            "id": "dsul-eod",
-            "deliveredAtMs": 1791162000000
-          }
-        ]
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod#3",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 3,
-              "repeats": true
-            },
-            "firesAt": 1791334800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#4",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 4,
-              "repeats": true
-            },
-            "firesAt": 1791421200000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#5",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 5,
-              "repeats": true
-            },
-            "firesAt": 1791507600000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#6",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 6,
-              "repeats": true
-            },
-            "firesAt": 1791594000000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#7",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 7,
-              "repeats": true
-            },
-            "firesAt": 1791680400000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#1",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 1,
-              "repeats": true
-            },
-            "firesAt": 1791766800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#2",
-            "kind": "eod",
-            "dateStr": "2026-10-12",
-            "trigger": {
-              "type": "at",
-              "dateStr": "2026-10-12",
-              "hhmm": "21:00"
-            },
-            "firesAt": 1791853200000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod",
-              "dateStr": "2026-10-12"
-            }
-          }
-        ],
-        "withdraw": [
-          "dsul-eod"
-        ],
-        "notes": []
-      }
-    },
-    {
-      "name": "review done at 08:00 before its hour: every ring at the hour",
-      "input": {
-        "nowMs": 1791201600000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": "2026-10-05"
-        }
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod#3",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 3,
-              "repeats": true
-            },
-            "firesAt": 1791334800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#4",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 4,
-              "repeats": true
-            },
-            "firesAt": 1791421200000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#5",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 5,
-              "repeats": true
-            },
-            "firesAt": 1791507600000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#6",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 6,
-              "repeats": true
-            },
-            "firesAt": 1791594000000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#7",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 7,
-              "repeats": true
-            },
-            "firesAt": 1791680400000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#1",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 1,
-              "repeats": true
-            },
-            "firesAt": 1791766800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#2",
-            "kind": "eod",
-            "dateStr": "2026-10-12",
-            "trigger": {
-              "type": "at",
-              "dateStr": "2026-10-12",
-              "hhmm": "21:00"
-            },
-            "firesAt": 1791853200000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod",
-              "dateStr": "2026-10-12"
-            }
-          }
-        ],
-        "withdraw": [],
-        "notes": []
-      }
-    },
-    {
-      "name": "review done before its hour, room for one: tomorrow's weekday and a note",
-      "input": {
-        "nowMs": 1791244800000,
-        "timezone": "America/New_York",
-        "items": [
-          {
-            "type": "habit",
-            "id": "00000000-0000-4000-8000-0000000003e9",
-            "title": "Vitamins",
-            "streak": 0,
-            "status": "pending",
-            "completedDates": [],
-            "skippedDates": [],
-            "dailyCounts": {},
-            "repeatFrequency": "daily",
-            "reminderTime": "07:30"
-          }
-        ],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": "2026-10-05"
-        },
-        "budget": 1
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod#3",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 3,
-              "repeats": true
-            },
-            "firesAt": 1791334800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          }
-        ],
-        "withdraw": [],
-        "notes": [
-          {
-            "code": "over-budget",
-            "kept": 1
-          },
-          {
-            "code": "over-budget",
-            "itemId": "00000000-0000-4000-8000-0000000003e9",
-            "kept": 0
-          }
-        ]
-      }
-    },
-    {
-      "name": "review done after its hour: the calendar, first ringing tomorrow",
-      "input": {
-        "nowMs": 1791252000000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": "2026-10-05"
-        }
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "repeats": true
-            },
-            "firesAt": 1791334800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          }
-        ],
-        "withdraw": [],
-        "notes": []
-      }
-    },
-    {
-      "name": "review done yesterday: standing",
-      "input": {
-        "nowMs": 1791244800000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": "2026-10-04"
-        }
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "repeats": true
-            },
-            "firesAt": 1791248400000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          }
-        ],
-        "withdraw": [],
-        "notes": []
-      }
-    },
-    {
-      "name": "review at 9:00, the loose form",
-      "input": {
-        "nowMs": 1791194400000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "9:00",
-          "lastReviewDate": null
-        }
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 9,
-              "minute": 0,
-              "repeats": true
-            },
-            "firesAt": 1791205200000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          }
-        ],
-        "withdraw": [],
-        "notes": []
-      }
-    },
-    {
-      "name": "review at an unreadable hour: a note",
-      "input": {
-        "nowMs": 1791194400000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "whenever",
-          "lastReviewDate": null
-        }
-      },
-      "expected": {
-        "requests": [],
-        "withdraw": [],
-        "notes": [
-          {
-            "code": "bad-time",
-            "value": "whenever"
-          }
-        ]
-      }
-    },
-    {
-      "name": "review switched off: nothing",
-      "input": {
-        "nowMs": 1791194400000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": false,
-          "time": "21:00",
-          "lastReviewDate": null
-        }
-      },
-      "expected": {
-        "requests": [],
-        "withdraw": [],
-        "notes": []
-      }
-    },
-    {
-      "name": "review in the small hours: one-offs",
-      "input": {
-        "nowMs": 1791216000000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "1:30",
-          "lastReviewDate": null
-        }
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "dateStr": "2026-10-06",
-            "trigger": {
-              "type": "at",
-              "dateStr": "2026-10-06",
-              "hhmm": "01:30"
-            },
-            "firesAt": 1791264600000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod",
-              "dateStr": "2026-10-06"
-            }
-          },
-          {
-            "id": "dsul-eod#next",
-            "kind": "eod",
-            "dateStr": "2026-10-07",
-            "trigger": {
-              "type": "at",
-              "dateStr": "2026-10-07",
-              "hhmm": "01:30"
-            },
-            "firesAt": 1791351000000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod",
-              "dateStr": "2026-10-07"
-            }
-          }
-        ],
-        "withdraw": [],
-        "notes": []
-      }
-    },
-    {
-      "name": "review beside cues",
-      "input": {
-        "nowMs": 1791194400000,
-        "timezone": "America/New_York",
-        "items": [
-          {
-            "type": "habit",
-            "id": "00000000-0000-4000-8000-0000000003e9",
-            "title": "Vitamins",
-            "streak": 0,
-            "status": "pending",
-            "completedDates": [],
-            "skippedDates": [],
-            "dailyCounts": {},
-            "repeatFrequency": "daily",
-            "reminderTime": "07:30"
-          },
-          {
-            "type": "habit",
-            "id": "00000000-0000-4000-8000-0000000003ed",
-            "title": "Reading",
-            "streak": 30,
-            "status": "pending",
-            "completedDates": [],
-            "skippedDates": [],
-            "dailyCounts": {},
-            "repeatFrequency": "daily",
-            "reminderTime": "21:00"
-          }
-        ],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": null
-        }
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-item-00000000-0000-4000-8000-0000000003e9",
-            "kind": "cue",
-            "itemId": "00000000-0000-4000-8000-0000000003e9",
-            "trigger": {
-              "type": "calendar",
-              "hour": 7,
-              "minute": 30,
-              "repeats": true
-            },
-            "firesAt": 1791199800000,
-            "title": "Vitamins",
-            "body": "7:30 am",
-            "threadId": "dsul.cues",
-            "summaryArgument": "Vitamins",
-            "categoryId": "DSUL_CUE",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "cue",
-              "itemId": "00000000-0000-4000-8000-0000000003e9",
-              "at": "07:30"
-            }
-          },
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "repeats": true
-            },
-            "firesAt": 1791248400000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-item-00000000-0000-4000-8000-0000000003ed",
-            "kind": "cue",
-            "itemId": "00000000-0000-4000-8000-0000000003ed",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "repeats": true
-            },
-            "firesAt": 1791248400000,
-            "title": "Reading",
-            "body": "9:00 pm · 30 days",
-            "threadId": "dsul.cues",
-            "summaryArgument": "Reading",
-            "categoryId": "DSUL_CUE",
-            "level": "active",
-            "relevance": 1,
-            "userInfo": {
-              "kind": "cue",
-              "itemId": "00000000-0000-4000-8000-0000000003ed",
-              "at": "21:00"
-            }
-          }
-        ],
-        "withdraw": [],
-        "notes": []
-      }
-    },
-    {
-      "name": "review answered after midnight: the night it answered withdrawn",
-      "input": {
-        "nowMs": 1791260100000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": false,
-        "eod": {
-          "enabled": true,
-          "time": "23:30",
-          "lastReviewDate": "2026-10-05"
-        },
-        "delivered": [
-          {
-            "id": "dsul-eod",
-            "deliveredAtMs": 1791257400000
-          }
-        ]
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 23,
-              "minute": 30,
-              "repeats": true
-            },
-            "firesAt": 1791343800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          }
-        ],
-        "withdraw": [
-          "dsul-eod"
-        ],
-        "notes": []
-      }
-    },
-    {
-      "name": "review answered on the web, reconciled next morning: withdrawn",
-      "input": {
-        "nowMs": 1791284400000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": false,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": "2026-10-05"
-        },
-        "delivered": [
-          {
-            "id": "dsul-eod",
-            "deliveredAtMs": 1791248400000
-          }
-        ]
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "repeats": true
-            },
-            "firesAt": 1791334800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          }
-        ],
-        "withdraw": [
-          "dsul-eod"
-        ],
-        "notes": []
-      }
-    },
-    {
-      "name": "review still owed for its night: left in the shade",
-      "input": {
-        "nowMs": 1791260100000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": false,
-        "eod": {
-          "enabled": true,
-          "time": "23:30",
-          "lastReviewDate": "2026-10-04"
-        },
-        "delivered": [
-          {
-            "id": "dsul-eod",
-            "deliveredAtMs": 1791257400000
-          }
-        ]
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 23,
-              "minute": 30,
-              "repeats": true
-            },
-            "firesAt": 1791343800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          }
-        ],
-        "withdraw": [],
-        "notes": []
-      }
-    },
-    {
-      "name": "review switched off: its invitation withdrawn",
-      "input": {
-        "nowMs": 1791284400000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": false,
-        "eod": {
-          "enabled": false,
-          "time": "21:00",
-          "lastReviewDate": null
-        },
-        "delivered": [
-          {
-            "id": "dsul-eod",
-            "deliveredAtMs": 1791248400000
-          }
-        ]
-      },
-      "expected": {
-        "requests": [],
-        "withdraw": [
-          "dsul-eod"
-        ],
-        "notes": []
-      }
-    },
-    {
-      "name": "review recorded for tomorrow: that weekday a week out",
-      "input": {
-        "nowMs": 1791252000000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": false,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": "2026-10-06"
-        }
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod#4",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 4,
-              "repeats": true
-            },
-            "firesAt": 1791421200000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#5",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 5,
-              "repeats": true
-            },
-            "firesAt": 1791507600000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#6",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 6,
-              "repeats": true
-            },
-            "firesAt": 1791594000000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#7",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 7,
-              "repeats": true
-            },
-            "firesAt": 1791680400000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#1",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 1,
-              "repeats": true
-            },
-            "firesAt": 1791766800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#2",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 2,
-              "repeats": true
-            },
-            "firesAt": 1791853200000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#3",
-            "kind": "eod",
-            "dateStr": "2026-10-13",
-            "trigger": {
-              "type": "at",
-              "dateStr": "2026-10-13",
-              "hhmm": "21:00"
-            },
-            "firesAt": 1791939600000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod",
-              "dateStr": "2026-10-13"
-            }
-          }
-        ],
-        "withdraw": [],
-        "notes": []
-      }
-    },
-    {
       "name": "a streak with no cue: no last call",
       "input": {
         "nowMs": 1791246600000,
@@ -9028,37 +7871,10 @@
             "repeatFrequency": "daily"
           }
         ],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": null
-        }
+        "remindersEnabled": true
       },
       "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "repeats": true
-            },
-            "firesAt": 1791248400000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          }
-        ],
+        "requests": [],
         "withdraw": [],
         "notes": []
       }
@@ -9357,76 +8173,6 @@
           {
             "code": "dst-gap",
             "itemId": "00000000-0000-4000-8000-0000000003e9",
-            "dateStr": "2026-09-06",
-            "at": "00:30"
-          }
-        ]
-      }
-    },
-    {
-      "name": "Santiago, a review at 0:30 on the same changeover: one-offs, and a note",
-      "input": {
-        "nowMs": 1788624000000,
-        "timezone": "America/Santiago",
-        "items": [],
-        "remindersEnabled": false,
-        "eod": {
-          "enabled": true,
-          "time": "0:30",
-          "lastReviewDate": null
-        }
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "dateStr": "2026-09-07",
-            "trigger": {
-              "type": "at",
-              "dateStr": "2026-09-07",
-              "hhmm": "00:30"
-            },
-            "firesAt": 1788751800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod",
-              "dateStr": "2026-09-07"
-            }
-          },
-          {
-            "id": "dsul-eod#next",
-            "kind": "eod",
-            "dateStr": "2026-09-08",
-            "trigger": {
-              "type": "at",
-              "dateStr": "2026-09-08",
-              "hhmm": "00:30"
-            },
-            "firesAt": 1788838200000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod",
-              "dateStr": "2026-09-08"
-            }
-          }
-        ],
-        "withdraw": [],
-        "notes": [
-          {
-            "code": "dst-gap",
             "dateStr": "2026-09-06",
             "at": "00:30"
           }
@@ -12419,103 +11165,6 @@
       }
     },
     {
-      "name": "the review first, then the soonest cue",
-      "input": {
-        "nowMs": 1791194400000,
-        "timezone": "America/New_York",
-        "items": [
-          {
-            "type": "habit",
-            "id": "00000000-0000-4000-8000-0000000003f5",
-            "title": "Late",
-            "streak": 0,
-            "status": "pending",
-            "completedDates": [],
-            "skippedDates": [],
-            "dailyCounts": {},
-            "repeatFrequency": "daily",
-            "reminderTime": "20:00"
-          },
-          {
-            "type": "habit",
-            "id": "00000000-0000-4000-8000-0000000003f6",
-            "title": "Early",
-            "streak": 0,
-            "status": "pending",
-            "completedDates": [],
-            "skippedDates": [],
-            "dailyCounts": {},
-            "repeatFrequency": "daily",
-            "reminderTime": "07:00"
-          }
-        ],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": null
-        },
-        "budget": 2
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-item-00000000-0000-4000-8000-0000000003f6",
-            "kind": "cue",
-            "itemId": "00000000-0000-4000-8000-0000000003f6",
-            "trigger": {
-              "type": "calendar",
-              "hour": 7,
-              "minute": 0,
-              "repeats": true
-            },
-            "firesAt": 1791198000000,
-            "title": "Early",
-            "body": "7:00 am",
-            "threadId": "dsul.cues",
-            "summaryArgument": "Early",
-            "categoryId": "DSUL_CUE",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "cue",
-              "itemId": "00000000-0000-4000-8000-0000000003f6",
-              "at": "07:00"
-            }
-          },
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "repeats": true
-            },
-            "firesAt": 1791248400000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          }
-        ],
-        "withdraw": [],
-        "notes": [
-          {
-            "code": "over-budget",
-            "itemId": "00000000-0000-4000-8000-0000000003f5",
-            "kept": 0
-          }
-        ]
-      }
-    },
-    {
       "name": "a snooze first, and a catch-up costs no pending room",
       "input": {
         "nowMs": 1791200400000,
@@ -12625,7 +11274,7 @@
       }
     },
     {
-      "name": "a catch-up for thirty and twenty-nine Wednesday habits: every item still armed",
+      "name": "a catch-up for thirty habits beside thirty Wednesday ones: every item still armed",
       "input": {
         "nowMs": 1791200100000,
         "timezone": "America/New_York",
@@ -13424,14 +12073,24 @@
             "repeatDays": [
               3
             ]
+          },
+          {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-000000000531",
+            "title": "Wednesday 30",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "weekly",
+            "reminderTime": "07:30",
+            "repeatDays": [
+              3
+            ]
           }
         ],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": null
-        }
+        "remindersEnabled": true
       },
       "expected": {
         "requests": [
@@ -14123,27 +12782,6 @@
               "itemId": "00000000-0000-4000-8000-0000000004cd",
               "dateStr": "2026-10-05",
               "at": "07:30"
-            }
-          },
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "repeats": true
-            },
-            "firesAt": 1791248400000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
             }
           },
           {
@@ -15590,6 +14228,31 @@
               "itemId": "00000000-0000-4000-8000-000000000530",
               "at": "07:30"
             }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-000000000531",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-000000000531",
+            "trigger": {
+              "type": "calendar",
+              "hour": 7,
+              "minute": 30,
+              "weekday": 4,
+              "repeats": true
+            },
+            "firesAt": 1791372600000,
+            "title": "Wednesday 30",
+            "body": "7:30 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Wednesday 30",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-000000000531",
+              "at": "07:30"
+            }
           }
         ],
         "withdraw": [],
@@ -15597,7 +14260,7 @@
       }
     },
     {
-      "name": "a held review, a held daily, three weekdays and a daily in six places",
+      "name": "a held daily, three weekdays and a daily in six places",
       "input": {
         "nowMs": 1791194400000,
         "timezone": "America/New_York",
@@ -15647,11 +14310,6 @@
           }
         ],
         "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": "2026-10-05"
-        },
         "budget": 6
       },
       "expected": {
@@ -15731,28 +14389,6 @@
             }
           },
           {
-            "id": "dsul-eod#3",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 3,
-              "repeats": true
-            },
-            "firesAt": 1791334800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
             "id": "dsul-item-00000000-0000-4000-8000-000000000406#4",
             "kind": "cue",
             "itemId": "00000000-0000-4000-8000-000000000406",
@@ -15801,18 +14437,39 @@
               "itemId": "00000000-0000-4000-8000-000000000407",
               "at": "07:15"
             }
+          },
+          {
+            "id": "dsul-item-00000000-0000-4000-8000-000000000406#5",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-000000000406",
+            "trigger": {
+              "type": "calendar",
+              "hour": 7,
+              "minute": 0,
+              "weekday": 5,
+              "repeats": true
+            },
+            "firesAt": 1791457200000,
+            "title": "Held",
+            "body": "7:00 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Held",
+            "categoryId": "DSUL_CUE",
+            "level": "active",
+            "relevance": 0,
+            "userInfo": {
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-000000000406",
+              "at": "07:00"
+            }
           }
         ],
         "withdraw": [],
         "notes": [
           {
             "code": "over-budget",
-            "kept": 1
-          },
-          {
-            "code": "over-budget",
             "itemId": "00000000-0000-4000-8000-000000000406",
-            "kept": 2
+            "kept": 3
           },
           {
             "code": "over-budget",
@@ -16787,181 +15444,6 @@
       }
     },
     {
-      "name": "a held review in exactly seven places: all seven, no note",
-      "input": {
-        "nowMs": 1791244800000,
-        "timezone": "America/New_York",
-        "items": [],
-        "remindersEnabled": false,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": "2026-10-05"
-        },
-        "budget": 7
-      },
-      "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod#3",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 3,
-              "repeats": true
-            },
-            "firesAt": 1791334800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#4",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 4,
-              "repeats": true
-            },
-            "firesAt": 1791421200000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#5",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 5,
-              "repeats": true
-            },
-            "firesAt": 1791507600000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#6",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 6,
-              "repeats": true
-            },
-            "firesAt": 1791594000000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#7",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 7,
-              "repeats": true
-            },
-            "firesAt": 1791680400000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#1",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "weekday": 1,
-              "repeats": true
-            },
-            "firesAt": 1791766800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          },
-          {
-            "id": "dsul-eod#2",
-            "kind": "eod",
-            "dateStr": "2026-10-12",
-            "trigger": {
-              "type": "at",
-              "dateStr": "2026-10-12",
-              "hhmm": "21:00"
-            },
-            "firesAt": 1791853200000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod",
-              "dateStr": "2026-10-12"
-            }
-          }
-        ],
-        "withdraw": [],
-        "notes": []
-      }
-    },
-    {
       "name": "two one-off series in three places: the sooner second",
       "input": {
         "nowMs": 1791194400000,
@@ -16978,14 +15460,21 @@
             "dailyCounts": {},
             "repeatFrequency": "daily",
             "reminderTime": "01:10"
+          },
+          {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-0000000007db",
+            "title": "Later",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "02:50"
           }
         ],
         "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "2:50",
-          "lastReviewDate": null
-        },
         "budget": 3
       },
       "expected": {
@@ -17016,8 +15505,9 @@
             }
           },
           {
-            "id": "dsul-eod",
-            "kind": "eod",
+            "id": "dsul-item-00000000-0000-4000-8000-0000000007db",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000007db",
             "dateStr": "2026-10-06",
             "trigger": {
               "type": "at",
@@ -17025,16 +15515,18 @@
               "hhmm": "02:50"
             },
             "firesAt": 1791269400000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
+            "title": "Later",
+            "body": "2:50 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Later",
+            "categoryId": "DSUL_CUE",
             "level": "active",
             "relevance": 0,
             "userInfo": {
-              "kind": "eod",
-              "dateStr": "2026-10-06"
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000007db",
+              "dateStr": "2026-10-06",
+              "at": "02:50"
             }
           },
           {
@@ -17068,7 +15560,7 @@
       }
     },
     {
-      "name": "a review at 3:50 stands in New York beside a 01:10 series",
+      "name": "a cue at 03:50 stands in New York beside a 01:10 series",
       "input": {
         "nowMs": 1791194400000,
         "timezone": "America/New_York",
@@ -17084,14 +15576,21 @@
             "dailyCounts": {},
             "repeatFrequency": "daily",
             "reminderTime": "01:10"
+          },
+          {
+            "type": "habit",
+            "id": "00000000-0000-4000-8000-0000000007db",
+            "title": "Later",
+            "streak": 0,
+            "status": "pending",
+            "completedDates": [],
+            "skippedDates": [],
+            "dailyCounts": {},
+            "repeatFrequency": "daily",
+            "reminderTime": "03:50"
           }
         ],
         "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "3:50",
-          "lastReviewDate": null
-        },
         "budget": 3
       },
       "expected": {
@@ -17122,8 +15621,9 @@
             }
           },
           {
-            "id": "dsul-eod",
-            "kind": "eod",
+            "id": "dsul-item-00000000-0000-4000-8000-0000000007db",
+            "kind": "cue",
+            "itemId": "00000000-0000-4000-8000-0000000007db",
             "trigger": {
               "type": "calendar",
               "hour": 3,
@@ -17131,15 +15631,17 @@
               "repeats": true
             },
             "firesAt": 1791273000000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
+            "title": "Later",
+            "body": "3:50 am",
+            "threadId": "dsul.cues",
+            "summaryArgument": "Later",
+            "categoryId": "DSUL_CUE",
             "level": "active",
             "relevance": 0,
             "userInfo": {
-              "kind": "eod"
+              "kind": "cue",
+              "itemId": "00000000-0000-4000-8000-0000000007db",
+              "at": "03:50"
             }
           },
           {
@@ -17659,7 +16161,7 @@
       }
     },
     {
-      "name": "reminders switched off: every cue withdrawn, the review kept",
+      "name": "reminders switched off: every cue withdrawn, an old review left to the scheduler",
       "input": {
         "nowMs": 1791280800000,
         "timezone": "America/New_York",
@@ -17678,11 +16180,6 @@
           }
         ],
         "remindersEnabled": false,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": null
-        },
         "delivered": [
           {
             "id": "dsul-item-00000000-0000-4000-8000-0000000003e9",
@@ -17700,29 +16197,7 @@
         ]
       },
       "expected": {
-        "requests": [
-          {
-            "id": "dsul-eod",
-            "kind": "eod",
-            "trigger": {
-              "type": "calendar",
-              "hour": 21,
-              "minute": 0,
-              "repeats": true
-            },
-            "firesAt": 1791334800000,
-            "title": "End of day 🌙",
-            "body": "How'd today go?",
-            "threadId": "dsul.rituals",
-            "summaryArgument": "End of day 🌙",
-            "categoryId": "DSUL_EOD",
-            "level": "active",
-            "relevance": 0,
-            "userInfo": {
-              "kind": "eod"
-            }
-          }
-        ],
+        "requests": [],
         "withdraw": [
           "dsul-item-00000000-0000-4000-8000-0000000003e9",
           "dsul-item-00000000-0000-4000-8000-0000000003e9#now"
@@ -17902,12 +16377,7 @@
             "reminderTime": "07:30"
           }
         ],
-        "remindersEnabled": true,
-        "eod": {
-          "enabled": true,
-          "time": "21:00",
-          "lastReviewDate": null
-        }
+        "remindersEnabled": true
       },
       "expected": {
         "requests": [],

@@ -718,7 +718,6 @@ describe('067_cue_log', () => {
     const keys = [
       cueKey(id, '2026-10-10', '07:30'),
       snoozeKey(id, '2026-10-10T11:46:00+00:00'),
-      dayKey('eod', '2026-10-10'),
       dayKey('last-call', '2026-10-10'),
     ];
     expect(keys[1]).toBe(`snooze:${id}:2026-10-10T11:46:00.000Z`);

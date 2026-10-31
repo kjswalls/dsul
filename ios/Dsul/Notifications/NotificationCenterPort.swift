@@ -32,6 +32,16 @@ enum NotificationKeys {
 
     static func isDsul(_ id: String) -> Bool { id.hasPrefix(prefix) }
 
+    /// The retired end of day review's identifiers (`dsul-eod`, `#1` … `#7`,
+    /// `#next`), which an older build armed. No plan asks for one any more
+    /// (ghost rows phase 3), so the diff removes a pending one as it would any
+    /// stale dsul request, and the scheduler takes one in the shade out too.
+    static let retiredReviewPrefix = "\(prefix)eod"
+
+    static func isRetiredReview(_ id: String) -> Bool {
+        id == retiredReviewPrefix || id.hasPrefix("\(retiredReviewPrefix)#")
+    }
+
     /// A pushed notification (the server's last call) is dsul's when it is
     /// about one item: whether iOS gives it the push's `apns-collapse-id` as
     /// its identifier is not documented, so it is never relied on. One
@@ -72,7 +82,7 @@ struct PendingNotification: Sendable, Hashable {
     var id: String
     var signature: String?
     var itemId: UUID?
-    /// The cue's "HH:mm" (`PlannedUserInfo.at`), nil for the review.
+    /// The cue's "HH:mm" (`PlannedUserInfo.at`).
     var at: String?
     /// The trigger's next ring, epoch ms; nil when the center can't say.
     var nextFireMs: Int?

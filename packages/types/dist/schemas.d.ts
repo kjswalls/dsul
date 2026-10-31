@@ -6390,14 +6390,14 @@ export declare const DeviceTransportSchema: z.ZodEnum<["webpush", "apns", "fcm",
 export declare const DeviceDeliverySchema: z.ZodEnum<["push", "local"]>;
 export declare const DeviceFormSchema: z.ZodEnum<["phone", "tablet", "desktop", "watch"]>;
 /** What a send is about, for a device's per-kind switches. `other` is a push with no kind (/api/push/send). */
-export declare const DeviceSendKindSchema: z.ZodEnum<["cue", "snooze", "last-call", "eod", "pledge", "other"]>;
+export declare const DeviceSendKindSchema: z.ZodEnum<["cue", "snooze", "last-call", "pledge", "other"]>;
 /**
  * A device's own switches, edited by its owner (065 grants UPDATE on `prefs`
  * and `label` and nothing else). Every key is optional: an absent kind is ON,
  * so a device registered before a kind existed still gets it.
  */
 export declare const DevicePrefsSchema: z.ZodObject<{
-    kinds: z.ZodOptional<z.ZodRecord<z.ZodEnum<["cue", "snooze", "last-call", "eod", "pledge", "other"]>, z.ZodBoolean>>;
+    kinds: z.ZodOptional<z.ZodRecord<z.ZodEnum<["cue", "snooze", "last-call", "pledge", "other", "eod"]>, z.ZodBoolean>>;
     quiet: z.ZodOptional<z.ZodNullable<z.ZodObject<{
         start: z.ZodString;
         end: z.ZodString;
@@ -6411,7 +6411,7 @@ export declare const DevicePrefsSchema: z.ZodObject<{
     muted: z.ZodOptional<z.ZodBoolean>;
     claimsLocally: z.ZodOptional<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
-    kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "eod" | "pledge" | "other", boolean>> | undefined;
+    kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "pledge" | "other" | "eod", boolean>> | undefined;
     quiet?: {
         start: string;
         end: string;
@@ -6419,7 +6419,7 @@ export declare const DevicePrefsSchema: z.ZodObject<{
     muted?: boolean | undefined;
     claimsLocally?: boolean | undefined;
 }, {
-    kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "eod" | "pledge" | "other", boolean>> | undefined;
+    kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "pledge" | "other" | "eod", boolean>> | undefined;
     quiet?: {
         start: string;
         end: string;
@@ -6541,7 +6541,7 @@ export declare const DeviceSchema: z.ZodObject<{
     label: z.ZodNullable<z.ZodString>;
     timezone: z.ZodNullable<z.ZodString>;
     prefs: z.ZodObject<{
-        kinds: z.ZodOptional<z.ZodRecord<z.ZodEnum<["cue", "snooze", "last-call", "eod", "pledge", "other"]>, z.ZodBoolean>>;
+        kinds: z.ZodOptional<z.ZodRecord<z.ZodEnum<["cue", "snooze", "last-call", "pledge", "other", "eod"]>, z.ZodBoolean>>;
         quiet: z.ZodOptional<z.ZodNullable<z.ZodObject<{
             start: z.ZodString;
             end: z.ZodString;
@@ -6555,7 +6555,7 @@ export declare const DeviceSchema: z.ZodObject<{
         muted: z.ZodOptional<z.ZodBoolean>;
         claimsLocally: z.ZodOptional<z.ZodBoolean>;
     }, "strip", z.ZodTypeAny, {
-        kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "eod" | "pledge" | "other", boolean>> | undefined;
+        kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "pledge" | "other" | "eod", boolean>> | undefined;
         quiet?: {
             start: string;
             end: string;
@@ -6563,7 +6563,7 @@ export declare const DeviceSchema: z.ZodObject<{
         muted?: boolean | undefined;
         claimsLocally?: boolean | undefined;
     }, {
-        kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "eod" | "pledge" | "other", boolean>> | undefined;
+        kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "pledge" | "other" | "eod", boolean>> | undefined;
         quiet?: {
             start: string;
             end: string;
@@ -6586,7 +6586,7 @@ export declare const DeviceSchema: z.ZodObject<{
     form: "phone" | "tablet" | "desktop" | "watch" | null;
     timezone: string | null;
     prefs: {
-        kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "eod" | "pledge" | "other", boolean>> | undefined;
+        kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "pledge" | "other" | "eod", boolean>> | undefined;
         quiet?: {
             start: string;
             end: string;
@@ -6609,7 +6609,7 @@ export declare const DeviceSchema: z.ZodObject<{
     form: "phone" | "tablet" | "desktop" | "watch" | null;
     timezone: string | null;
     prefs: {
-        kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "eod" | "pledge" | "other", boolean>> | undefined;
+        kinds?: Partial<Record<"cue" | "snooze" | "last-call" | "pledge" | "other" | "eod", boolean>> | undefined;
         quiet?: {
             start: string;
             end: string;

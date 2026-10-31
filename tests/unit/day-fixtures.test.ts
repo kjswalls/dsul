@@ -60,7 +60,7 @@ import {
   streakOf,
   wantsDoingOn,
 } from '@/lib/reminders/due';
-import { EOD_COPY, formatCueTime, lastCallCopy, reminderCopy, streakPhrase, type TimeFormat } from '@/lib/reminders/copy';
+import { formatCueTime, lastCallCopy, reminderCopy, streakPhrase, type TimeFormat } from '@/lib/reminders/copy';
 import { NEVER_SCOLDS } from './support/copy-contract';
 import { isCompletedOnDate } from '@/lib/recurrence';
 import { projectItems } from '@/lib/planner-store';
@@ -2109,7 +2109,6 @@ type CopyFixture = {
   streakPhrase: StreakPhraseCase[];
   reminderCopy: ReminderCopyCase[];
   lastCallCopy: LastCallCopyCase[];
-  eodCopy: Copy;
 };
 
 /**
@@ -2194,7 +2193,6 @@ function buildCopy(): CopyFixture {
         ['a streak of one', named(['Reading'], [1])],
       ] as [string, Item[]][]
     ).map(([name, items]) => ({ name, items, expected: lastCallCopy(items) })),
-    eodCopy: { ...EOD_COPY },
   };
 }
 
@@ -2526,8 +2524,6 @@ describe('day fixtures shared with DsulCore', () => {
     const lines = [
       ...copy.reminderCopy.flatMap((c) => [c.expected.title, c.expected.body]),
       ...copy.lastCallCopy.flatMap((c) => (c.expected ? [c.expected.title, c.expected.body] : [])),
-      copy.eodCopy.title,
-      copy.eodCopy.body,
     ];
     for (const line of lines) expect(line, line).not.toMatch(NEVER_SCOLDS);
   });

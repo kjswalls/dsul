@@ -391,12 +391,15 @@ export interface AppPlannerPayload {
     lastCallEnabled: boolean | null;
     /** habit_last_call_time, 'HH:mm', as stored; null when unset or unread. */
     lastCallTime: string | null;
-    /** The end-of-day review's switch (eod_review_enabled): only true is on, as the scan reads it. */
-    eodReviewEnabled: boolean;
-    /** eod_review_time as stored, 'HH:mm' or the looser 'H:mm' lib/eod.ts reads; null when unset. */
-    eodReviewTime: string | null;
-    /** last_eod_review_date: the day the last review was FOR (lib/eod.ts reviewedDay). */
-    lastEodReviewDate: string | null;
+    /**
+     * "Leftovers on Today" (morning_check_enabled, rituals.morningCheck): the
+     * switch for the ghost rows' "From earlier" fold at the top of Today
+     * (memory/plans/ghost-rows.md). The stored value as the web reads it: on
+     * with no row yet (settings-service's first-run seed, true since 086),
+     * otherwise only true is on. Absent, from an older server, the phone
+     * reads as on.
+     */
+    leftoversOnToday: boolean;
     /**
      * How long after its minute a missed cue may still ring (the scan's
      * REMINDER_GRACE_MINUTES): the phone's catch-up window, so the two agree.
@@ -498,11 +501,11 @@ export interface AppItemType {
  * read all of it. It held the plaintext agent key until migration 059 moved it
  * to user_secrets; the habit stays.
  *
- * The week start and the time format are migration 008, and the review's
- * three columns 002/010, all stable.
+ * The week start, the time format and morning_check_enabled are migration
+ * 008, all stable.
  */
 const STABLE_SETTINGS_COLUMNS =
-  'timezone, show_completed_tasks, week_start_day, time_format, eod_review_enabled, eod_review_time, last_eod_review_date';
+  'timezone, show_completed_tasks, week_start_day, time_format, morning_check_enabled';
 /**
  * `app_icon` is migration 056 and the three reminder switches 032; all sit in
  * lib/settings-service.ts PENDING_SCHEMA_COLUMNS. PostgREST refuses the whole
@@ -521,9 +524,7 @@ interface SettingsRow {
   habit_reminders_enabled?: boolean | null;
   habit_last_call_enabled?: boolean | null;
   habit_last_call_time?: string | null;
-  eod_review_enabled?: boolean | null;
-  eod_review_time?: string | null;
-  last_eod_review_date?: string | null;
+  morning_check_enabled?: boolean | null;
 }
 
 interface SettingsRead {
@@ -686,9 +687,9 @@ export async function getPlanner(req: Request): Promise<Response> {
         remindersEnabled: full ? settings?.habit_reminders_enabled === true : null,
         lastCallEnabled: full ? settings?.habit_last_call_enabled === true : null,
         lastCallTime: (full && settings?.habit_last_call_time) || null,
-        eodReviewEnabled: settings?.eod_review_enabled === true,
-        eodReviewTime: settings?.eod_review_time || null,
-        lastEodReviewDate: settings?.last_eod_review_date || null,
+        // No row yet is the first-run seed's true; a row is read as the
+        // web's provider reads it (only true is on).
+        leftoversOnToday: settings ? settings.morning_check_enabled === true : true,
         reminderGraceMinutes: REMINDER_GRACE_MINUTES,
       },
       snoozes,

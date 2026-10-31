@@ -107,9 +107,8 @@ final class FakeAccount: NotificationAccount {
     private let origin = URL(string: "https://dsul.test")!
 
     /// Meds (a daily habit on a 41-day streak) with a cue at `at`, Habit
-    /// reminders on, the review at `eod` when given.
-    private func payload(at: String = "07:30", medsDone: Bool = false, eod: String? = nil,
-                         snoozes: String = "") -> String {
+    /// reminders on.
+    private func payload(at: String = "07:30", medsDone: Bool = false, snoozes: String = "") -> String {
         var meds = PlannerJSON.medsJSON
         if medsDone {
             meds = meds.replacingOccurrences(of: "[\"2026-09-29\",\"2026-09-30\"]",
@@ -117,11 +116,6 @@ final class FakeAccount: NotificationAccount {
         }
         meds = meds.replacingOccurrences(of: "\"streak\":41,", with: "\"streak\":41,\"reminderTime\":\"\(at)\",")
         var json = PlannerJSON.payload(remindersEnabled: "true", extra: [meds])
-        if let eod {
-            json = json.replacingOccurrences(of: "\"remindersEnabled\":true",
-                                             with: "\"remindersEnabled\":true,\"eodReviewEnabled\":true,"
-                                                 + "\"eodReviewTime\":\"\(eod)\"")
-        }
         if !snoozes.isEmpty {
             json = String(json.dropLast()) + ",\"snoozes\":[\(snoozes)]}"
         }
@@ -212,6 +206,30 @@ final class FakeAccount: NotificationAccount {
         #expect(center.pendingById.isEmpty)
         #expect(center.removedPending == [medsBase])
         #expect(center.foreign.count == 1)
+    }
+
+    /// The end of day review an older build armed goes on the next plan:
+    /// pending under any of its identifiers, and in the shade. Another app's
+    /// look-alike stays.
+    @Test func theRetiredReviewIsClearedOnce() async throws {
+        let clock = TestClock(at("06:00"))
+        let (scheduler, center) = makeScheduler(clock)
+        center.foreign = [PendingNotification(id: "dsul-eod#3"), PendingNotification(id: "dsul-eod#next"),
+                          PendingNotification(id: "other-app-eod")]
+        center.shade = [DeliveredNotification(id: "dsul-eod", deliveredAtMs: 0),
+                        DeliveredNotification(id: "other-app-eod", deliveredAtMs: 0)]
+        let plan = try #require(await scheduler.reconcile(try snapshot(payload()), userId: testUserID))
+        #expect(!plan.requests.contains { $0.id.hasPrefix("dsul-eod") })
+        #expect(Set(center.removedPending) == ["dsul-eod#3", "dsul-eod#next"])
+        #expect(center.removedDelivered == ["dsul-eod"])
+        #expect(center.foreign.map(\.id) == ["other-app-eod"])
+        #expect(center.shade.map(\.id) == ["other-app-eod"])
+        // Nothing is left to clear, so the next plan removes nothing more.
+        await scheduler.reconcile(try snapshot(payload()), userId: testUserID)
+        #expect(center.removedDelivered == ["dsul-eod"])
+        #expect(Set(center.removedPending) == ["dsul-eod#3", "dsul-eod#next"])
+        #expect(NotificationKeys.isRetiredReview("dsul-eod#7") && !NotificationKeys.isRetiredReview("dsul-eodx"))
+        #expect(!NotificationKeys.isRetiredReview(medsBase))
     }
 
     /// Not allowed to notify: nothing is planned, added or removed.
@@ -578,7 +596,7 @@ final class FakeAccount: NotificationAccount {
     @Test func onlyWhatStillWantsDoingIsShownInFront() async throws {
         let server = FakeServer()
         let clock = TestClock(at("07:31"))
-        let planner = await loadedPlanner(server, clock: clock, json: payload(medsDone: true, eod: "21:00"))
+        let planner = await loadedPlanner(server, clock: clock, json: payload(medsDone: true))
         let (hub, _) = makeHub(server, clock: clock)
         hub.attach(planner)
         #expect(!hub.shouldPresent(info(medsBase, date: at("07:30"))))
@@ -586,8 +604,10 @@ final class FakeAccount: NotificationAccount {
         #expect(hub.shouldPresent(water))
         let gone = info(itemIdentifier(UUID()), item: UUID(), date: at("07:30"))
         #expect(!hub.shouldPresent(gone))
-        let review = info(eodIdentifier, kind: .eod, item: nil, dateStr: nil, at: nil, date: at("21:00"))
-        #expect(hub.shouldPresent(review))
+        // The retired review an older build armed never shows, planner or not.
+        var review = info("dsul-eod", item: nil, dateStr: nil, at: nil, date: at("21:00"))
+        review.userInfo["kind"] = "eod"
+        #expect(!hub.shouldPresent(review))
         #expect(hub.shouldPresent(info("other-app", date: at("07:30"))))
     }
 

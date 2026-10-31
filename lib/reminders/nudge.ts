@@ -15,11 +15,10 @@
  */
 
 /**
- * Every kind of nudge the scan sends. `eod` is the end-of-day review's
- * invitation, folded into the scan from its own cron route; it is about the
- * day as a whole, never an item, so it carries no `itemId` and no `items`.
+ * Every kind of nudge the scan sends. The end of day review's invitation
+ * (`eod`) was one until ghost rows retired the review.
  */
-export type NudgeKind = 'cue' | 'last-call' | 'eod'
+export type NudgeKind = 'cue' | 'last-call'
 
 /**
  * The kinds an outward channel takes when the user has not listed any: the
@@ -31,8 +30,7 @@ export type NudgeKind = 'cue' | 'last-call' | 'eod'
  * would have texted "How'd today go?" to every SMS user and read it aloud in
  * every kitchen, without anyone deciding either. A new kind now reaches those
  * channels only by being added here: a user's own `kinds` can narrow this list
- * and never widen it (channelKinds below). The EOD review is push only
- * (memory/plans/reminders-platforms.md §7, decision 12).
+ * and never widen it (channelKinds below).
  */
 export const REMINDER_KINDS: readonly NudgeKind[] = ['cue', 'last-call']
 
@@ -43,11 +41,8 @@ export const REMINDER_KINDS: readonly NudgeKind[] = ['cue', 'last-call']
  *
  * Narrowed, never widened. The field is free text, and a list is there to
  * quiet a channel ("last-call" alone keeps a house silent all day), not to add
- * a kind the channel has no words for. Typed into Speak, "eod" would read the
- * review out through spokenLine, which has no branch for it and says "End of
- * day 🌙. After How'd today go?."; typed into Call me for, it would ring at
- * the review's hour to say it twice. Decision 12 kept the review on push, and
- * its alternative (opting a channel in) starts with that copy, not here.
+ * a kind the channel has no words for. A word that names no kind (the
+ * retired "eod" among them) is dropped.
  */
 export function channelKinds(
   listed: readonly string[],
@@ -78,11 +73,10 @@ export interface Nudge {
   /**
    * The single item this is about, when it is about exactly one. A cue always
    * has it; a last call has it only when one thing is left, which is what lets
-   * the last call carry a Done button in that case and not otherwise. The EOD
-   * review never has it.
+   * the last call carry a Done button in that case and not otherwise.
    */
   itemId?: string
-  /** Everything the nudge covers. One entry for a cue; none for the EOD review. */
+  /** Everything the nudge covers. One entry for a cue. */
   items: NudgeItem[]
   /** True when this delivery is a matured snooze rather than a first cue. */
   snoozed?: boolean

@@ -24,9 +24,9 @@ export interface RosterRow {
 
 /**
  * The switches a device shows, one per kind a person would recognise. The end
- * of day review's (`eod`) went with the review (ghost rows phase 2): the server
- * sends it to no device. The kind stays in @dsul/types, an external contract,
- * and a stored `prefs.kinds.eod` is left where it is.
+ * of day review's (`eod`) went with the review (ghost rows): no device is sent
+ * one, and a stored `prefs.kinds.eod` is left where it is (@dsul/types still
+ * parses it).
  */
 export const DEVICE_KIND_SWITCHES: { kind: DeviceSendKind; label: string }[] = [
   { kind: 'cue', label: 'Habit reminders' },
