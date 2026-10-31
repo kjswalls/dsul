@@ -261,11 +261,15 @@ export const AtlasStrands = memo(function AtlasStrands({
               data-atlas-strand={linkId(l)}
               data-hot={on ? 'true' : undefined}
               fill="none"
-              stroke={on ? 'var(--primary)' : REST_STROKE}
-              strokeWidth={on ? 2 : 1.25}
-              strokeDasharray={on ? undefined : '3 5'}
               strokeLinecap="round"
-              style={{ transition: strokeTransition }}
+              // In style, not presentation attributes: var() and color-mix()
+              // are CSS, and an attribute is not the place to rely on them.
+              style={{
+                stroke: on ? 'var(--primary)' : REST_STROKE,
+                strokeWidth: on ? 2 : 1.25,
+                strokeDasharray: on ? 'none' : '3 5',
+                transition: strokeTransition,
+              }}
             />
           );
         })}

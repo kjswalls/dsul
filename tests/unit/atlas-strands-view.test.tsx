@@ -87,9 +87,9 @@ describe('strands on the card layer', () => {
     expect(s).toHaveLength(1);
     expect(s[0].dataset.atlasStrand).toBe('goal:g1\nproject:p1');
     expect(s[0].getAttribute('d')).toMatch(/^M[\d.-]+ [\d.-]+ C /);
-    expect(s[0].getAttribute('stroke-dasharray')).toBe('3 5');
+    expect(s[0].style.strokeDasharray).toBe('3 5');
     // Ink by colour, a solid mix with the ground: never an opacity.
-    expect(s[0].getAttribute('stroke')).toMatch(/color-mix\(in oklch, var\(--muted-foreground\) \d+%, var\(--background\)\)/);
+    expect(s[0].style.stroke).toMatch(/color-mix\(in oklch, var\(--muted-foreground\) \d+%, var\(--background\)\)/);
     expect(s[0].getAttribute('opacity')).toBeNull();
     expect(s[0].getAttribute('style') ?? '').not.toMatch(/opacity/);
     // Under the cards: the layer comes before every card in the world.
@@ -104,8 +104,8 @@ describe('strands on the card layer', () => {
     fireEvent.pointerOver(card('project:p1'));
     let s = strands()[0];
     expect(s.dataset.hot).toBe('true');
-    expect(s.getAttribute('stroke')).toBe('var(--primary)');
-    expect(s.getAttribute('stroke-dasharray')).toBeNull();
+    expect(s.style.stroke).toBe('var(--primary)');
+    expect(s.style.strokeDasharray).toBe('none');
     // The same element, moved not remounted, keeps its curve.
     expect(s.getAttribute('d')).toMatch(/^M/);
 
