@@ -13,13 +13,15 @@ import {
   type AtlasFrameSpec,
   type AtlasStrandLink,
 } from '@/lib/atlas-strands';
+import { ATLAS_EASE_OUT, ATLAS_FOLLOW_MS, ATLAS_MOTION, atlasPop, drawInDash, strandDelay } from '@/lib/atlas-motion';
 
 /**
- * How long after a change the strands keep following the cards: the glide
- * (ATLAS_GLIDE_MS, 550) and a little slack. Imported as a number rather than
- * from atlas-card, which would make this module depend on the card's.
+ * How long after a change the strands keep following the cards: the glide,
+ * a layout switch's cascade and a little slack (lib/atlas-motion.ts).
  */
-const FOLLOW_MS = 650;
+const FOLLOW_MS = ATLAS_FOLLOW_MS;
+/** A strand at rest is dashed this way; hot, it is solid. */
+const REST_DASH: readonly [number, number] = [3, 5];
 
 /** At rest: ink, by colour (a solid mix with the ground), never by opacity. */
 const REST_STROKE = 'color-mix(in oklch, var(--muted-foreground) 70%, var(--background))';
@@ -44,6 +46,10 @@ const linkId = (l: AtlasStrandLink) => `${l.from}\n${l.to}`;
  * keep their order, so turning hot changes colour only and the fade plays.
  * Over ATLAS_STRAND_REST_CAP strands the nearest few per goal are drawn at
  * rest (lib/atlas-strands.ts strandsToDraw), plus the hot card's own.
+ *
+ * A strand that appears draws in from its goal end by stroke-dashoffset
+ * (lib/atlas-motion.ts drawInDash), ending on exactly the dash it rests with;
+ * several at once are staggered a few ms apart. Off under reduced motion.
  */
 export const AtlasStrands = memo(function AtlasStrands({
   links,
@@ -168,9 +174,43 @@ export const AtlasStrands = memo(function AtlasStrands({
     if (!reduced) follow(FOLLOW_MS);
   }, [draw, follow, reduced, links, frames, positions, expanded]);
   // A hot card changing only adds or restyles strands: one draw, no loop.
+  // Then every strand drawn for the first time draws in from its goal.
+  const shown = useRef(new Set<string>());
   useLayoutEffect(() => {
     draw();
-  }, [draw, ordered]);
+    const next = new Set<string>();
+    let fresh = 0;
+    for (const l of ordered) {
+      const id = linkId(l);
+      next.add(id);
+      if (shown.current.has(id) || reduced) continue;
+      const path = paths.current.get(id);
+      if (!path || typeof path.getTotalLength !== 'function') continue;
+      let length = 0;
+      try {
+        length = path.getAttribute('d') ? path.getTotalLength() : 0;
+      } catch {
+        length = 0;
+      }
+      const dash = drawInDash(length, path.dataset.hot === 'true' ? null : REST_DASH);
+      if (!dash) continue;
+      atlasPop(
+        path,
+        [
+          { strokeDasharray: dash.dasharray, strokeDashoffset: dash.from },
+          { strokeDasharray: dash.dasharray, strokeDashoffset: 0 },
+        ],
+        {
+          duration: ATLAS_MOTION.strandDrawMs,
+          delay: strandDelay(fresh++),
+          easing: ATLAS_EASE_OUT,
+          fill: 'backwards',
+        },
+        reduced
+      );
+    }
+    shown.current = next;
+  }, [draw, ordered, reduced]);
 
   // Hot ends and held presses, heard on the world (capture, so a card's own
   // handlers can't hide them). Space+drag pans the camera, which moves no card
@@ -259,7 +299,9 @@ export const AtlasStrands = memo(function AtlasStrands({
     if (el) boxes.current.set(key, el);
     else boxes.current.delete(key);
   };
-  const strokeTransition = reduced ? undefined : 'stroke 150ms ease-out, stroke-width 150ms ease-out';
+  const strokeTransition = reduced
+    ? undefined
+    : `stroke 150ms ${ATLAS_EASE_OUT}, stroke-width 150ms ${ATLAS_EASE_OUT}`;
 
   return (
     <div ref={wrapRef} aria-hidden data-testid="atlas-strands" className="pointer-events-none absolute left-0 top-0">

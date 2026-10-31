@@ -4246,6 +4246,59 @@ button[data-ai-chip]:focus-visible {
   animation: none;
 }
 
+/* Atlas's far zoom handoff (lib/atlas-motion.ts, atlas-handoff-canvas.tsx).
+   Through the band each card folds flat onto its tile strip (its transform
+   reads --atlas-fold-x / -y off .atlas-world) while its tiles fly to the grid
+   on the overlay canvas, which draws them from exactly where the strip held
+   them, so the strip's own tiles step aside by visibility, never opacity.
+   A soft light passes over the card as it folds: a band of ink on its own
+   pseudo-element, laid OVER the card, so nothing on the card is faded and the
+   lime is never under an opacity. --atlas-sweep runs 0 to 1. The attribute
+   is only ever set with motion allowed: reduced motion is a plain swap. */
+.atlas-world[data-handoff] [data-atlas-card] [data-testid='atlas-tiles'] > i {
+  visibility: hidden;
+}
+.atlas-world[data-handoff] [data-atlas-card]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: linear-gradient(
+    100deg,
+    transparent 38%,
+    color-mix(in oklab, var(--card-foreground) 11%, transparent) 50%,
+    transparent 62%
+  );
+  background-repeat: no-repeat;
+  background-size: 250% 100%;
+  background-position: calc((1 - var(--atlas-sweep, 0)) * 100%) 0;
+}
+
+/* The focus sheet's blocks rise a few pixels into place as it opens,
+   staggered, by transform only (atlas-focus-sheet.tsx). */
+.atlas-sheet-body > * {
+  animation: atlas-sheet-rise 260ms var(--ease-out-soft) backwards;
+}
+.atlas-sheet-body > :nth-child(2) { animation-delay: 30ms; }
+.atlas-sheet-body > :nth-child(3) { animation-delay: 55ms; }
+.atlas-sheet-body > :nth-child(4) { animation-delay: 80ms; }
+.atlas-sheet-body > :nth-child(5) { animation-delay: 100ms; }
+.atlas-sheet-body > :nth-child(n + 6) { animation-delay: 120ms; }
+@keyframes atlas-sheet-rise {
+  from {
+    transform: translateY(8px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .atlas-sheet-body > * {
+    animation: none;
+  }
+}
+[data-reduce-motion='true'] .atlas-sheet-body > * {
+  animation: none;
+}
+
 /* ── Dragging: the twin and the slot it left (Kirby's pick B, 2026-10-30) ──
    The ghost is a clone of what was grabbed, at its size, on a lifted card
    (components/shell/drag-ghost.tsx). Over another place it changes size to

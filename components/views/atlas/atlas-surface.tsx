@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, type ReactNode, type RefObject, type PointerEvent as ReactPointerEvent } from 'react';
 import { useAtlasUiStore } from '@/lib/atlas-ui-store';
-import { ATLAS_HANDOFF_ZOOM, handoffCardScale, panBy, zoomAt } from '@/lib/atlas-camera';
+import { ATLAS_HANDOFF_ZOOM, handoffShown, panBy, zoomAt } from '@/lib/atlas-camera';
+import { foldScale, sweepAt } from '@/lib/atlas-motion';
 import { ATLAS_GRID_PITCH } from '@/lib/atlas-relay-grid';
 
 /**
@@ -71,6 +72,8 @@ export function AtlasSurface({
   rootRef,
   inert,
   far,
+  farOver,
+  fold = true,
   children,
 }: {
   /** The Atlas root, focused on a bare-canvas press so its keys keep working. */
@@ -79,6 +82,10 @@ export function AtlasSurface({
   inert?: boolean;
   /** The far zoom (PR3), drawn above the dots and under the cards. */
   far?: ReactNode;
+  /** The handoff's flying tiles (atlas-handoff-canvas.tsx), drawn over the cards. */
+  farOver?: ReactNode;
+  /** The cards fold in the handoff (off under reduced motion: a plain swap at 0.5). */
+  fold?: boolean;
   children: ReactNode;
 }) {
   const surfaceRef = useRef<HTMLDivElement>(null);
@@ -174,7 +181,8 @@ export function AtlasSurface({
           (an empty board) the CSS dots stay at every zoom. */}
       <AtlasDots yieldBelowHandoff={far != null} />
       {far}
-      <AtlasWorld>{children}</AtlasWorld>
+      <AtlasWorld fold={fold}>{children}</AtlasWorld>
+      {farOver}
     </div>
   );
 }
@@ -186,7 +194,8 @@ export function AtlasSurface({
  */
 function AtlasDots({ yieldBelowHandoff }: { yieldBelowHandoff: boolean }) {
   const { x, y, z } = useAtlasUiStore((s) => s.camera);
-  if (yieldBelowHandoff && z < ATLAS_HANDOFF_ZOOM) return null;
+  const flourish = useAtlasUiStore((s) => s.flourish !== null);
+  if (yieldBelowHandoff && (z < ATLAS_HANDOFF_ZOOM || flourish)) return null;
   const pitch = DOT_PITCH * z;
   return (
     <div
@@ -203,13 +212,18 @@ function AtlasDots({ yieldBelowHandoff }: { yieldBelowHandoff: boolean }) {
 }
 
 /**
- * The ONLY node that carries the camera's transform. In the handoff band it
- * also carries `--atlas-handoff`, the scale each card shrinks to toward its
- * cluster (a card in the band reads it), so a zoom there re-renders no card.
+ * The ONLY node that carries the camera's transform. Through the handoff
+ * (lib/atlas-motion.ts) it also carries the fold every card in it takes,
+ * `--atlas-fold-x` / `--atlas-fold-y`, and the light's pass, `--atlas-sweep`
+ * (a card in the band reads them), so a zoom there re-renders no card. The
+ * handoff shown is a fly-in's flourish while one runs, else the zoom's own.
  */
-function AtlasWorld({ children }: { children: ReactNode }) {
+function AtlasWorld({ fold, children }: { fold: boolean; children: ReactNode }) {
   const { x, y, z } = useAtlasUiStore((s) => s.camera);
-  const band = z < ATLAS_HANDOFF_ZOOM;
+  const flourish = useAtlasUiStore((s) => s.flourish);
+  const e = handoffShown(z, flourish);
+  const band = fold && e > 0;
+  const { sx, sy } = foldScale(e);
   return (
     <div
       className="atlas-world absolute left-0 top-0 origin-top-left"
@@ -217,10 +231,18 @@ function AtlasWorld({ children }: { children: ReactNode }) {
       data-handoff={band ? 'true' : undefined}
       style={{
         transform: `translate(${x}px, ${y}px) scale(${z})`,
-        ...(band ? ({ '--atlas-handoff': handoffCardScale(z) } as Record<string, number>) : null),
+        ...(band
+          ? ({
+              '--atlas-fold-x': round4(sx),
+              '--atlas-fold-y': round4(sy),
+              '--atlas-sweep': round4(sweepAt(e)),
+            } as Record<string, number>)
+          : null),
       }}
     >
       {children}
     </div>
   );
 }
+
+const round4 = (n: number) => Math.round(n * 10000) / 10000;

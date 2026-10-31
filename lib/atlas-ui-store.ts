@@ -27,6 +27,14 @@ interface AtlasUiStore {
   /** False until the first fit; a fresh mount fits to the cards once. */
   fitted: boolean;
   setCamera: (camera: AtlasCamera) => void;
+  /**
+   * A click's fly-in plays the far zoom handoff as a timed flourish
+   * (lib/atlas-motion.ts `flourishAt`): while it runs this holds the handoff
+   * shown, 0 to 1, in place of the zoom's own; null otherwise. Memory only.
+   */
+  flourish: number | null;
+  /** One frame of a fly-in: the camera and the flourish in one set. */
+  setFlight: (camera: AtlasCamera, flourish: number | null) => void;
   markFitted: () => void;
   /**
    * Bumped by the toolbar's Fit (it lives in the header capsule, away from the
@@ -64,6 +72,7 @@ interface AtlasUiStore {
 
 const INITIAL = {
   camera: { x: 0, y: 0, z: 1 },
+  flourish: null,
   fitted: false,
   fitToken: 0,
   sheet: null,
@@ -75,7 +84,10 @@ const INITIAL = {
 
 export const useAtlasUiStore = create<AtlasUiStore>()((set) => ({
   ...INITIAL,
-  setCamera: (camera) => set({ camera }),
+  // Any other camera move (a pinch, a pan, a fit) ends a flourish at once:
+  // the hand takes the handoff back.
+  setCamera: (camera) => set((s) => (s.flourish === null ? { camera } : { camera, flourish: null })),
+  setFlight: (camera, flourish) => set((s) => (s.camera === camera && s.flourish === flourish ? s : { camera, flourish })),
   markFitted: () => set({ fitted: true }),
   requestFit: () => set((s) => ({ fitToken: s.fitToken + 1 })),
   openSheet: (kind, id, from) => set({ sheet: { kind, id, from } }),

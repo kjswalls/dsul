@@ -30,10 +30,15 @@ import { useOpenConsole } from '@/lib/console-door';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import type { Viewport } from '@/lib/atlas-camera';
 import { cn } from '@/lib/utils';
+import { ATLAS_EASE_EXIT, ATLAS_EASE_OUT, ATLAS_MOTION } from '@/lib/atlas-motion';
 
-/** The grow and shrink, as in the cards mock. */
-const SHEET_MS = 350;
-const SHEET_EASE = 'cubic-bezier(.2,.8,.2,1)';
+/**
+ * The grow and the shrink (lib/atlas-motion.ts): out of the card on the settle
+ * curve, back into it a little quicker on an exit curve, so a close gets out
+ * of the way.
+ */
+const SHEET_OPEN_MS = ATLAS_MOTION.sheetOpenMs;
+const SHEET_CLOSE_MS = ATLAS_MOTION.sheetCloseMs;
 /** How long a row ticked in the sheet stays in its group before it moves. */
 const TICK_HOLD_MS = 1500;
 /** Done rows shown before "Show n more": a project keeps every one-off ever filed in it. */
@@ -117,7 +122,7 @@ export function AtlasFocusSheet({
   // Shrink: back into the card, then gone.
   useEffect(() => {
     if (phase !== 'leaving') return;
-    const t = setTimeout(() => setView((v) => (v && v.phase === 'leaving' ? null : v)), SHEET_MS);
+    const t = setTimeout(() => setView((v) => (v && v.phase === 'leaving' ? null : v)), SHEET_CLOSE_MS);
     return () => clearTimeout(t);
   }, [phase]);
 
@@ -221,9 +226,12 @@ export function AtlasFocusSheet({
 
   const box = view.phase === 'open' ? sheetTarget(viewport) : view.sheet.from;
   const open = view.phase === 'open';
+  const leaving = view.phase === 'leaving';
+  const ms = leaving ? SHEET_CLOSE_MS : SHEET_OPEN_MS;
+  const ease = leaving ? ATLAS_EASE_EXIT : ATLAS_EASE_OUT;
   const transition = reduce
     ? 'none'
-    : ['left', 'top', 'width', 'height'].map((p) => `${p} ${SHEET_MS}ms ${SHEET_EASE}`).join(', ');
+    : ['left', 'top', 'width', 'height', 'border-radius'].map((p) => `${p} ${ms}ms ${ease}`).join(', ');
 
   return (
     <>
@@ -243,7 +251,7 @@ export function AtlasFocusSheet({
         className={cn('absolute inset-0 z-20', open && 'backdrop-blur-[2px]')}
         style={{
           background: open ? 'var(--scrim)' : 'transparent',
-          transition: reduce ? 'none' : 'background-color 250ms ease',
+          transition: reduce ? 'none' : `background-color ${ATLAS_MOTION.scrimMs}ms ${ATLAS_EASE_OUT}`,
           pointerEvents: view.phase === 'leaving' ? 'none' : undefined,
         }}
       />
@@ -259,8 +267,9 @@ export function AtlasFocusSheet({
         data-atlas-sheet={card.key}
         data-phase={view.phase}
         data-click-away-ignore=""
-        className="absolute z-[21] flex flex-col overflow-hidden rounded-[20px] border border-border bg-card text-card-foreground shadow-[var(--shadow-elev-panel)] outline-none"
-        style={{ left: box.x, top: box.y, width: box.width, height: box.height, transition }}
+        className="absolute z-[21] flex flex-col overflow-hidden border border-border bg-card text-card-foreground shadow-[var(--shadow-elev-panel)] outline-none"
+        // The corners ease from the card's 16px to the sheet's 20px with the box.
+        style={{ left: box.x, top: box.y, width: box.width, height: box.height, borderRadius: open ? 20 : 16, transition }}
       >
         <SheetBody
           key={view.seq}
@@ -352,7 +361,9 @@ function SheetBody({
     ));
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-[22px] pb-[22px] pt-[18px]">
+    // atlas-sheet-body: each block rises a few pixels into place as the sheet
+    // opens, staggered, by transform only (globals.css; off under reduced motion).
+    <div className="atlas-sheet-body flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-[22px] pb-[22px] pt-[18px]">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <button
           type="button"
@@ -391,7 +402,7 @@ function SheetBody({
         </div>
       )}
 
-      {card.kind !== 'goal' && <AtlasTileStrip card={card} />}
+      {card.kind !== 'goal' && <AtlasTileStrip card={card} reduced={prefersReducedMotion()} />}
 
       {/* No next step and nothing to say about it (an ended goal, a paused
           gate): no Next up at all; its members are in Later. */}

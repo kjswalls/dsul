@@ -1,7 +1,9 @@
 'use client';
 
+import { useLayoutEffect, useRef } from 'react';
 import type { AtlasCard } from '@/lib/atlas-model';
 import { ATLAS_COPY } from '@/lib/atlas-copy';
+import { ATLAS_EASE_SPRING, ATLAS_MOTION, atlasPop } from '@/lib/atlas-motion';
 import { cn } from '@/lib/utils';
 
 /**
@@ -9,11 +11,43 @@ import { cn } from '@/lib/utils';
  * `memberStateOn` gives: lit in the container's colour, open as a well with a
  * faint ring, quiet as a hollow ring (not counted). No opacity anywhere: the
  * accent never dims (design D8). The "3 of 7" count is the card's footer.
+ *
+ * A tile that lights (a tick) or arrives (a row filed in) pops once, by
+ * scale only, and never on the first draw or under reduced motion.
  */
-export function AtlasTileStrip({ card }: { card: AtlasCard }) {
+export function AtlasTileStrip({
+  card,
+  reduced = true,
+  steady = true,
+}: {
+  card: AtlasCard;
+  reduced?: boolean;
+  /** The planner is settled and fresh (a preview giving way to the load pops nothing). */
+  steady?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const last = useRef<{ tiles: readonly string[]; steady: boolean } | null>(null);
+  useLayoutEffect(() => {
+    const before = last.current;
+    last.current = { tiles: card.tiles, steady };
+    const prev = before?.tiles;
+    if (!prev || prev === card.tiles || reduced || !before.steady || !steady) return;
+    const els = ref.current?.children;
+    if (!els) return;
+    card.tiles.forEach((state, i) => {
+      const was = prev[i];
+      if (was === state || (was !== undefined && state !== 'lit')) return;
+      atlasPop(
+        els[i],
+        [{ transform: 'scale(.55)' }, { transform: 'scale(1.3)', offset: 0.5 }, { transform: 'scale(1)' }],
+        { duration: ATLAS_MOTION.tilePopMs, easing: ATLAS_EASE_SPRING },
+        reduced
+      );
+    });
+  }, [card.tiles, reduced, steady]);
   if (card.tiles.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-[3px]" data-testid="atlas-tiles">
+    <div ref={ref} className="flex flex-wrap items-center gap-[3px]" data-testid="atlas-tiles">
       {card.tiles.map((state, i) => (
         <i
           key={i}

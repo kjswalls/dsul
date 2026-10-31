@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { ChevronDown, Crosshair, ExternalLink, Maximize2, Pin, PinOff } from 'lucide-react';
 import { ContainerContextMenu } from '@/components/planner/container-context-menu';
@@ -14,12 +14,22 @@ import type { AtlasBand } from '@/lib/atlas-positions';
 import { useAtlasPointer } from '@/components/views/atlas/use-atlas-pointer';
 import { ATLAS_COPY } from '@/lib/atlas-copy';
 import { touchDay, type AtlasCard as AtlasCardModel, type AtlasMember } from '@/lib/atlas-model';
-import { ATLAS_CARD_H, ATLAS_CARD_W } from '@/lib/atlas-seed';
+import { ATLAS_CARD_W } from '@/lib/atlas-seed';
 import { formatDay } from '@/lib/active';
 import { formatCueTime, type TimeFormat } from '@/lib/reminders/copy';
 import { usePlannerStore } from '@/lib/planner-store';
+import { usePlannerPreviewing, usePlannerSettled } from '@/lib/planner-ready';
 import type { Point, Rect } from '@/lib/atlas-camera';
 import { cn } from '@/lib/utils';
+import {
+  ATLAS_EASE_OUT,
+  ATLAS_EASE_SPRING,
+  ATLAS_FOLD_Y,
+  ATLAS_GLIDE as GLIDE,
+  ATLAS_MOTION,
+  atlasPop,
+  glideTransition,
+} from '@/lib/atlas-motion';
 
 /** How long a ticked row stays where it was before the card re-picks. */
 const TICK_HOLD_MS = 1500;
@@ -29,12 +39,12 @@ export const ATLAS_TICK_HOLD_MS = TICK_HOLD_MS;
 /**
  * The glide between layouts, and the spring back from a drop that meant
  * nothing: transform only, never opacity (D8). Off while dragging and under
- * reduced motion.
+ * reduced motion. Its numbers live in lib/atlas-motion.ts with the rest.
  */
-export const ATLAS_GLIDE_MS = 550;
-export const ATLAS_GLIDE = `transform ${ATLAS_GLIDE_MS}ms cubic-bezier(.2,.8,.2,1)`;
+export const ATLAS_GLIDE_MS = ATLAS_MOTION.glideMs;
+export const ATLAS_GLIDE = GLIDE;
 /** A card a filter hides scales down this long, then unmounts. */
-export const ATLAS_LEAVE_MS = 150;
+export const ATLAS_LEAVE_MS = ATLAS_MOTION.leaveMs;
 
 /** Momentum's part of a card: its column, the app's, and the stored pin. */
 export interface AtlasCardMomentum {
@@ -79,6 +89,7 @@ export const AtlasCard = memo(function AtlasCard({
   laneLabel,
   onTick,
   handoff,
+  glideDelay = 0,
 }: {
   card: AtlasCardModel;
   at: Point;
@@ -115,10 +126,13 @@ export const AtlasCard = memo(function AtlasCard({
   /** A row on this card was ticked (the view holds a computed layout). */
   onTick?: (key: string) => void;
   /**
-   * In the far zoom's handoff band (PR3): the card shrinks toward its
-   * cluster by the world's `--atlas-handoff`, transform only, no glide.
+   * In the far zoom's handoff (PR3, round 2): the card folds flat onto its
+   * tile strip by the world's `--atlas-fold-x` / `--atlas-fold-y`, transform
+   * only, no glide, while its tiles fly to the grid on the overlay.
    */
   handoff?: boolean;
+  /** A layout switch's cascade: this card's glide starts this many ms late. */
+  glideDelay?: number;
 }) {
   const ref = useRef<HTMLElement>(null);
   const commit = useCallback((to: Point) => onMove(card.key, to), [onMove, card.key]);
@@ -168,6 +182,50 @@ export const AtlasCard = memo(function AtlasCard({
   // knows more than the store); every other layout from the store's touch.
   const resting = momentumAppBand ? momentumAppBand === 'resting' : card.resting;
 
+  // The moments worth a little motion (lib/atlas-motion.ts): off under
+  // reduced motion (the view passes `glide` false then), transform only.
+  const still = !glide;
+  // Only a change seen on a settled, fresh planner is news: the cached
+  // preview giving way to the real load is not a receipt for every card.
+  const settled = usePlannerSettled();
+  const previewing = usePlannerPreviewing();
+  const steady = settled && !previewing;
+  // Pinned in Momentum: once its glide to the new column lands, the card
+  // settles in with a breath of scale, added to its place (never replacing it).
+  const wasPinned = useRef(pinned);
+  useEffect(() => {
+    const before = wasPinned.current;
+    wasPinned.current = pinned;
+    if (!pinned || before) return;
+    atlasPop(
+      ref.current,
+      [{ transform: 'scale(1)' }, { transform: 'scale(1.035)', offset: 0.35 }, { transform: 'scale(1)' }],
+      {
+        duration: ATLAS_MOTION.pinSettleMs,
+        delay: Math.round(ATLAS_MOTION.glideMs * 0.8),
+        easing: ATLAS_EASE_OUT,
+        composite: 'add',
+      },
+      still
+    );
+  }, [pinned, still]);
+  // A receipt: the count pulses when the card gains a member (a row filed
+  // into it) or a tick lights one. Never on the first draw, never going down.
+  const countRef = useRef<HTMLSpanElement>(null);
+  const lastCount = useRef({ lit: card.lit, total: card.total, steady });
+  useLayoutEffect(() => {
+    const prev = lastCount.current;
+    lastCount.current = { lit: card.lit, total: card.total, steady };
+    if (!prev.steady || !steady) return;
+    if (card.total <= prev.total && card.lit <= prev.lit) return;
+    atlasPop(
+      countRef.current,
+      [{ transform: 'scale(1)' }, { transform: 'scale(1.16)', offset: 0.4 }, { transform: 'scale(1)' }],
+      { duration: ATLAS_MOTION.receiptMs, easing: ATLAS_EASE_SPRING },
+      still
+    );
+  }, [card.lit, card.total, still, steady]);
+
   const openSheet = () => {
     if (ref.current) onOpenSheet(card.key, ref.current);
   };
@@ -215,14 +273,22 @@ export const AtlasCard = memo(function AtlasCard({
       data-pinned={pinned ? 'true' : undefined}
       style={{
         width: ATLAS_CARD_W,
-        transform: `translate(${pos.x}px, ${pos.y}px)${leaving ? ' scale(.96)' : handoff ? ' scale(var(--atlas-handoff, 1))' : ''}`,
+        transform: `translate(${pos.x}px, ${pos.y}px)${leaving ? ' scale(.96)' : handoff ? ' scale(var(--atlas-fold-x, 1), var(--atlas-fold-y, 1))' : ''}`,
         // Transform only (D8). A hidden card scales down quickly; the glide
-        // carries a layout switch or a spring back; nothing animates mid-drag.
-        transition: dragging || handoff ? 'none' : leaving ? `transform ${ATLAS_LEAVE_MS}ms ease-out` : glide ? ATLAS_GLIDE : undefined,
+        // carries a layout switch (with its cascade) or a spring back;
+        // nothing animates mid-drag or in the handoff, which the zoom scrubs.
+        transition:
+          dragging || handoff
+            ? 'none'
+            : leaving
+              ? `transform ${ATLAS_LEAVE_MS}ms ${ATLAS_EASE_OUT}`
+              : glide
+                ? glideTransition(glideDelay)
+                : undefined,
         pointerEvents: leaving ? 'none' : undefined,
-        // The cluster sits at a collapsed card's middle, so a taller
-        // (expanded) card still shrinks onto its tiles.
-        transformOrigin: handoff && !leaving ? `${ATLAS_CARD_W / 2}px ${ATLAS_CARD_H / 2}px` : undefined,
+        // The handoff folds the card flat onto its tile strip, whose tiles
+        // then fly to the grid (atlas-handoff-canvas.tsx), so it closes there.
+        transformOrigin: handoff && !leaving ? `${ATLAS_CARD_W / 2}px ${ATLAS_FOLD_Y}px` : undefined,
       }}
     >
       {/* The drop target (PR4): a braindump row, or a row from another card,
@@ -336,7 +402,7 @@ export const AtlasCard = memo(function AtlasCard({
       </div>
 
       <div className="flex flex-col gap-2 px-3.5 pb-3 pt-2">
-        {card.kind === 'goal' ? <MilestoneTrack card={card} /> : <AtlasTileStrip card={card} />}
+        {card.kind === 'goal' ? <MilestoneTrack card={card} /> : <AtlasTileStrip card={card} reduced={still} steady={steady} />}
 
         {rows.length > 0 ? (
           <div className="-mx-[7px] flex flex-col" data-testid="atlas-card-rows">
@@ -376,7 +442,7 @@ export const AtlasCard = memo(function AtlasCard({
 
         {(footerLeft || footerRight) && (
           <footer data-testid="atlas-card-footer" className="flex justify-between gap-2 text-2xs text-muted-foreground">
-            <span className="truncate" data-testid="atlas-count">
+            <span ref={countRef} className="origin-left truncate" data-testid="atlas-count">
               {footerLeft}
             </span>
             {footerRight && (
