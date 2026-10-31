@@ -316,6 +316,15 @@ test.describe('atlas', () => {
     // The Look pane has the far zoom's pick, on the desktop.
     await page.goto('/settings/look');
     await expect(page.locator('[data-setting-row="look.atlasFar"]').first()).toBeVisible();
+    // Picking Dusk shows at once (the page's look tick once left it out, so
+    // the chip kept saying Bloom), and Bloom puts it back.
+    const farChip = page.getByTestId('setting-look.atlasFar').first();
+    await farChip.click();
+    await page.getByRole('button', { name: 'Dusk', exact: true }).click();
+    await expect(farChip).toContainText('Dusk');
+    await farChip.click();
+    await page.getByRole('button', { name: 'Bloom', exact: true }).click();
+    await expect(farChip).toContainText('Bloom');
     await page.goto('/');
     await waitForAppReady(page);
     await setScope(page, 'Day');
