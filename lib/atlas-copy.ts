@@ -84,6 +84,8 @@ export const ATLAS_COPY = {
   focusLabel: (name: string) => `Focus on ${name}`,
   back: '‹ Atlas',
   backLabel: 'Back to Atlas',
+  /** The item rail's back control on Atlas ("‹ Atlas"): Back closes the item onto the map. */
+  railBack: 'Atlas',
   nextUp: 'Next up',
   later: 'Later',
   done: 'Done',

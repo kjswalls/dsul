@@ -442,6 +442,35 @@ describe('an item in the rail, with AI', () => {
     expect(useRailStore.getState().stacks.desktop).toEqual([{ kind: 'conversation', id: 'c1' }]);
   });
 
+  it('names Atlas on Atlas, and Back closes only the item onto the map', () => {
+    act(() => useViewStore.setState({ scope: 'atlas' }));
+    try {
+      push({ kind: 'conversation', id: 'c1' });
+      nameConversation('c1', 'Trip plans');
+      renderShell();
+      openRow();
+      const back = within(dialog()).getByTestId('rail-back');
+      expect(back).toHaveTextContent(/^Atlas$/);
+      expect(back).toHaveAccessibleName('Back to Atlas');
+
+      // Ask was open beneath: it is still there, as it was.
+      fireEvent.click(back);
+      expect(itemOpen()).toBe(false);
+      expect(askView()).toBeVisible();
+      expect(useRailStore.getState().stacks.desktop).toEqual([{ kind: 'conversation', id: 'c1' }]);
+
+      // With Ask closed, Back leaves the map with nothing over it.
+      act(() => useSidebarStore.setState({ askOpen: false }));
+      openRow();
+      fireEvent.click(within(dialog()).getByTestId('rail-back'));
+      expect(itemOpen()).toBe(false);
+      expect(useRailStore.getState().summoned).toBe(false);
+      expect(column()).toHaveClass('w-0');
+    } finally {
+      act(() => useViewStore.setState({ scope: 'day' }));
+    }
+  });
+
   it('keeps the item open for an IME commit in its box, and sends on a real Enter', async () => {
     renderShell();
     openRow();
