@@ -179,6 +179,9 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
     // restyles by (app/globals.css). Same controls either way.
     <div
       data-header-capsule=""
+      // The mount signal on Atlas, where row 1 has no header-date (the e2e
+      // readiness contract, tests/e2e/helpers/app.ts, waits on either).
+      data-mounted={mounted ? '' : undefined}
       className="inline-flex flex-col gap-1 rounded-[10px] bg-surface-3 p-2 shadow-[var(--shadow-elev-bar)]"
     >
       {/* Row 1 — calendar + date nav. The nav is one unit the row never
