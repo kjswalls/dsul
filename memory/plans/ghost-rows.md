@@ -4,12 +4,13 @@ What was left undone on an earlier day shows up faded at the top of today, until
 the person says what happens to each one. Designed with Kirby over three mockup
 rounds and a playground (2026-10-30 to 2026-10-31; handoff in
 `/mnt/project-files/handoffs/evening-ghost-rows.md`). It replaces two rituals:
-the dock's waiting notice (now) and the end of day review (phase 2).
+the dock's waiting notice (phase 1) and the end of day review (phase 2).
+Both are gone from the web and the server; the iPhone's review goes in phase 3.
 
 Code: [lib/ghost-rows.ts](../../lib/ghost-rows.ts) (which items, in what order),
 [components/planner/ghost-fold.tsx](../../components/planner/ghost-fold.tsx) (the
 fold, its rows and the phone's sheet), [hooks/use-overdue-today.ts](../../hooks/use-overdue-today.ts)
-(the predicate's inputs, shared with the waiting notice), the `[data-ghost-row]`
+(the predicate's inputs), the `[data-ghost-row]`
 rules in [app/globals.css](../../app/globals.css) beside the row rules.
 
 ## Decisions
@@ -76,13 +77,15 @@ rules in [app/globals.css](../../app/globals.css) beside the row rules.
 - **The switch.** The account setting `morning_check_enabled`
   (`rituals.morningCheck`, `useMorningStore().morningCheckEnabled`) is the
   fold's switch, relabelled "Leftovers on Today". The ⌘K toggle follows the
-  label, and `goto.overdue` ("Show leftovers") now goes to today's Day view
-  rather than opening the tray. The auto-age sweep still depends on it and is
-  unchanged.
-- **It replaces the waiting notice now.** While the switch is on, the dock's
-  waiting line (`useWaitingNotice`, components/ai/morning-check.tsx) no longer
-  renders (and while it is off it never did). The tray code stays, unreached,
-  until phase 2 deletes it.
+  label, and `goto.overdue` ("Show leftovers") goes to today's Day view. The
+  auto-age sweep (hooks/use-overdue-sweep.ts) still depends on it and is
+  unchanged. **On by default for a new account** (Kirby, 2026-10-31):
+  migration 086 moves the column default to true without flipping a row, and
+  settings-service's first-run seed and the manifest default say true. The
+  store's own default and the provider's reading of a NULL stay off, so the
+  fold never flashes in before an account's settings land.
+- **It replaced the waiting notice and the end of day review.** Kirby's call:
+  one surface for what was left, and it waits to be opened.
 
 ## Rules
 
@@ -106,22 +109,82 @@ rules in [app/globals.css](../../app/globals.css) beside the row rules.
 
 ## Phases
 
-1. **Web (this build).** The fold, its verbs and sheet, the switch relabelled,
+1. **Web (done, #633).** The fold, its verbs and sheet, the switch relabelled,
    the waiting notice stood down.
-2. **Retire the evening review and the tray.** Delete the waiting tray
-   (morning-check.tsx, morning-triage-list.tsx), retire the end of day review
-   (modal, dock line, the EOD push in lib/reminders, `rituals.eod*` settings),
-   replace the `review.saved` recipe trigger, and turn `/eod` into "go to
-   leftovers". Read habit-reminders.md and reminders-platforms.md before
-   removing the push.
+2. **Retire the evening review and the tray (done).** What went, what stayed
+   and why is below.
 3. **iPhone.** Port lib/ghost-rows.ts to ios/DsulCore and draw the fold in the
-   SwiftUI day view.
+   SwiftUI day view, and retire the iPhone's own end of day review (the leftovers
+   listed under "Kept for phase 3").
+
+## Phase 2: what was removed
+
+- **The waiting tray.** components/ai/morning-check.tsx (the dock line and
+  `WAITING_LINE_RETIRED`), components/ai/morning-triage-list.tsx, the tray's
+  parts of lib/morning-store.ts (`isOpen`/`open`/`close`/`toggle`, `dismiss`,
+  `resetDismissal`, `isDismissedToday`, `morningCheckDismissedDate`; a blob an
+  older build persisted has the last two stripped on merge), and
+  lib/overdue.ts's `summarizeOverdue` / `OverdueSummary` /
+  `OVERDUE_COHORT_LABELS`. Kept: the switch, `morningCheckTime` (a setting
+  nothing reads, left alone), and the sweep with its receipt.
+- **The end of day review.** The modal (components/ai/eod-review.tsx),
+  lib/eod-store.ts, lib/eod-link.ts and AppShell's `?eod=` handler (an old
+  notification's `/?eod=<day>` now just opens home), the dock's "Today's review
+  is waiting" line, the ⌘K `rituals.eod` and `settings.eodReview` commands, the
+  `rituals.eod` / `rituals.eodTime` settings records, the Devices list's
+  "End-of-day review" switch, Ask home's "N free" (it counted to the review's
+  hour; there is no day end now), and the rituals nudge's review half (it now
+  introduces the leftovers alone). The `dsul-eod-store` blob is removed by
+  lib/local-state.ts's raw clearers.
+- **The server's push.** lib/reminders/scan.ts's Tier 0 (claim on
+  `last_eod_notified_date`, `eodNudge`), build.ts's `eodNudge`, the summary's
+  `eod` count, and the retry of an `eod` cue_log row (closed `not_wanted`, never
+  re-sent). `eod_review_enabled` stays in `TICK_FLAGS` because dsul_tick (058)
+  names it and the two are held to each other by a test; a user there for it
+  alone is read and skipped.
+- **Ids.** No shortcut id was involved. Command and settings ids are not
+  frozen, so `rituals.eod` and the rest are deleted rather than repointed, and
+  `eod` became an alias of `goto.overdue`, so /eod lands on the leftovers.
+- **Columns stay**: `eod_review_enabled`, `eod_review_time`,
+  `last_eod_notified_date`, `last_eod_review_date`,
+  `morning_check_dismissed_date`, `morning_check_time`. settings-service still
+  selects and seeds them.
+
+## Phase 2: the `review.saved` stand-in
+
+Stored recipes and mods name `review.saved`, so the kind, its schema and its
+payload (`{ kind: 'review.saved', date }`) are unchanged, and it now fires at
+the "All sorted, you got this" moment: the fold emptied by the person's own
+verbs, never by the sweep, a catch-up or a pause. ghost-fold.tsx calls
+lib/morning-store.ts `noteLeftoversCleared(userId, today)`, which raises it
+through the bus at most once per account and day on this device
+(`leftoversClearedByUser`, local, self-pruning, pruned to the incoming account
+on a switch). `date` is today, the only day the fold is drawn on. The trigger
+reads "I sort the last leftover on Today" in the recipe builder, "when the last
+leftover on Today is sorted" in a mod's hooks, and Make's prompt describes the
+moment. The review's Done raised it only when the reviewed date moved; this is
+the same once-a-day shape.
+
+## Kept for phase 3 (the iPhone still plans the review locally)
+
+The Swift port mirrors these, and tests/fixtures/day/ (copy.json,
+notification-plan.json) and tests/fixtures/app/planner-response.json hold both
+sides, so they stay until the iPhone drops its review:
+
+- lib/eod.ts, trimmed to `minutesOfDay` (ReminderPlan.swift `eodMinutesOfDay`)
+  and `isEodOwed` (its "owed" rule). `reviewedDay`, `shouldShowEodNotice`,
+  `eodLinkDay` and `nowMinutesIn` went; plan.ts and ReminderPlan.swift still
+  name `reviewedDay` in comments.
+- lib/reminders/plan.ts's review (`EOD_IDENTIFIER`, `eodIdentifiers`, the
+  `eod` input and requests) and lib/reminders/copy.ts `EOD_COPY`.
+- lib/app-api.ts's planner payload `eodReviewEnabled` / `eodReviewTime` /
+  `lastEodReviewDate` (an iPhone contract), the `eod` NudgeKind / CueLogKind /
+  `dayKey('eod')` / push channel entry, `DeviceSendKind` 'eod' in @dsul/types,
+  lib/devices/select.ts's LOCAL_KINDS, and electron/lib/notify.cjs's key
+  pattern and `/?eod=` path (harmless: it opens home).
+- Nothing on the web writes `last_eod_review_date` any more, so an iPhone with
+  the review on keeps ringing it nightly until phase 3 removes it there.
 
 ## Open question
 
-- **On by default for new accounts?** Recommended in the handoff, not decided.
-  It needs a migration changing `morning_check_enabled`'s column default plus
-  the settings-service default (and `defaultValue` in the manifest,
-  `ritual-defaults.test.ts`, the morning store's initial state). Phase 1 changes
-  no default and writes no migration.
 - Later pass: hovered-row keys (K / T / S / B / Backspace).

@@ -143,8 +143,7 @@ habit answers with `project` internally and `toLegacyHabit` renames it on the wa
 (lib/db.ts), while `habitGroups[]` is a projection of the one container list.
 
 **Reminders reach outward; everything else in the app waits to be opened.** A cue at the
-habit's own hour, a streak-at-risk last call, the end-of-day review's push, and a nightly
-settlement all run unattended from one cron (`/api/cron/reminders` → [lib/reminders/scan.ts](lib/reminders/scan.ts)).
+habit's own hour, a streak-at-risk last call, and a nightly settlement all run unattended from one cron (`/api/cron/reminders` → [lib/reminders/scan.ts](lib/reminders/scan.ts)).
 The one exception is Beeminder, which also posts the instant a habit is ticked
 ([lib/stakes/live.ts](lib/stakes/live.ts), hooked at `setItemCompletion`) because a
 datapoint that arrives after the goal's midnight deadline arrives after the money is
@@ -462,8 +461,9 @@ date, and the sweep and the carry verbs are excluded from it on purpose.
 faded in one fold at the top of Today until a verb is picked (`lib/ghost-rows.ts`,
 `components/planner/ghost-fold.tsx`). Ghosts are a view over `selectOverdue`, never a write; milestones
 and recurring items never ghost; today only. The `morning_check_enabled` switch ("Leftovers on Today")
-draws it and stands the dock's waiting line down; phase 2 retires the end of day review. Read it before
-touching either.
+draws it, on by default for a new account (086). It replaced the dock's waiting line and the end of day
+review (phase 2: modal, dock line, push and `rituals.eod*` gone; `review.saved` now fires when the fold is
+cleared by hand). The iPhone still plans the review until phase 3. Read it before touching either.
 [mods.md](memory/plans/mods.md) is the plan for **mods and recipes** (Kirby's pick,
 2026-10-03; decisions 2026-10-07): private, sandboxed mods (QuickJS-in-WASM behind a
 capability broker, host-drawn UI, never CSS), no-code recipes over `ITEM_VERBS`, and
