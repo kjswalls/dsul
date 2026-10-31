@@ -2789,6 +2789,71 @@ body {
   }
 }
 
+/* Ghost rows (components/planner/ghost-fold.tsx, memory/plans/ghost-rows.md):
+   what was left on an earlier day, faded at the top of today. The box is a
+   dashed outline with no fill, closing into a solid box on hover or focus.
+   Neutral inks only: nothing lime lives in a ghost row, so its fades composite
+   nothing the accent rule protects. */
+[data-ghost-row] .ghost-box {
+  background: transparent;
+  outline: 1px dashed color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+  outline-offset: -1px;
+  transition: outline-color 0.15s, background-color 0.15s;
+}
+[data-ghost-row]:is(:hover, :has(:focus-visible)) .ghost-box {
+  outline-style: solid;
+  outline-color: var(--muted-foreground);
+  background: var(--surface-3);
+  color: var(--foreground);
+}
+/* Kirby's pick, 2026-10-31: "arrive" and "breathe". Arrive fades each row in
+   from a 2.5px blur, staggered, opacity and filter only: a transform, or a
+   layer dropped at the end, re-rasterises the text and snaps, which is why
+   will-change stays on after the animation ends. Breathe is the box alone, its
+   ink easing to 0.6 and back over 8s, offset per row, and held while the row is
+   hovered. Both off under reduced motion, the OS's and the app's. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-ghost-arrive] {
+    will-change: opacity, filter;
+    animation: ghost-arrive 1.1s cubic-bezier(0.25, 0.1, 0.25, 1) both;
+    animation-delay: calc(var(--ghost-i, 0) * 120ms + 150ms);
+  }
+  [data-ghost-row] .ghost-box {
+    will-change: opacity;
+    animation: ghost-breathe 8s ease-in-out infinite;
+    animation-delay: calc(var(--ghost-i, 0) * -2.7s);
+  }
+  [data-ghost-row]:hover .ghost-box {
+    animation-play-state: paused;
+  }
+}
+@keyframes ghost-arrive {
+  0% {
+    opacity: 0;
+    filter: blur(2.5px);
+  }
+  55% {
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px);
+  }
+}
+@keyframes ghost-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+[data-reduce-motion='true'] [data-ghost-arrive],
+[data-reduce-motion='true'] [data-ghost-row] .ghost-box {
+  animation: none !important;
+}
+
 /* ─── AI work badges ─────────────────────────────────────────────────────────
    components/ai/ai-work-badge.tsx (Kirby's picks, 2026-10-20). What a row
    says while the AI works on it, and once something waits for the person.

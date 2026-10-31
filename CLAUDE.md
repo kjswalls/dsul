@@ -458,6 +458,12 @@ third container role (`aspire`), where milestones and check-ins are ordinary ite
 a membership role. Read it before touching `lib/goals.ts`, the goals store slice, or
 anything that writes an item's `startDate` in bulk: a milestone's start date is a target
 date, and the sweep and the carry verbs are excluded from it on purpose.
+[ghost-rows.md](memory/plans/ghost-rows.md) holds **ghost rows**: what was left undone on an earlier day,
+faded in one fold at the top of Today until a verb is picked (`lib/ghost-rows.ts`,
+`components/planner/ghost-fold.tsx`). Ghosts are a view over `selectOverdue`, never a write; milestones
+and recurring items never ghost; today only. The `morning_check_enabled` switch ("Leftovers on Today")
+draws it and stands the dock's waiting line down; phase 2 retires the end of day review. Read it before
+touching either.
 [mods.md](memory/plans/mods.md) is the plan for **mods and recipes** (Kirby's pick,
 2026-10-03; decisions 2026-10-07): private, sandboxed mods (QuickJS-in-WASM behind a
 capability broker, host-drawn UI, never CSS), no-code recipes over `ITEM_VERBS`, and

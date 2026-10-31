@@ -4,13 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Sun } from 'lucide-react';
 
 import { MorningTriageList } from '@/components/ai/morning-triage-list';
-import { usePlannerStore } from '@/lib/planner-store';
-import { useAwayStore } from '@/lib/away-store';
 import { usePlannerLoaded } from '@/lib/planner-ready';
 import { useMorningStore } from '@/lib/morning-store';
 import { summarizeOverdue, type OverdueSummary } from '@/lib/overdue';
-import { inactiveItemIdsOn } from '@/lib/active';
-import { toDateStr } from '@/lib/recurrence';
+import { useOverdueInputs } from '@/hooks/use-overdue-today';
 import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
 
 /**
@@ -39,7 +36,6 @@ import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
 
 /** Everything both platforms need, computed once. */
 function usePastDue() {
-  const items = usePlannerStore((s) => s.items);
   const loaded = usePlannerLoaded();
   const morningCheckEnabled = useMorningStore((s) => s.morningCheckEnabled);
   const dismissedDate = useMorningStore((s) => s.morningCheckDismissedDate);
@@ -84,34 +80,20 @@ function usePastDue() {
    * "Today" resolved through the user's SAVED timezone — the app-wide
    * convention (`toDateStr`), shared with hooks/use-day-items.ts,
    * week-schedule.tsx:256, task-row.tsx:77, planner-store.ts:350 and
-   * lib/commands/entities.ts. `goto.overdue` and hooks/use-overdue-sweep.ts
-   * resolve it the same way, so the notice, the command that opens it, and the
-   * destructive auto-age sweep can never disagree about which day it is.
+   * lib/commands/entities.ts. hooks/use-overdue-sweep.ts resolves it the same
+   * way, so the notice and the destructive auto-age sweep can never disagree
+   * about which day it is. The inputs live in hooks/use-overdue-today.ts, which
+   * the ghost rows on Today read too.
    *
-   * Bare `format(new Date(), 'yyyy-MM-dd')` would read the MACHINE tz: for a
-   * user travelling with a saved tz ≠ machine tz, an item would count as past
-   * due here while the day view still showed it as today's.
+   * Suppressed work is not past due — it is deliberately set aside, so it must
+   * not appear in the count, the tray, or the copy. Resolved at TODAY (this is
+   * a dateless surface; plan decision 3).
    */
-  const userTimezone = usePlannerStore((s) => s.userTimezone);
-  const routines = usePlannerStore((s) => s.routines);
-  const seasons = usePlannerStore((s) => s.seasons);
-  const away = useAwayStore((s) => s.periods);
-  const todayStr = toDateStr(
-    new Date(),
-    userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  const { items, todayStr, inactiveIds } = useOverdueInputs();
+  const summary = useMemo(
+    () => summarizeOverdue(items, todayStr, inactiveIds),
+    [items, todayStr, inactiveIds]
   );
-
-  // Suppressed work is not past due — it is deliberately set aside, so it must
-  // not appear in the count, the tray, or the copy. Resolved at TODAY (this is
-  // a dateless surface; plan decision 3).
-  const summary = useMemo(() => {
-    const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return summarizeOverdue(
-      items,
-      todayStr,
-      inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons, away })
-    );
-  }, [items, routines, seasons, away, todayStr, userTimezone]);
 
   // n === 0 hides the notice — EXCEPT while the tray is open. The `|| isOpen` is
   // load-bearing: without it, actioning the last item yanks the tray out from
@@ -120,8 +102,17 @@ function usePastDue() {
   // Nothing before the planner has LOADED: the tray freezes its list at open,
   // and a count from the preview's cached rows (or a failed load's empty
   // store) is not the pile. It appears at landing, as it always has.
-  const visible =
+  //
+  // RETIRED FOR NOW (ghost rows, phase 1; memory/plans/ghost-rows.md). The
+  // switch this line answered to, morning_check_enabled, now turns on the ghost
+  // fold at the top of Today (components/planner/ghost-fold.tsx), which shows
+  // the same pile in place. Two surfaces for one pile is the very noise the fold
+  // replaces, so while the switch is on this line stays down, and while it is
+  // off it was always down. The tray and its row are kept, unreached, until
+  // phase 2 deletes them; `wouldShow` is what it used to answer.
+  const wouldShow =
     loaded && morningCheckEnabled && dismissedDate !== todayStr && (summary.count > 0 || isOpen);
+  const visible = wouldShow && !morningCheckEnabled;
 
   // `isOpen` is the store's answer; `trayOpen` is the one any surface may
   // render from. `visible` deliberately keeps using the raw flag: the row must

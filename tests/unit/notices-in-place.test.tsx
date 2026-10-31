@@ -946,10 +946,14 @@ describe('the notice verbs wait for the planner to load', () => {
       }
     });
 
-    it('appears once loaded', () => {
+    // Ghost rows, phase 1 (memory/plans/ghost-rows.md): the switch this line
+    // answered to now turns on the fold at the top of Today, which shows the
+    // same pile in place, so the dock's line stays down even once loaded. The
+    // fold's own gates are pinned in ghost-fold.test.tsx.
+    it('stays down once loaded: the ghost fold on Today replaces it', () => {
       usePlannerStore.setState(loaded);
       render(<DockNotices />);
-      expect(screen.getByTestId('morning-bar')).toHaveTextContent('1 thing left from earlier');
+      expect(screen.queryByTestId('morning-bar')).toBeNull();
     });
   });
 });

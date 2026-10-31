@@ -79,7 +79,7 @@ const GATED_DURING_PREVIEW: Record<string, boolean> = {
   'goto.previous': false,
   'goto.braindump': false,
   'goto.todayTab': false,
-  // The tray triages cached rows.
+  // Its availability counts the leftovers, and cached rows are not the pile.
   'goto.overdue': true,
   'view.layout': false,
   'view.typeFilter': false,

@@ -168,31 +168,32 @@ test.describe('pausing', () => {
     }
   });
 
-  test('a paused task leaves the past-due bar', async ({ page }) => {
-    // The bar is disabled in the seeded settings, so a naive assertion would
-    // pass vacuously — prove it renders the item FIRST.
+  test('a paused task leaves the ghost rows', async ({ page }) => {
+    // The fold is off in the seeded settings, so a naive assertion would pass
+    // vacuously: prove it renders the item FIRST. Since ghost rows (phase 1,
+    // memory/plans/ghost-rows.md) this switch draws the fold at the top of
+    // Today in place of the dock's waiting line, which no longer renders.
     await setUserSetting(page, { morning_check_enabled: true });
     const title = scope.title('overdue');
     const taskId = await createTestTask(page, { title, startDate: getDateStr(-3) });
-    // An anchor, so the bar survives the pause. At count 0 with the tray shut,
-    // `visible` goes false (morning-check.tsx) and the ENTIRE bar unmounts —
-    // there would be nothing left to click, and the test would die on the
-    // timeout rather than report anything about pausing.
+    // An anchor, so the fold survives the pause. At count 0 the fold goes, and
+    // the assertion below could not tell a pause from an empty planner.
     const anchorId = await createTestTask(page, {
       title: scope.title('anchor'),
       startDate: getDateStr(-2),
     });
+    const ghost = (id: string) => page.locator(`[data-testid="ghost-row"][data-item-id="${id}"]`);
     try {
       await reloadApp(page);
-      // Prove the bar counts it before pausing, or the assertion below could
-      // pass for any number of unrelated reasons.
-      const bar = page.getByTestId('morning-bar');
-      await expect(bar).toBeVisible();
-      await bar.locator('button').first().click();
-      // The tray ships a THIRD row shape (see task-row.tsx's header) — these
-      // are `morning-row-<id>`, NOT item-card, and carry no data-item-id.
-      await expect(page.getByTestId(`morning-row-${taskId}`)).toHaveCount(1);
-      await page.keyboard.press('Escape');
+      // The seeded view is Day on today, where the fold lives. Its rows are
+      // `ghost-row`, NOT item-card. A shared user can hold more than five
+      // leftovers, and then the fold starts closed.
+      const fold = page.getByTestId('ghost-fold');
+      await expect(fold).toBeVisible();
+      if ((await fold.getAttribute('data-ghost-fold')) === 'closed') {
+        await page.getByTestId('ghost-fold-toggle').click();
+      }
+      await expect(ghost(taskId)).toHaveCount(1);
 
       // Pause through the palette — the verb that reaches an item no view is
       // currently showing. Entity argument, so it is two interactions, and the
@@ -200,11 +201,10 @@ test.describe('pausing', () => {
       // PICKER_LIMIT on the shared user.
       await runEntityCommand(page, 'items.pause', taskId, title, { query: '/pause' });
 
-      await bar.locator('button').first().click();
-      await expect(page.getByTestId(`morning-row-${taskId}`)).toHaveCount(0);
-      // …and the bar still counts the work that was NOT paused, so the
-      // assertion above cannot pass merely because the tray failed to open.
-      await expect(page.getByTestId(`morning-row-${anchorId}`)).toHaveCount(1);
+      await expect(ghost(taskId)).toHaveCount(0);
+      // …and the fold still shows the work that was NOT paused, so the
+      // assertion above cannot pass merely because the fold went away.
+      await expect(ghost(anchorId)).toHaveCount(1);
     } finally {
       await cleanupTestData(page, [taskId, anchorId], []);
     }

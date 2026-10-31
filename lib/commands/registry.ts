@@ -99,7 +99,8 @@ import { goToDate, stepScope } from '../nav-commands';
 import { openHoveredSlot } from '../slot-add';
 import { resolveCategoryIcon } from '../category-icons';
 import { getCustomTypeDefs, getItemTypeConfig } from '../item-registry';
-import { selectOverdue } from '../overdue';
+import { selectGhostRows } from '../ghost-rows';
+import { milestoneItemIds } from '../goals';
 import { inactiveItemIdsOn, isPausedOn, isSeasonActiveOn } from '../active';
 import { seasonStateForSwitch } from '../scope-rail';
 import { toDateStr } from '../recurrence';
@@ -572,45 +573,35 @@ export const STATIC_COMMANDS: Command[] = [
   },
   {
     id: 'goto.overdue',
-    label: 'Show items waiting',
-    description: 'Opens the tray listing anything still waiting from an earlier day',
+    label: 'Show leftovers',
+    description: 'Goes to today, where anything left from an earlier day waits at the top',
     group: 'goto',
-    // Sunrise, not AlertTriangle. The surface this opens is deliberately not an
-    // alert (see the copy contract on BarCopy in components/ai/morning-check.tsx)
-    // and a warning triangle in the palette undoes that before the tray even
-    // opens. Same glyph as settings.morningCheck below, so the two rows that
-    // touch this feature look related. Every old search term is kept in
-    // `keywords` — the vocabulary changed, the ways in didn't.
+    // Sunrise, not AlertTriangle. The leftovers are deliberately not an alert
+    // (memory/plans/ghost-rows.md; the copy contract on BarCopy in
+    // components/ai/morning-check.tsx before them), and a warning triangle in
+    // the palette undoes that before the day even opens. Same glyph as
+    // settings.morningCheck below, so the two rows that touch this feature look
+    // related. Every old search term is kept in `keywords`: the vocabulary
+    // changed, the ways in didn't.
     icon: Sunrise,
-    keywords: 'overdue past due late missed behind morning check waiting carried',
-    aliases: ['overdue'],
-    // The past-due surface ships on BOTH platforms now, so there is no platform
-    // gate. It starts collapsed and can be dismissed for the day, neither of
-    // which reverses on its own — which is what makes this worth a row.
-    //
-    // Greyed rather than a no-op: the surface also self-hides when nothing is
-    // overdue, so without this the command would silently do nothing on a day
-    // you happen to be caught up. Dismissal state deliberately does NOT gate
-    // availability — run() resets the dismissal AND opens the tray, so the
-    // command does something real in both states (before, when nothing was
-    // dismissed, resetDismissal() alone was the very no-op this guard exists to
-    // prevent). Predicate is the shared one (lib/overdue.ts): this copy had no
-    // recurrence guard, so it lit up for daily chores that are `pending`
-    // forever by design.
+    keywords: 'overdue past due late missed behind morning check waiting carried leftovers ghost from earlier',
+    aliases: ['overdue', 'leftovers'],
+    // Greyed rather than a no-op: with nothing left from earlier there is no
+    // fold to go to, and the command would land on an ordinary today. The
+    // predicate is the fold's own (lib/ghost-rows.ts over lib/overdue.ts), so
+    // this row lights exactly when the fold has something in it.
     availableWhen: () => {
       if (!useMorningStore.getState().morningCheckEnabled) return false;
       // items, not the `tasks` projection: the selector resolves each item's
       // registry config, and custom types are carry-forward eligible too.
       //
       // "Today" comes from the user's SAVED timezone (the app-wide `toDateStr`
-      // convention), matching the bar in components/ai/morning-check.tsx and
-      // the sweep in hooks/use-overdue-sweep.ts. Bare `format(new Date(), …)`
-      // would read the machine tz and could grey this row out on a day the bar
-      // is visibly showing overdue items.
-      const { items, routines, seasons, userTimezone } = planner();
+      // convention), matching hooks/use-overdue-today.ts and the sweep in
+      // hooks/use-overdue-sweep.ts.
+      const { items, routines, seasons, goals, userTimezone } = planner();
       const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
       const todayStr = toDateStr(new Date(), tz);
-      // Dateless surface: resolve suppression at TODAY, never at the store's
+      // Dateless question: resolve suppression at TODAY, never at the store's
       // navigable selectedDate (plan decision 3).
       const inactive = inactiveItemIdsOn(items, todayStr, {
         userTimezone: tz,
@@ -618,22 +609,16 @@ export const STATIC_COMMANDS: Command[] = [
         seasons,
         away: useAwayStore.getState().periods,
       });
-      return selectOverdue(items, todayStr, inactive).length > 0;
+      return selectGhostRows(items, todayStr, inactive, milestoneItemIds(goals ?? [])).length > 0;
     },
-    // Reveal the surface BEFORE poking its state — the same guard Open
-    // braindump and focusOmnibar already use. The rule outlived the
-    // reason: this used to switch mobile to Today, because the past-due pill
-    // was mounted on that tab alone. The surface is a line in the dock now
-    // (components/sidebar/dock-notices.tsx), which mobile mounts on every tab,
-    // so the tab switch became a navigation the user did not ask for — and
-    // desktop inherited the exact bug it was written to prevent, because the
-    // dock's rows do not render while the sidebar column is collapsed. Flipping
-    // isOpen there looks broken in precisely the same way.
+    // The ghost fold (components/planner/ghost-fold.tsx) replaced the dock's
+    // waiting tray this used to open, and it lives in the Day views on today:
+    // so this goes there. The phone's Today tab, and on the desktop the day
+    // scope when the week is up (the fold is not drawn in the week views).
     run: (ctx) => {
-      if (!ctx.isMobile) revealDock();
-      const store = useMorningStore.getState();
-      store.resetDismissal();
-      store.open();
+      if (ctx.isMobile) useMobileNavStore.getState().setActiveTab('today');
+      else if (view().scope !== 'day') view().setScope('day');
+      goToDate(new Date());
     },
   },
 
@@ -1347,14 +1332,16 @@ export const STATIC_COMMANDS: Command[] = [
   },
   {
     id: 'settings.morningCheck',
-    label: 'Toggle morning task check',
+    // The setting's own words since the ghost rows (lib/settings/manifest.ts
+    // rituals.morningCheck); the id is frozen and keeps its old name.
+    label: 'Toggle leftovers on Today',
     dynamicLabel: () =>
       useMorningStore.getState().morningCheckEnabled
-        ? 'Turn off morning task check'
-        : 'Turn on morning task check',
+        ? 'Turn off leftovers on Today'
+        : 'Turn on leftovers on Today',
     group: 'settings',
     icon: Sunrise,
-    keywords: 'morning check overdue banner ritual',
+    keywords: 'morning check overdue banner ritual leftovers ghost from earlier',
     run: () => {
       const store = useMorningStore.getState();
       store.setMorningCheckEnabled(!store.morningCheckEnabled);
