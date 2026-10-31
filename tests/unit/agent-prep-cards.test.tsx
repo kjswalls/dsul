@@ -41,15 +41,15 @@ describe('the pill', () => {
     expect(container.textContent).toBe('');
   });
 
-  it("is the relay during a live run, the title's sibling so the title shimmers too", () => {
+  it("is only the title's sheen during a live run: no relay on the row", () => {
     const at = new Date(Date.now() - 60_000).toISOString();
     const { getByTestId, container } = render(
       <AgentPill item={{ assignee: 'openclaw', aiStatus: 'working', aiStatusAt: at, status: 'pending' }} />
     );
     const mark = getByTestId('ai-working');
-    expect(mark.hasAttribute('data-ai-relay')).toBe(true);
     expect(mark.hasAttribute('data-ai-working')).toBe(true);
-    expect(mark.querySelectorAll('i')).toHaveLength(6);
+    expect(mark.hasAttribute('data-ai-relay')).toBe(false);
+    expect(mark.querySelectorAll('i')).toHaveLength(0);
     expect(container.textContent).not.toBe('');
   });
 });

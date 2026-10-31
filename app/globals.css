@@ -2794,12 +2794,14 @@ body {
    says while the AI works on it, and once something waits for the person.
 
      [data-ai-working] a row being worked on, wherever it is (Kirby,
-                       2026-10-24): the relay, as the title's sibling, which
-                       makes the title shimmer lime into teal. The row is the
-                       one place that says it; the dock has no working line.
+                       2026-10-24): an empty mark, the title's sibling, which
+                       makes the title shimmer lime into teal. Since
+                       2026-10-31 the row has no relay (Kirby: too much
+                       motion on the plan); the shimmer alone says it.
      [data-ai-relay]   the relay field in one row, six tiles a glowing wave
-                       walks across: a working row's mark, and the do stuff
-                       key's bolt while anything is being worked on.
+                       walks across: the do stuff key's bolt while anything
+                       is being worked on, a working row's hover dot, and
+                       ='big' in the open item, under its title.
      [data-ai-chip]    a few words in aurora ink, still, for Do stuff's
                        lanes and the key's count (a fill until 2026-10-23).
                        ='question' is the warm one, honey into coral.
@@ -2829,6 +2831,11 @@ body {
 }
 .dark [data-ai-relay] {
   --ai-relay-glow: 90%;
+}
+[data-ai-relay='big'] {
+  grid-template-columns: repeat(6, 6px);
+  grid-auto-rows: 6px;
+  gap: 3px;
 }
 [data-ai-relay] > i {
   --c: var(--ask-icon-pair);
@@ -2872,14 +2879,11 @@ body {
   }
 }
 
-/* A working row's relay sits against the title's last word, not out at the
-   end of the title's box: the title stops growing and the space it gave up
-   opens after the relay instead, so the rails after it keep their columns. */
-[data-row-title]:has(~ [data-ai-working]) {
-  flex: 0 1 auto;
-}
+/* The working mark draws nothing: it is there for the title's sheen to key
+   off and for a screen reader's words. `contents` gives it no box, so the
+   row's gap does not open a slot for it. */
 [data-ai-working] {
-  margin-inline-end: auto;
+  display: contents;
 }
 
 /* The title's sheen: its own ink, clipped to its glyphs, with one band of
@@ -3028,7 +3032,7 @@ button[data-ai-chip]:focus-visible {
    cluster and must not fold with them. Hidden, never faded: these are lime
    marks, and lime never goes through an opacity. */
 [data-row-ai-fold]:is(:hover, :has(:focus-visible), [data-row-ai-fold='held'])
-  > :is([data-ai-chip], [data-agent-chip], [data-ai-relay]) {
+  > :is([data-ai-chip], [data-agent-chip]) {
   visibility: hidden;
 }
 [data-row-ai-dot] {
@@ -3041,6 +3045,11 @@ button[data-ai-chip]:focus-visible {
 }
 [data-row-ai-dot] [data-ai-dot] {
   margin-inline: 0;
+}
+/* A live run's hover dot is the relay itself (Kirby, 2026-10-31): the rows
+   are still, so the wave plays only on the row you point at. */
+[data-row-ai-dot]:has([data-ai-relay]) {
+  width: auto;
 }
 [data-ai-dot='quiet'],
 .dark [data-ai-dot='quiet'] {

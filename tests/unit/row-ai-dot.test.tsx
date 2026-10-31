@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { render, cleanup } from '@testing-library/react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AgentPill } from '@/components/primitives/pills';
+import { PrepStatus } from '@/components/ai/ai-work-badge';
+import { usePrepPacksStore } from '@/lib/prep-packs-store';
 
 /**
  * A row's AI status under its hover buttons (Kirby's pick C, 2026-10-31): the
@@ -32,10 +34,16 @@ describe('the hover dot', () => {
     expect(dotOf({ assignee: 'claude', aiStatus: 'blocked', aiStatusAt: recent(), status: 'pending' })?.getAttribute('data-ai-dot')).toBe('question');
   });
 
-  it('is working during a live run, and never carries the sheen mark', () => {
-    const dot = dotOf({ assignee: 'claude', aiStatus: 'working', aiStatusAt: recent(), status: 'pending' });
-    expect(dot?.getAttribute('data-ai-dot')).toBe('working');
-    expect(dot?.hasAttribute('data-ai-working')).toBe(false);
+  it('plays the relay during a live run, and never carries the sheen mark', () => {
+    const { queryByTestId } = render(
+      <TooltipProvider>
+        <AgentPill item={{ assignee: 'claude', aiStatus: 'working', aiStatusAt: recent(), status: 'pending' }} dot />
+      </TooltipProvider>
+    );
+    const dot = queryByTestId('ai-dot');
+    expect(dot?.getAttribute('data-row-ai-dot')).toBe('working');
+    expect(dot?.querySelectorAll('[data-ai-relay] > i')).toHaveLength(6);
+    expect(dot?.querySelector('[data-ai-working]')).toBeNull();
   });
 
   it('is quiet for a failed run', () => {
@@ -44,6 +52,17 @@ describe('the hover dot', () => {
 
   it('is absent with no AI news', () => {
     expect(dotOf({ status: 'pending' })).toBeNull();
+  });
+});
+
+describe("the open item's prep line", () => {
+  it('plays the big relay while the item is being got ready, and is gone otherwise', () => {
+    usePrepPacksStore.setState({ preparing: { a: true } });
+    const { queryByTestId, rerender } = render(<PrepStatus itemId="a" />);
+    expect(queryByTestId('prep-status')?.querySelector("[data-ai-relay='big']")).not.toBeNull();
+    rerender(<PrepStatus itemId="b" />);
+    expect(queryByTestId('prep-status')).toBeNull();
+    usePrepPacksStore.setState({ preparing: {} });
   });
 });
 

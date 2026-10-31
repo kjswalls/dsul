@@ -12,12 +12,14 @@ import { cn } from '@/lib/utils';
  * quietly as it can be.
  *
  *   working  on the row itself, wherever the item is (Kirby, 2026-10-24):
- *            the relay beside the title, and the title shimmering lime into
- *            teal (globals.css). WorkingMark is the title's sibling that draws
- *            the relay, turns the sheen on, and carries the words a screen
- *            reader hears. Nothing else says it: no dock line, no count.
- *   relay    six tiles with a glowing wave walking across them: a working
- *            row's mark, and the do stuff key's bolt while anything is.
+ *            the title shimmering lime into teal (globals.css). WorkingMark
+ *            is the title's sibling that turns the sheen on and carries the
+ *            words a screen reader hears; it draws nothing (Kirby,
+ *            2026-10-31: the relay beside the title was too much motion on
+ *            the plan). No dock line, no count.
+ *   relay    six tiles with a glowing wave walking across them: the do stuff
+ *            key's bolt while anything is worked on, a working row's hover
+ *            dot (AiDot), and the open item's status, big (WorkingStatus).
  *   ready    nothing on the rows. One line in the dock counts what is ready
  *            (components/notices/ai-work-notice.tsx), and the item panel shows
  *            the pack. AiChip, the aurora words, is left to Do stuff's own
@@ -30,18 +32,19 @@ import { cn } from '@/lib/utils';
 
 const TILES = [0, 1, 2, 3, 4, 5];
 
-/** The relay. `label` is for assistive tech; the tiles are hidden. */
+/** The relay. `label` is for assistive tech (none where a sibling says it); the tiles are hidden. */
 export function RelayRow({
   label,
+  size,
   className,
   ...rest
-}: { label: string; className?: string } & Omit<React.ComponentPropsWithRef<'span'>, 'children'>) {
+}: { label?: string; size?: 'big'; className?: string } & Omit<React.ComponentPropsWithRef<'span'>, 'children'>) {
   return (
-    <span {...rest} data-ai-relay="" data-testid="ai-working" className={className}>
+    <span data-testid="ai-relay" {...rest} data-ai-relay={size ?? ''} className={className}>
       {TILES.map((i) => (
         <i key={i} aria-hidden />
       ))}
-      <span className="sr-only">{label}</span>
+      {label && <span className="sr-only">{label}</span>}
     </span>
   );
 }
@@ -64,12 +67,33 @@ export function AiChip({
 }
 
 /**
- * A row's working mark: the relay, beside the title, and the title shimmers
- * (globals.css, `[data-ai-working]`, which needs this to be the title's
- * sibling). The label says what for to assistive tech.
+ * A row's working mark: the title shimmers (globals.css, `[data-ai-working]`,
+ * which needs this to be the title's sibling). It draws nothing itself; the
+ * label says what for to assistive tech.
  */
 export function WorkingMark({ label }: { label: string }) {
-  return <RelayRow label={label} data-ai-working="" />;
+  return (
+    <span data-ai-working="" data-testid="ai-working">
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+/**
+ * The open item's line while the AI gets it ready (Kirby, 2026-10-31): the
+ * relay, big, under the title. The panel is where you asked to look, so the
+ * wave that left the rows plays here. An agent's run says it in its own
+ * status line instead (item-detail-sections.tsx AgentStatus).
+ */
+export function PrepStatus({ itemId }: { itemId: string }) {
+  const preparing = usePrepPacksStore((s) => s.preparing[itemId] === true);
+  if (!preparing) return null;
+  return (
+    <div data-testid="prep-status" className="text-muted-foreground flex items-center gap-2.5 text-xs">
+      <RelayRow size="big" aria-hidden />
+      <span>Getting this ready</span>
+    </div>
+  );
 }
 
 /**
@@ -88,8 +112,10 @@ export function AiDot({
   'children'
 >) {
   return (
-    <span {...rest} aria-hidden data-row-ai-dot="" data-testid="ai-dot" className={className}>
-      <span data-ai-dot={tone} />
+    <span {...rest} aria-hidden data-row-ai-dot={tone} data-testid="ai-dot" className={className}>
+      {/* A live run plays the relay here, the one place a row still moves:
+          only while you point at it (Kirby, 2026-10-31). */}
+      {tone === 'working' ? <RelayRow /> : <span data-ai-dot={tone} />}
     </span>
   );
 }

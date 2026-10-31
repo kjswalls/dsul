@@ -80,6 +80,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
+import { PrepStatus } from '@/components/ai/ai-work-badge';
 import { AgentStatus, ItemBoxAsks, ItemDetailSections } from '@/components/planner/item-detail-sections';
 import { StreakChip } from '@/components/planner/streak-chip';
 import { RailHeader } from '@/components/ai/rail/rail-header';
@@ -3809,6 +3810,7 @@ function ItemDialogInner({
                 {/* One status, one place: who has the item and how it is going,
                     under its title (ItemDetailSections is told, and skips it). */}
                 {mode === 'edit' && editItem && editConfig?.agentAssignable && <AgentStatus item={editItem} />}
+                {mode === 'edit' && editItem && <PrepStatus itemId={editItem.id} />}
               </div>
 
               {/* Notes, under the title: what is true about the item, the one
