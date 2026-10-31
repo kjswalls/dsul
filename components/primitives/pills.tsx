@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Flame } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { AiChip, WorkingMark } from '@/components/ai/ai-work-badge';
+import { AiChip, AiDot, WorkingMark } from '@/components/ai/ai-work-badge';
 import { agentStatusView, showsAgentChip, type AgentStatusView } from '@/lib/agent-status';
 import { agentFinished, agentPrepReady } from '@/lib/ai-work';
 import { assigneeLabel } from '@/lib/chat-utils';
+import { usePrepPacksStore } from '@/lib/prep-packs-store';
 import { streakRunText } from '@/lib/item-edit';
 import type { Priority, RepeatFrequency } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -733,11 +734,14 @@ export function AgentPill({
   item,
   className,
   workingOnly = false,
+  dot = false,
 }: {
   item: { aiStatus?: string; aiStatusAt?: string; assignee?: string; status?: string; aiMode?: string };
   className?: string;
   /** Only the working mark, for a live run: a schedule block has no room for the chips. */
   workingOnly?: boolean;
+  /** The same state as the hover buttons' dot (AiDot), for a row whose buttons cover the chip. */
+  dot?: boolean;
 }) {
   // An agent that got an item ready (background prep's hand-off, aiMode
   // 'prepare') is done when it reports, but the item is not. What is ready is
@@ -750,6 +754,7 @@ export function AgentPill({
   if (agentFinished(item)) {
     if (workingOnly) return null;
     const who = assigneeLabel(item.assignee);
+    if (dot) return <AiDotTip tone="ready" detail={`${who} finished this. Check it, then tick it off.`} />;
     return (
       <RailTooltip label="Agent" detail={`${who} finished this. Check it, then tick it off.`}>
         <AiChip tone="ready" className={className} data-agent-finished="">
@@ -771,17 +776,19 @@ export function AgentPill({
   // below the mount boundary.
   if (!showsAgentChip(item)) return null;
   if (workingOnly && item.aiStatus !== 'queued' && item.aiStatus !== 'working') return null;
-  return <AgentClock item={item} className={className} workingOnly={workingOnly} />;
+  return <AgentClock item={item} className={className} workingOnly={workingOnly} dot={dot} />;
 }
 
 function AgentClock({
   item,
   className,
   workingOnly,
+  dot,
 }: {
   item: { aiStatus?: string; aiStatusAt?: string; assignee?: string };
   className?: string;
   workingOnly: boolean;
+  dot: boolean;
 }) {
   const [now, setNow] = useState(() => Date.now());
 
@@ -792,6 +799,15 @@ function AgentClock({
 
   const view = agentStatusView(item, now);
   if (!view || (workingOnly && (!view.active || view.stalled))) return null;
+
+  if (dot) {
+    const tone =
+      view.needsUser ? 'question'
+      : view.stalled || item.aiStatus === 'failed' ? 'quiet'
+      : view.active ? 'working'
+      : 'ready';
+    return <AiDotTip tone={tone} detail={view.detail} />;
+  }
 
   // The row's AI work marks (components/ai/ai-work-badge.tsx): a live run is
   // only the title's sheen, a question the warm chip naming who asks. A run
@@ -810,6 +826,26 @@ function AgentClock({
   return (
     <RailTooltip label="Agent" detail={view.detail}>
       {badge}
+    </RailTooltip>
+  );
+}
+
+/** The hover buttons' dot with the status in the rail tooltip. */
+function AiDotTip({ tone, detail }: { tone: React.ComponentProps<typeof AiDot>['tone']; detail: string }) {
+  return (
+    <RailTooltip label="Agent" detail={detail}>
+      <AiDot tone={tone} />
+    </RailTooltip>
+  );
+}
+
+/** The prep relay's dot (PrepWorking in ai-work-badge.tsx), for the same hover buttons. */
+export function PrepDot({ itemId }: { itemId: string }) {
+  const preparing = usePrepPacksStore((s) => s.preparing[itemId] === true);
+  if (!preparing) return null;
+  return (
+    <RailTooltip label="AI" detail="Getting this ready">
+      <AiDot tone="working" />
     </RailTooltip>
   );
 }

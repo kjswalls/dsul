@@ -35,6 +35,7 @@ import { setHoveredItemRef } from '@/lib/hovered-item';
 import { toggleHabitDone, toggleTaskDone } from '@/lib/item-toggle';
 import {
   AgentPill,
+  PrepDot,
   PriorityGlyph,
   RailTooltip,
   useQuietTip,
@@ -597,6 +598,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
         // a timed one.
         data-bucket={item.timeBucket ?? ''}
         data-start-time={item.startTime ?? ''}
+        // While the hover buttons are up they cover the AI chip beside the
+        // title, so it steps aside for the dot by the buttons (globals.css).
+        data-row-ai-fold={hasHoverControls && !renaming ? (picking ? 'held' : '') : undefined}
         className={cn(
           // No transition on the hover bg — highlights land instantly, like the
           // omnibar's CommandItem. touch-manipulation (not touch-none) keeps
@@ -911,11 +915,30 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
             <span
               ref={clusterRef}
               className={cn(
-                'pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100',
-                picking && 'pointer-events-auto opacity-100'
+                'pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center group-hover:pointer-events-auto group-has-[:focus-visible]:pointer-events-auto',
+                picking && 'pointer-events-auto'
               )}
             >
-              <RowControlGroup>
+              {/* The AI chip's stand-in while the buttons cover it (Kirby's
+                  pick C, 2026-10-31): a dot just left of them, the status in
+                  its tooltip. Empty, and so gone, on a row with no AI news.
+                  Shown by visibility, not the capsule's fade: the dot is lime,
+                  and lime never goes through an opacity. */}
+              <span
+                className={cn(
+                  'invisible mr-2 flex items-center gap-1 empty:hidden group-hover:visible group-has-[:focus-visible]:visible',
+                  picking && 'visible'
+                )}
+              >
+                {task && typeConfig.agentAssignable && <AgentPill item={task} dot />}
+                {task && <PrepDot itemId={task.id} />}
+              </span>
+              <RowControlGroup
+                className={cn(
+                  'opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100',
+                  picking && 'opacity-100'
+                )}
+              >
                 {/* Multi-count stepper — leads the capsule, so the destructive
                     delete stays at the far end away from the one control here that
                     gets clicked repeatedly. A hairline separates the value editor

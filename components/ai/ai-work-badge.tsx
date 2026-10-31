@@ -73,6 +73,28 @@ export function WorkingMark({ label }: { label: string }) {
 }
 
 /**
+ * A row's AI mark while its hover buttons are up (Kirby's pick C,
+ * 2026-10-31): the buttons sit where the chip does, so the chip steps
+ * aside (globals.css, `[data-row-ai-fold]`) and this dot waits just left
+ * of them, the status in its tooltip. aria-hidden: the row's own mark
+ * still carries the words for a reader.
+ */
+export function AiDot({
+  tone,
+  className,
+  ...rest
+}: { tone: 'ready' | 'working' | 'question' | 'quiet'; className?: string } & Omit<
+  React.ComponentPropsWithRef<'span'>,
+  'children'
+>) {
+  return (
+    <span {...rest} aria-hidden data-row-ai-dot="" data-testid="ai-dot" className={className}>
+      <span data-ai-dot={tone} />
+    </span>
+  );
+}
+
+/**
  * A row the AI is getting ready right now (lib/prep-packs-store.ts). One
  * selector per row, a boolean, so a row re-renders only when its own state
  * flips; nothing ticks.
