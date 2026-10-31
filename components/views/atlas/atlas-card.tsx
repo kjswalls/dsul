@@ -13,7 +13,7 @@ import type { AtlasBand } from '@/lib/atlas-positions';
 import { useAtlasPointer } from '@/components/views/atlas/use-atlas-pointer';
 import { ATLAS_COPY } from '@/lib/atlas-copy';
 import { touchDay, type AtlasCard as AtlasCardModel, type AtlasMember } from '@/lib/atlas-model';
-import { ATLAS_CARD_W } from '@/lib/atlas-seed';
+import { ATLAS_CARD_H, ATLAS_CARD_W } from '@/lib/atlas-seed';
 import { formatDay } from '@/lib/active';
 import { formatCueTime, type TimeFormat } from '@/lib/reminders/copy';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -219,6 +219,9 @@ export const AtlasCard = memo(function AtlasCard({
         // carries a layout switch or a spring back; nothing animates mid-drag.
         transition: dragging || handoff ? 'none' : leaving ? `transform ${ATLAS_LEAVE_MS}ms ease-out` : glide ? ATLAS_GLIDE : undefined,
         pointerEvents: leaving ? 'none' : undefined,
+        // The cluster sits at a collapsed card's middle, so a taller
+        // (expanded) card still shrinks onto its tiles.
+        transformOrigin: handoff && !leaving ? `${ATLAS_CARD_W / 2}px ${ATLAS_CARD_H / 2}px` : undefined,
       }}
     >
       {diamond && (

@@ -69,6 +69,10 @@ export interface RelayGrid {
   cells: Map<string, RelayCell>;
   tiles: RelayCell[];
   aura: RelayCell[];
+  /** The aura then the tiles, in one list (the order a frame paints them). */
+  all: RelayCell[];
+  /** Every claimed cell by `cellNum(i, j)`: the dot pass's per-dot test, with no string built. */
+  occupied: Set<number>;
   /** Per cluster: its outermost tile's distance in cells (0 with no tiles). */
   reach: Map<string, number>;
   /** Per cluster: its tiles and aura, for drawing one cluster at a time. */
@@ -76,6 +80,9 @@ export interface RelayGrid {
 }
 
 export const cellKey = (i: number, j: number) => `${i},${j}`;
+
+/** A cell as one number (exact for |i|, |j| < 2^15), for the dot pass's hot loop. */
+export const cellNum = (i: number, j: number) => (i + 32768) * 65536 + (j + 32768);
 
 /** The cell holding a world coordinate. */
 export const cellOf = (v: number, pitch = ATLAS_GRID_PITCH) => Math.floor(v / pitch);
@@ -232,7 +239,12 @@ export function buildRelayGrid(clusters: readonly RelayCluster[], pitch = ATLAS_
   const tiles: RelayCell[] = [];
   const aura: RelayCell[] = [];
   for (const cell of cells.values()) (cell.role === 'tile' ? tiles : aura).push(cell);
-  return { pitch, cells, tiles, aura, reach, byCluster };
+  const occupied = new Set<number>();
+  for (const k of cells.keys()) {
+    const comma = k.indexOf(',');
+    occupied.add(cellNum(Number(k.slice(0, comma)), Number(k.slice(comma + 1))));
+  }
+  return { pitch, cells, tiles, aura, all: aura.concat(tiles), reach, byCluster, occupied };
 }
 
 /**

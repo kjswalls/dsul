@@ -107,6 +107,7 @@ describe('the far zoom', () => {
   });
 
   it('turns the island dark under Dusk only, only zoomed out, only on a light theme', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     spyCanvas();
     seed([task('a')]);
     render(<AtlasView />);
@@ -115,14 +116,35 @@ describe('the far zoom', () => {
     expect(screen.getByTestId('atlas-ground').style.backgroundColor).toBe('transparent');
 
     act(() => useLookStore.getState().setAtlasFarPaper('dusk'));
-    expect(island().classList.contains('dark')).toBe(true);
     expect(island().getAttribute('data-atlas-dusk')).toBe('true');
     expect(screen.getByTestId('atlas-ground').style.backgroundColor).toMatch(/oklch/);
     expect(screen.getByTestId('atlas-ground').style.transition).toMatch(/^background-color /);
+    // The ground fades first; the ink (and the glow) follow once it is slate,
+    // so nothing glows on paper.
+    expect(island().classList.contains('dark')).toBe(false);
+    act(() => vi.advanceTimersByTime(400));
+    expect(island().classList.contains('dark')).toBe(true);
 
-    // Zooming back in hands the paper back.
+    // Dusk holds through the band (no flicker at 0.5), and lets go at 0.6.
+    zoom(0.55);
+    expect(island().classList.contains('dark')).toBe(true);
+    zoom(0.45);
+    expect(island().classList.contains('dark')).toBe(true);
     zoom(0.7);
     expect(island().classList.contains('dark')).toBe(false);
+    expect(island().getAttribute('data-atlas-dusk')).toBeNull();
+    // Coming in from above, the band alone never turns Dusk on.
+    zoom(0.55);
+    expect(island().getAttribute('data-atlas-dusk')).toBeNull();
+  });
+
+  it('keeps the CSS dot grid on an empty board at every zoom', () => {
+    spyCanvas();
+    seed([], []);
+    render(<AtlasView />);
+    zoom(0.3);
+    expect(canvas()).toBeNull();
+    expect(screen.getByTestId('atlas-dots')).toBeTruthy();
   });
 
   it('never darkens the island on a dark theme, where the far zoom already glows', async () => {
@@ -154,9 +176,11 @@ describe('the far zoom', () => {
     });
     seed([task('a')]);
     render(<AtlasView />);
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     zoom(0.4);
     expect(canvas()!.getAttribute('data-atlas-far-mode')).toBe('bloom');
     act(() => useLookStore.getState().setAtlasFarPaper('dusk'));
+    act(() => vi.advanceTimersByTime(400));
     expect(canvas()!.getAttribute('data-atlas-far-mode')).toBe('glow');
   });
 
@@ -205,6 +229,50 @@ describe('the far zoom', () => {
     expect(useAtlasUiStore.getState().camera.z).toBe(1);
   });
 
+  it('keeps focus on the map through a fly-in, landing on the card', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    spyCanvas();
+    document.documentElement.setAttribute('data-reduce-motion', 'true');
+    seed([task('a')]);
+    render(<AtlasView />);
+    zoom(0.3);
+    const hit = document.querySelector<HTMLElement>('[data-atlas-far-cluster="project:p1"]')!;
+    act(() => hit.focus());
+    fireEvent.keyDown(hit, { key: 'Enter' });
+    expect(useAtlasUiStore.getState().camera.z).toBe(1);
+    // The cluster is gone: focus never drops to <body>.
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(screen.getByTestId('atlas-view'));
+    act(() => vi.advanceTimersByTime(0));
+    expect(document.activeElement?.getAttribute('data-atlas-card')).toBe('project:p1');
+  });
+
+  it('pans a far cluster on screen when Tab reaches it', () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200);
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(800);
+    spyCanvas();
+    seed([task('a')]);
+    render(<AtlasView />);
+    // Far off to the right of the screen.
+    act(() => useAtlasUiStore.getState().setCamera({ x: -5000, y: 0, z: 0.3 }));
+    const hit = document.querySelector<HTMLElement>('[data-atlas-far-cluster="project:p1"]')!;
+    act(() => hit.focus());
+    expect(useAtlasUiStore.getState().camera.x).not.toBe(-5000);
+  });
+
+  it("says what the tiles show to a screen reader", () => {
+    spyCanvas();
+    seed([task('a', { title: 'Write the brief' }), task('b', { status: 'completed' })]);
+    render(<AtlasView />);
+    zoom(0.3);
+    expect(screen.getByTestId('atlas-far-hits').getAttribute('aria-label')).toBe(ATLAS_COPY.farLabel);
+    const hit = document.querySelector<HTMLElement>('[data-atlas-far-cluster="project:p1"]')!;
+    const status = document.getElementById(hit.getAttribute('aria-describedby')!)!;
+    expect(status.textContent).toBe(
+      ATLAS_COPY.farClusterStatus(ATLAS_COPY.farTip('Project', 1, 2), ATLAS_COPY.farNext('Write the brief'))
+    );
+  });
+
   it("a cluster's right-click is the container's menu, with Zoom in here", () => {
     spyCanvas();
     document.documentElement.setAttribute('data-reduce-motion', 'true');
@@ -230,6 +298,13 @@ describe('the far zoom', () => {
     expect(tip.textContent).toContain(ATLAS_COPY.farTip('Project', 1, 2));
     expect(tip.textContent).toContain(ATLAS_COPY.farNext('Write the brief'));
     fireEvent.pointerLeave(hit);
+    expect(screen.queryByTestId('atlas-far-tip')).toBeNull();
+
+    // Zoomed into the band mid-hover (no pointerleave), then back out: no stale tip.
+    fireEvent.pointerEnter(document.querySelector<HTMLElement>('[data-atlas-far-cluster="project:p1"]')!);
+    expect(screen.getByTestId('atlas-far-tip')).toBeTruthy();
+    zoom(0.55);
+    zoom(0.3);
     expect(screen.queryByTestId('atlas-far-tip')).toBeNull();
   });
 

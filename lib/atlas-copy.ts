@@ -185,7 +185,7 @@ export const ATLAS_COPY = {
   targetMoved: (goal: string, day: string) => `Target for ${goal} moved to ${day}`,
 
   /* ── PR3: the far zoom, its Look setting and the minimap ──────────── */
-  /** The canvas below 50% zoom. */
+  /** The cluster buttons' group below 50% zoom. */
   farLabel: 'Atlas, zoomed out',
   /** A cluster's label under its tiles. */
   farLeft: (n: number) => `${n} left`,
@@ -197,6 +197,8 @@ export const ATLAS_COPY = {
   farNothingLeft: "Nothing left. What's next?",
   /** A cluster's hit target, for a screen reader and the keyboard. */
   farClusterLabel: (name: string, kind: string) => `${name}, ${kind}. Zoom in`,
+  /** What a screen reader hears after the label: what the tiles and the tooltip show. */
+  farClusterStatus: (tip: string, line: string) => `${tip}. ${line}`,
   farZoomIn: 'Zoom in here',
   /** A season's dashed outline around what it holds. */
   farSeason: (name: string, kind: string) => `${name} · ${kind}`,
@@ -207,9 +209,7 @@ export const ATLAS_COPY = {
   farBloom: 'Bloom',
   farDusk: 'Dusk',
   /** The minimap and its command (shortcut id toggle_atlas_minimap). */
-  minimapLabel: 'Minimap. Click or drag to move the view.',
-  minimapHint: 'click to fly',
-  minimapToggle: 'Pin the Atlas minimap',
+  minimapToggle: 'Pin or unpin the Atlas minimap',
   minimapToggleDescription: 'Keep the minimap on screen, or let it hide at rest',
   minimapToggleKeywords: 'atlas minimap map overview pin navigator',
   minimapContext: 'Atlas only, on the desktop.',

@@ -873,7 +873,9 @@ export const STATIC_COMMANDS: Command[] = [
     icon: MinimapIcon,
     keywords: ATLAS_COPY.minimapToggleKeywords,
     shortcut: { id: 'toggle_atlas_minimap', keys: ['m'], context: ATLAS_COPY.minimapContext },
-    availableWhen: (ctx) => !ctx.isMobile && onAtlas(),
+    // Gated under the focus sheet like Atlas's other keys: M there would flip
+    // a pin nobody can see.
+    availableWhen: (ctx) => !ctx.isMobile && onAtlas() && !atlasSheetOpen(),
     hidden: (ctx) => ctx.isMobile,
     run: () => {
       const ui = useAtlasUiStore.getState();

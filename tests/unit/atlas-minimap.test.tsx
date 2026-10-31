@@ -35,6 +35,7 @@ import { ATLAS_CARD_H, ATLAS_CARD_W } from '@/lib/atlas-seed';
 import { screenToWorld } from '@/lib/atlas-camera';
 import { ATLAS_MINIMAP_IDLE_MS, miniToWorld, minimapFrame } from '@/lib/atlas-minimap';
 import { toast } from 'sonner';
+import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
 import { TODAY, asDate, installDomShims, manualRaf, seed, spyCanvas, task } from './helpers/atlas-far-setup';
 
 beforeAll(installDomShims);
@@ -71,9 +72,19 @@ const setCamera = (x: number, y: number, z: number) => act(() => useAtlasUiStore
 const minimap = () => screen.queryByTestId('atlas-minimap');
 const toggle = STATIC_COMMANDS.find((c) => c.id === 'atlas.toggleMinimap')!;
 
+function ShortcutHarness() {
+  useCommandShortcuts(ctx);
+  return null;
+}
+
 function renderBoard() {
   seed([task('a'), task('b', { status: 'completed' })]);
-  render(<AtlasView />);
+  render(
+    <>
+      <AtlasView />
+      <ShortcutHarness />
+    </>
+  );
   // Fit put the card on screen; pin the camera where the test wants it.
   setCamera(0, 0, 1);
   vi.advanceTimersByTime(ATLAS_MINIMAP_IDLE_MS + 10);
@@ -123,6 +134,83 @@ describe('the atlas minimap', () => {
     expect(minimap()!.getAttribute('data-pinned')).toBe('true');
     act(() => toggle.run(ctx));
     expect(minimap()!.getAttribute('data-shown')).toBeNull();
+  });
+
+  it('M through the real shortcut dispatcher: not with Cmd or Ctrl, not while typing, not under the sheet', () => {
+    renderBoard();
+    const root = screen.getByTestId('atlas-view');
+    const pinned = () => useAtlasUiStore.getState().minimapPinned;
+    fireEvent.keyDown(root, { key: 'm' });
+    expect(pinned()).toBe(true);
+    fireEvent.keyUp(root, { key: 'm' });
+    fireEvent.keyDown(root, { key: 'm', metaKey: true });
+    fireEvent.keyUp(root, { key: 'm', metaKey: true });
+    fireEvent.keyDown(root, { key: 'm', ctrlKey: true });
+    fireEvent.keyUp(root, { key: 'm', ctrlKey: true });
+    expect(pinned()).toBe(true);
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    fireEvent.keyDown(input, { key: 'm' });
+    fireEvent.keyUp(input, { key: 'm' });
+    expect(pinned()).toBe(true);
+    input.remove();
+    // Behind the focus sheet M is gated like Atlas's other keys.
+    act(() => useAtlasUiStore.getState().openSheet('project', 'p1', { x: 0, y: 0, width: 10, height: 10 }));
+    expect(toggle.availableWhen!(ctx)).toBe(false);
+    act(() => useAtlasUiStore.getState().closeSheet());
+    fireEvent.keyDown(root, { key: 'm' });
+    expect(pinned()).toBe(false);
+  });
+
+  it('a drag flies the camera as it moves, and a held drag still sleeps after release', () => {
+    // A board bigger than the screen wherever the camera lands, so the
+    // minimap stays through the drag.
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(300);
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(200);
+    renderBoard();
+    setCamera(-2000, 0, 2);
+    const canvas = minimap()!.querySelector('canvas')!;
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 80, clientY: 56, pointerId: 4 });
+    const first = useAtlasUiStore.getState().camera;
+    fireEvent.pointerMove(canvas, { clientX: 100, clientY: 56, pointerId: 4 });
+    const second = useAtlasUiStore.getState().camera;
+    expect(second.x).not.toBe(first.x);
+    // Held still past the idle delay: still shown while held.
+    act(() => {
+      vi.advanceTimersByTime(ATLAS_MINIMAP_IDLE_MS * 2);
+    });
+    expect(minimap()!.getAttribute('data-shown')).toBe('true');
+    fireEvent.pointerUp(canvas, { clientX: 100, clientY: 56, pointerId: 4 });
+    act(() => {
+      vi.advanceTimersByTime(ATLAS_MINIMAP_IDLE_MS + 100);
+    });
+    expect(minimap()!.getAttribute('data-shown')).toBeNull();
+    // After the release a move no longer flies.
+    const released = useAtlasUiStore.getState().camera;
+    fireEvent.pointerMove(canvas, { clientX: 60, clientY: 56, pointerId: 4 });
+    expect(useAtlasUiStore.getState().camera).toBe(released);
+  });
+
+  it('a pinch over its corner zooms Atlas, never the page', () => {
+    renderBoard();
+    setCamera(-2000, 0, 0.8);
+    const zone = screen.getByTestId('atlas-minimap-zone');
+    const ev = new WheelEvent('wheel', { deltaY: -20, ctrlKey: true, bubbles: true, cancelable: true });
+    act(() => {
+      zone.dispatchEvent(ev);
+    });
+    expect(ev.defaultPrevented).toBe(true);
+    expect(useAtlasUiStore.getState().camera.z).toBeGreaterThan(0.8);
+  });
+
+  it('is hidden from assistive tech, with no pointer instruction', () => {
+    renderBoard();
+    setCamera(-2000, 0, 1);
+    const zone = screen.getByTestId('atlas-minimap-zone');
+    expect(zone.getAttribute('aria-hidden')).toBe('true');
+    expect(zone.querySelector('[title]')).toBeNull();
+    expect(zone.querySelector('[role]')).toBeNull();
   });
 
   it('a click flies the camera to that point, zoom kept', () => {

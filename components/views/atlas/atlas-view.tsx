@@ -129,7 +129,25 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // Read from the root, outside the island, so Dusk's own `.dark` never
   // answers the question that turns it on.
   const lightContext = useAtlasLightContext(rootRef);
-  const dusk = far && lightContext && farPaper === 'dusk';
+  // Dusk latches on below 0.5 and lets go only at 0.6 (design 3.3), so a
+  // pinch that hovers at 0.5 doesn't flip the board back and forth. The cards
+  // in the band on the way back in sit on the slate, inside `.dark`.
+  const [duskZoom, setDuskZoom] = useState(far);
+  const nextDuskZoom = far ? true : inBand ? duskZoom : false;
+  if (nextDuskZoom !== duskZoom) setDuskZoom(nextDuskZoom);
+  const dusk = nextDuskZoom && lightContext && farPaper === 'dusk';
+  // The ground fades to slate over ATLAS_GROUND_MS; the island takes `.dark`
+  // (and the canvas its glow and pale labels) only once it has, so nothing
+  // glows on paper. Going back, both let go at once.
+  const [duskInk, setDuskInk] = useState(false);
+  if (!dusk && duskInk) setDuskInk(false);
+  if (dusk && reduced && !duskInk) setDuskInk(true);
+  useEffect(() => {
+    if (!dusk || duskInk) return;
+    const t = setTimeout(() => setDuskInk(true), ATLAS_GROUND_MS);
+    return () => clearTimeout(t);
+  }, [dusk, duskInk]);
+  const duskDark = dusk && duskInk;
   const [viewport, setViewport] = useState<Viewport>({ w: 0, h: 0 });
   // The latest viewport for the callbacks below, written where it is measured
   // (never during render), so a resize never re-renders a card.
@@ -352,7 +370,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   const colors = useAtlasColors(
     islandRef,
     useMemo(() => visible.map((c) => c.color), [visible]),
-    dusk
+    duskDark
   );
   // What the minimap frames: every drawn card, and the lanes in a computed layout.
   const content = useMemo(
@@ -380,12 +398,13 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     },
     []
   );
-  const flyTo = useCallback((target: AtlasCamera) => {
+  const flyTo = useCallback((target: AtlasCamera, onLand?: () => void) => {
     const ui = useAtlasUiStore.getState();
     if (flight.current !== null) cancelAnimationFrame(flight.current);
     flight.current = null;
     if (reducedRef.current || typeof requestAnimationFrame === 'undefined') {
       ui.setCamera(target);
+      if (onLand) setTimeout(onLand, 0);
       return;
     }
     const from = ui.camera;
@@ -403,6 +422,8 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
       last = flyCamera(from, target, vp, 1 - (1 - t) ** 3);
       store.setCamera(last);
       flight.current = t < 1 ? requestAnimationFrame(step) : null;
+      // Landed: once the cards have mounted, hand focus on.
+      if (t >= 1 && onLand) requestAnimationFrame(onLand);
     };
     flight.current = requestAnimationFrame(step);
   }, []);
@@ -415,15 +436,24 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
       const c = clustersRef.current.find((x) => x.key === key);
       if (!c) return;
       const cam = useAtlasUiStore.getState().camera;
-      flyTo(centerOnPoint(cam, { x: c.x, y: c.y }, viewportRef.current, ATLAS_FLY_ZOOM));
+      // Focus was on the cluster (gone now) or fell back to the root: it
+      // lands on that container's card, so Tab and Enter carry on from there.
+      const land = () => {
+        const root = rootRef.current;
+        const active = document.activeElement;
+        if (!root || (active !== root && active !== document.body)) return;
+        root.querySelector<HTMLElement>(`[data-atlas-card="${key}"]`)?.focus({ preventScroll: true });
+      };
+      flyTo(centerOnPoint(cam, { x: c.x, y: c.y }, viewportRef.current, ATLAS_FLY_ZOOM), land);
     },
     [flyTo]
   );
 
-  // Cards unmount below 0.5: a focus that was on one goes back to the root,
-  // so the map's keys keep working.
+  // Cards unmount below 0.5 and the cluster buttons above it, so whichever
+  // held focus drops it on <body>: it goes back to the root either way, so
+  // the map's keys keep working.
   useLayoutEffect(() => {
-    if (far && document.activeElement === document.body) rootRef.current?.focus({ preventScroll: true });
+    if (document.activeElement === document.body) rootRef.current?.focus({ preventScroll: true });
   }, [far]);
 
   // A card a filter hides scales down, then unmounts (D8: never a fade). Its
@@ -689,6 +719,21 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
   // A card (or a row in it) taking focus pans it on screen, as Tab walks the map.
   const onFocus = (e: FocusEvent) => {
     if (pointerDown.current) return;
+    // A far cluster taking focus (Tab at far zoom) pans it on screen too. Its
+    // hit box is in world units, in the camera-scaled layer.
+    const hit = (e.target as Element).closest?.('[data-atlas-far-cluster]') as HTMLElement | null;
+    if (hit) {
+      const ui = useAtlasUiStore.getState();
+      const rect = {
+        x: parseFloat(hit.style.left) || 0,
+        y: parseFloat(hit.style.top) || 0,
+        w: parseFloat(hit.style.width) || 0,
+        h: parseFloat(hit.style.height) || 0,
+      };
+      const next = ensureVisible(ui.camera, rect, viewportRef.current);
+      if (next !== ui.camera) ui.setCamera(next);
+      return;
+    }
     const card = (e.target as Element).closest?.('[data-atlas-card]');
     const key = card?.getAttribute('data-atlas-card');
     const p = key ? positions.get(key) : undefined;
@@ -735,7 +780,7 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
         ref={islandRef}
         data-testid="atlas-island"
         data-atlas-dusk={dusk ? 'true' : undefined}
-        className={cn('atlas-island absolute inset-0', dusk && 'dark')}
+        className={cn('atlas-island absolute inset-0', duskDark && 'dark')}
       >
         {/* The ground: transparent (the theme's own background) or Dusk's slate,
             by a background-color change; nothing is dimmed. */}

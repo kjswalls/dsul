@@ -54,7 +54,9 @@ export function useThemeVersion(): number {
     const mo = new MutationObserver(() => setMutations((n) => n + 1));
     mo.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['class', 'style', 'data-theme', 'data-look-light', 'data-look-dark'],
+      // Never 'style': the sidebar drag writes --sidebar-w there every frame,
+      // and user themes arrive as a <style> element and data-look stamps.
+      attributeFilter: ['class', 'data-theme', 'data-look-light', 'data-look-dark'],
     });
     return () => mo.disconnect();
   }, []);
@@ -81,6 +83,13 @@ export function useAtlasLightContext(ref: RefObject<HTMLElement | null>): boolea
   return light;
 }
 
+function sameColors(a: AtlasColors, b: AtlasColors): boolean {
+  if (a.mode !== b.mode || a.fg !== b.fg || a.sub !== b.sub || a.dot !== b.dot) return false;
+  if (a.frameFill !== b.frameFill || a.font !== b.font || a.tones.size !== b.tones.size) return false;
+  for (const [k, v] of a.tones) if (b.tones.get(k) !== v) return false;
+  return true;
+}
+
 export function useAtlasColors(
   islandRef: RefObject<HTMLElement | null>,
   colors: readonly string[],
@@ -97,13 +106,16 @@ export function useAtlasColors(
     const el = islandRef.current;
     const list = key ? key.split('\n') : [];
     if (!el) {
-      setOut((prev) => ({ ...prev, tones: new Map(list.map((c) => [c, toneForColor(c)])) }));
+      setOut((prev) => {
+        const next = { ...prev, tones: new Map(list.map((c) => [c, toneForColor(c)])) };
+        return sameColors(prev, next) ? prev : next;
+      });
       return;
     }
     const cs = getComputedStyle(el);
     const read = (name: string) => cs.getPropertyValue(name).trim();
     const tones = new Map(list.map((c) => [c, toneForColor(c, read)]));
-    setOut({
+    const next: AtlasColors = {
       mode: isDarkContext(el) ? 'glow' : 'bloom',
       tones,
       fg: read('--foreground') || FALLBACK.fg,
@@ -111,7 +123,9 @@ export function useAtlasColors(
       dot: read('--border') || FALLBACK.dot,
       frameFill: read('--accent') || FALLBACK.frameFill,
       font: cs.fontFamily || FALLBACK.font,
-    });
+    };
+    // The same answer keeps the same object, so nothing downstream repaints.
+    setOut((prev) => (sameColors(prev, next) ? prev : next));
   }, [islandRef, key, version, deps]);
   return out;
 }

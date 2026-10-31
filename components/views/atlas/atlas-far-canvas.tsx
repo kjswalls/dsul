@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ZoomIn } from 'lucide-react';
 import { ContainerContextMenu } from '@/components/planner/container-context-menu';
 import { ItemMenuRow } from '@/components/planner/item-context-menu';
@@ -11,7 +11,7 @@ import {
   ATLAS_GRID_PITCH,
   ATLAS_WAVE_PERIOD_MS,
   buildRelayGrid,
-  cellKey,
+  cellNum,
   cellsInView,
   dotStride,
   waveAt,
@@ -84,6 +84,11 @@ export interface FarScene {
 
 /** The most often the wave repaints. */
 const WAVE_FRAME_MS = 1000 / 30;
+/**
+ * Slack on that throttle: 33.3ms is exactly two 60Hz frames, and vsync
+ * jitter would otherwise push every few draws to a third frame.
+ */
+const WAVE_FRAME_SLACK_MS = 4;
 
 /* ── Sprites: one per tone, mode and lit state, as relay-field draws a tile ── */
 
@@ -143,17 +148,23 @@ export function tileSprite(k: AtlasToneKey, mode: AtlasToneMode, lit: boolean): 
   return c;
 }
 
-/** `rgba(r,g,b,` for a tone, so a per-cell alpha is a string join, not a colour conversion. */
-const prefixes = new Map<string, string>();
-function tonePrefix(k: AtlasToneKey, mode: AtlasToneMode): string {
-  const key = `${k}|${mode}`;
-  let p = prefixes.get(key);
-  if (!p) {
-    p = toneColor(k, mode, 1).replace(/,[^,]*\)$/, ',');
-    prefixes.set(key, p);
+/** Aura alphas are quantised to this many steps, so each style string is built and parsed once. */
+const ALPHA_STEPS = 32;
+const auraStyles = new Map<string, string>();
+/** A tone at a quantised alpha, cached: an aura dot costs no string and no colour parse. */
+function auraStyle(k: AtlasToneKey, mode: AtlasToneMode, step: number): string {
+  const key = `${k}|${mode}|${step}`;
+  let st = auraStyles.get(key);
+  if (!st) {
+    st = toneColor(k, mode, step / ALPHA_STEPS);
+    auraStyles.set(key, st);
   }
-  return p;
+  return st;
 }
+
+/** Scratch, reused across frames: aura dots by style (x, y, r triples), and the live cells. */
+const auraBuckets = new Map<string, number[]>();
+const liveScratch: RelayCell[] = [];
 
 interface Paint {
   ctx: CanvasRenderingContext2D;
@@ -194,8 +205,9 @@ function paintDots(p: Paint) {
   ctx.beginPath();
   for (let j = j0; j <= j1; j += s) {
     for (let i = i0; i <= i1; i += s) {
-      if (grid.cells.has(cellKey(i, j))) continue;
-      const [x, y] = screen(p, (i + 0.5) * P, (j + 0.5) * P);
+      if (grid.occupied.has(cellNum(i, j))) continue;
+      const x = (i + 0.5) * P * cam.z + cam.x;
+      const y = (j + 0.5) * P * cam.z + cam.y;
       ctx.rect(x - r, y - r, r * 2, r * 2);
     }
   }
@@ -279,32 +291,47 @@ function paintCells(p: Paint, cells: readonly RelayCell[]) {
   const P = grid.pitch;
   const dr = Math.max(0.8, Math.min(1.4, cam.z * 1.6));
   const ts = P * cam.z * 1.6;
-  const tiles: [number, number, RelayCell, number, FarCluster][] = [];
   ctx.save();
   ctx.globalCompositeOperation = glow ? 'lighter' : 'source-over';
   ctx.globalAlpha = p.alpha;
+  // The aura: dots of one style share one path and one fill.
+  for (const list of auraBuckets.values()) list.length = 0;
   for (const cell of cells) {
+    if (cell.role === 'tile') continue;
     const c = p.byKey.get(cell.key);
     if (!c) continue;
-    const [x, y] = screen(p, cell.x, cell.y);
     const wave = p.phase === null || c.resting ? 0 : waveAt(cell.d, p.phase, c.live);
-    if (cell.role === 'tile') {
-      tiles.push([x, y, cell, wave, c]);
-      continue;
-    }
     const f = Math.max(0, 1 - cell.da);
     const a = (c.resting ? 0.05 : 0.1 + f * 0.45) + wave * 0.5;
-    ctx.fillStyle = `${tonePrefix(toneOf(p, c), mode)}${Math.min(1, a).toFixed(3)})`;
+    const style = auraStyle(toneOf(p, c), mode, Math.round(Math.min(1, a) * ALPHA_STEPS));
+    let list = auraBuckets.get(style);
+    if (!list) {
+      list = [];
+      auraBuckets.set(style, list);
+    }
+    list.push(cell.x * cam.z + cam.x, cell.y * cam.z + cam.y, (1.1 + f * 1.1 + wave * 1.2) * dr);
+  }
+  for (const [style, list] of auraBuckets) {
+    if (list.length === 0) continue;
+    ctx.fillStyle = style;
     ctx.beginPath();
-    ctx.arc(x, y, (1.1 + f * 1.1 + wave * 1.2) * dr, 0, Math.PI * 2);
+    for (let n = 0; n < list.length; n += 3) {
+      ctx.moveTo(list[n] + list[n + 2], list[n + 1]);
+      ctx.arc(list[n], list[n + 1], list[n + 2], 0, Math.PI * 2);
+    }
     ctx.fill();
   }
-  for (const [x, y, cell, wave, c] of tiles) {
+  // The tiles, over the aura.
+  for (const cell of cells) {
+    if (cell.role !== 'tile') continue;
+    const c = p.byKey.get(cell.key);
+    if (!c) continue;
     const sprite = tileSprite(toneOf(p, c), mode, cell.lit);
     if (!sprite) continue;
+    const wave = p.phase === null || c.resting ? 0 : waveAt(cell.d, p.phase, c.live);
     ctx.globalAlpha = p.alpha * Math.min(1, (c.resting ? 0.35 : cell.lit ? 0.85 : 0.6) + wave * 0.4);
     const s = ts * (1 + wave * 0.14);
-    ctx.drawImage(sprite, x - s / 2, y - s / 2, s, s);
+    ctx.drawImage(sprite, cell.x * cam.z + cam.x - s / 2, cell.y * cam.z + cam.y - s / 2, s, s);
   }
   ctx.restore();
 }
@@ -343,18 +370,22 @@ function paint(p: Paint, part: 'all' | 'static' | 'live', waving: ReadonlySet<st
   const v = viewRect(p.cam, { w: p.w, h: p.h });
   const view = { x0: v.x, y0: v.y, x1: v.x + v.w, y1: v.y + v.h };
   if (part !== 'live') {
-    paintDots(p);
+    // The mock's order: the washes first, so the grid stays crisp over them.
     if (p.colors.mode === 'bloom') paintPools(p);
+    paintDots(p);
     paintLinks(p);
-    const all = cellsInView([...p.grid.aura, ...p.grid.tiles], view, p.grid.pitch);
-    const cells = part === 'static' ? all.filter((c) => !waving.has(c.key)) : all;
+    const inView = cellsInView(p.grid.all, view, p.grid.pitch);
+    const cells = part === 'static' ? inView.filter((c) => !waving.has(c.key)) : inView;
     paintCells({ ...p, phase: part === 'static' ? null : p.phase }, cells);
     paintLabels(p);
     return;
   }
-  const cells: RelayCell[] = [];
-  for (const key of waving) cells.push(...(p.grid.byCluster.get(key) ?? []));
-  paintCells(p, cellsInView(cells, view, p.grid.pitch));
+  liveScratch.length = 0;
+  for (const key of waving) {
+    const own = p.grid.byCluster.get(key);
+    if (own) for (const cell of own) liveScratch.push(cell);
+  }
+  paintCells(p, cellsInView(liveScratch, view, p.grid.pitch));
 }
 
 export function AtlasFarCanvas({
@@ -420,9 +451,11 @@ export function AtlasFarCanvas({
     raf: number | null;
     last: number;
     dirty: boolean;
+    /** The wave loop is running: it draws any pending change on its next frame. */
+    looping: boolean;
     layer: HTMLCanvasElement | null;
     size: { w: number; h: number; dpr: number };
-  }>({ raf: null, last: 0, dirty: true, layer: null, size: { w: 0, h: 0, dpr: 1 } });
+  }>({ raf: null, last: 0, dirty: true, looping: false, layer: null, size: { w: 0, h: 0, dpr: 1 } });
 
   const draw = useCallback(
     (t: number) => {
@@ -480,32 +513,53 @@ export function AtlasFarCanvas({
   const requestDraw = useCallback(() => {
     const f = frame.current;
     f.dirty = true;
-    if (f.raf !== null) return;
+    // The wave loop picks the change up on its next frame: one draw, not two.
+    if (f.looping || f.raf !== null) return;
     f.raf = requestAnimationFrame((t) => {
       f.raf = null;
       draw(t);
     });
   }, [draw]);
 
-  // Size: DPR at most 2, from the canvas's own box.
-  useEffect(() => {
+  // Size: DPR at most 2, from the canvas's own box. Resizing the backing
+  // store clears it, so it happens only on a real change and is redrawn in
+  // the same task (a deferred draw would paint one blank frame). A layout
+  // effect, so the first frame is drawn before the first paint.
+  useLayoutEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
     const measure = () => {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       const w = el.clientWidth;
       const h = el.clientHeight;
-      frame.current.size = { w, h, dpr };
+      const f = frame.current;
+      if (w === f.size.w && h === f.size.h && dpr === f.size.dpr) return;
+      f.size = { w, h, dpr };
       el.width = Math.max(1, Math.round(w * dpr));
       el.height = Math.max(1, Math.round(h * dpr));
-      requestDraw();
+      f.dirty = true;
+      draw(performance.now());
     };
     measure();
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [requestDraw]);
+    // A move between a 1x and a 2x screen changes the ratio, not the box.
+    let mq: MediaQueryList | null = null;
+    const onDpr = () => {
+      measure();
+      arm();
+    };
+    const arm = () => {
+      mq?.removeEventListener('change', onDpr);
+      mq = typeof window.matchMedia === 'function' ? window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`) : null;
+      mq?.addEventListener?.('change', onDpr);
+    };
+    arm();
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    ro?.observe(el);
+    return () => {
+      ro?.disconnect();
+      mq?.removeEventListener?.('change', onDpr);
+    };
+  }, [draw]);
 
   // A camera move repaints (never a React render).
   useEffect(() => useAtlasUiStore.subscribe((s, prev) => s.camera !== prev.camera && requestDraw()), [requestDraw]);
@@ -516,19 +570,26 @@ export function AtlasFarCanvas({
 
   // The wave loop: only with something to wave, on screen, tab visible, and
   // never under reduced motion.
+  // A pending change (a camera move) is drawn at once, past the throttle.
   useEffect(() => {
     if (waving.size === 0 || !visible || reduced) return;
+    const f = frame.current;
+    f.looping = true;
     let raf = 0;
     const tick = (t: number) => {
       raf = requestAnimationFrame(tick);
-      const f = frame.current;
-      if (t - f.last < WAVE_FRAME_MS) return;
+      if (!f.dirty && t - f.last < WAVE_FRAME_MS - WAVE_FRAME_SLACK_MS) return;
       f.last = t;
       draw(t);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [waving, visible, reduced, draw]);
+    return () => {
+      f.looping = false;
+      cancelAnimationFrame(raf);
+      // Anything that came in while the loop owned drawing still lands.
+      if (f.dirty) requestDraw();
+    };
+  }, [waving, visible, reduced, draw, requestDraw]);
 
   useEffect(
     () => () => {
@@ -540,8 +601,15 @@ export function AtlasFarCanvas({
     []
   );
 
-  // The tooltip: one element, shown by visibility (never a fade).
+  // The tooltip: one element, shown by mounting (never a fade). The hits
+  // unmount in the handoff band with no pointerleave, so leaving interactive
+  // drops the tip, or it would come back over nothing on the way out again.
   const [tip, setTip] = useState<string | null>(null);
+  const [tipInteractive, setTipInteractive] = useState(interactive);
+  if (tipInteractive !== interactive) {
+    setTipInteractive(interactive);
+    if (!interactive) setTip(null);
+  }
   const tipCluster = tip ? byKey.get(tip) : undefined;
 
   return (
@@ -577,6 +645,8 @@ function FarHitLayer({
   const { x, y, z } = useAtlasUiStore((s) => s.camera);
   return (
     <div
+      role="group"
+      aria-label={ATLAS_COPY.farLabel}
       className="absolute left-0 top-0 origin-top-left"
       data-testid="atlas-far-hits"
       style={{ transform: `translate(${x}px, ${y}px) scale(${z})` }}
@@ -600,6 +670,7 @@ const FarHit = memo(function FarHit({
   onTip: (key: string | null) => void;
 }) {
   const half = (reach + 2) * ATLAS_GRID_PITCH;
+  const statusId = useId();
   // A click flies in; a drag that starts here pans (the surface takes the
   // press and its pointer capture, so the release is heard on window).
   const press = (e: React.PointerEvent) => {
@@ -629,6 +700,7 @@ const FarHit = memo(function FarHit({
         role="button"
         tabIndex={0}
         aria-label={ATLAS_COPY.farClusterLabel(cluster.name, cluster.kindLabel)}
+        aria-describedby={statusId}
         data-atlas-far-cluster={cluster.key}
         className="absolute cursor-zoom-in rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
         style={{ left: cluster.x - half, top: cluster.y - half, width: half * 2, height: half * 2 }}
@@ -643,16 +715,38 @@ const FarHit = memo(function FarHit({
           e.stopPropagation();
           onFly(cluster.key);
         }}
-      />
+      >
+        {/* What the tiles and the tooltip show, for a screen reader. */}
+        <span id={statusId} className="sr-only">
+          {farClusterStatus(cluster)}
+        </span>
+      </div>
     </ContainerContextMenu>
   );
 });
 
-/** "Name / Project · 2 of 7 done / Next: …", above the cluster. */
+/** What the canvas and the tooltip show for a cluster, as one sentence for a screen reader. */
+function farClusterStatus(c: FarCluster): string {
+  const tip = ATLAS_COPY.farTip(c.kindLabel, c.lit, c.tiles);
+  const line = c.resting
+    ? c.restingSince
+      ? ATLAS_COPY.restingSince(c.restingSince)
+      : ATLAS_COPY.farResting
+    : c.nextTitle
+      ? ATLAS_COPY.farNext(c.nextTitle)
+      : ATLAS_COPY.farNothingLeft;
+  return ATLAS_COPY.farClusterStatus(tip, line);
+}
+
+/** Room the tooltip needs above its cluster; nearer the top it sits below. */
+const TIP_ROOM = 96;
+
+/** "Name / Project · 2 of 7 done / Next: …", above the cluster (below it near the top). */
 function FarTip({ cluster, width: w }: { cluster: FarCluster; width: number }) {
   const cam = useAtlasUiStore((s) => s.camera);
   const x = cluster.x * cam.z + cam.x;
   const y = cluster.y * cam.z + cam.y;
+  const below = y - 18 < TIP_ROOM;
   return (
     <div
       role="tooltip"
@@ -660,8 +754,8 @@ function FarTip({ cluster, width: w }: { cluster: FarCluster; width: number }) {
       className="pointer-events-none absolute z-30 max-w-60 rounded-xl border border-border bg-popover px-3 py-2 text-xs leading-snug text-popover-foreground shadow-[var(--shadow-elev-sm)]"
       style={{
         left: w > 0 ? Math.max(130, Math.min(w - 130, x)) : x,
-        top: y - 18,
-        transform: 'translate(-50%, -100%)',
+        top: below ? y + 18 : y - 18,
+        transform: below ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
       }}
     >
       <b className="block text-[13px] font-semibold">{cluster.name}</b>

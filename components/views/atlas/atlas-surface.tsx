@@ -35,6 +35,30 @@ const WHEEL_LINE_PX = 16;
  * The camera is read by two small subscribers (the dots and the world), so a
  * pan or zoom re-renders those two nodes and never a card.
  */
+/**
+ * One wheel event on the board: pan, or zoom at the pointer with Ctrl/⌘.
+ * `el` is the box the pointer is measured against. Shared with the minimap's
+ * corner, which sits over the board but outside the surface.
+ */
+export function atlasWheel(e: WheelEvent, el: HTMLElement) {
+  e.preventDefault();
+  const { camera, setCamera } = useAtlasUiStore.getState();
+  // Lines (Firefox's mouse wheel) and pages become pixels first.
+  const k = e.deltaMode === 1 ? WHEEL_LINE_PX : e.deltaMode === 2 ? el.clientHeight || 1 : 1;
+  const deltaX = e.deltaX * k;
+  const deltaY = e.deltaY * k;
+  if (e.ctrlKey || e.metaKey) {
+    const r = el.getBoundingClientRect();
+    const d = Math.max(-WHEEL_ZOOM_STEP, Math.min(WHEEL_ZOOM_STEP, deltaY));
+    setCamera(zoomAt(camera, { x: e.clientX - r.left, y: e.clientY - r.top }, Math.exp(-d * WHEEL_ZOOM)));
+    return;
+  }
+  // Shift turns a mouse wheel's vertical scroll sideways, as everywhere.
+  const dx = e.shiftKey && deltaX === 0 ? deltaY : deltaX;
+  const dy = e.shiftKey && deltaX === 0 ? 0 : deltaY;
+  setCamera(panBy(camera, -dx, -dy));
+}
+
 export function AtlasSurface({
   rootRef,
   inert,
@@ -86,24 +110,7 @@ export function AtlasSurface({
   useEffect(() => {
     const el = surfaceRef.current;
     if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const { camera, setCamera } = useAtlasUiStore.getState();
-      // Lines (Firefox's mouse wheel) and pages become pixels first.
-      const k = e.deltaMode === 1 ? WHEEL_LINE_PX : e.deltaMode === 2 ? el.clientHeight || 1 : 1;
-      const deltaX = e.deltaX * k;
-      const deltaY = e.deltaY * k;
-      if (e.ctrlKey || e.metaKey) {
-        const r = el.getBoundingClientRect();
-        const d = Math.max(-WHEEL_ZOOM_STEP, Math.min(WHEEL_ZOOM_STEP, deltaY));
-        setCamera(zoomAt(camera, { x: e.clientX - r.left, y: e.clientY - r.top }, Math.exp(-d * WHEEL_ZOOM)));
-        return;
-      }
-      // Shift turns a mouse wheel's vertical scroll sideways, as everywhere.
-      const dx = e.shiftKey && deltaX === 0 ? deltaY : deltaX;
-      const dy = e.shiftKey && deltaX === 0 ? 0 : deltaY;
-      setCamera(panBy(camera, -dx, -dy));
-    };
+    const onWheel = (e: WheelEvent) => atlasWheel(e, el);
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
@@ -150,7 +157,9 @@ export function AtlasSurface({
       onPointerUp={endPan}
       onPointerCancel={endPan}
     >
-      <AtlasDots />
+      {/* The canvas draws the grid below the handoff zoom; with no canvas
+          (an empty board) the CSS dots stay at every zoom. */}
+      <AtlasDots yieldBelowHandoff={far != null} />
       {far}
       <AtlasWorld>{children}</AtlasWorld>
     </div>
@@ -162,9 +171,9 @@ export function AtlasSurface({
  * Below the handoff zoom the far zoom's canvas draws the same grid (its free
  * cells, thinned as it zooms out), so this one steps aside.
  */
-function AtlasDots() {
+function AtlasDots({ yieldBelowHandoff }: { yieldBelowHandoff: boolean }) {
   const { x, y, z } = useAtlasUiStore((s) => s.camera);
-  if (z < ATLAS_HANDOFF_ZOOM) return null;
+  if (yieldBelowHandoff && z < ATLAS_HANDOFF_ZOOM) return null;
   const pitch = DOT_PITCH * z;
   return (
     <div
