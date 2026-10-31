@@ -76,4 +76,16 @@ describe('the stylesheet', () => {
     expect(fold).toMatch(/visibility:\s*hidden/);
     expect(fold).not.toMatch(/opacity\s*:/);
   });
+
+  it('breathes the AI finished dots and the wordmark dot, by scale and halo, never an opacity', () => {
+    const breathe = css.slice(css.indexOf('The breathing tile'), css.indexOf('/* The ready words'));
+    expect(breathe).toMatch(/\[data-ai-dot='ready'\],\s*\[data-lime-dot\]\s*\{[^}]*animation: lime-breathe/);
+    expect(breathe).not.toMatch(/opacity\s*:/);
+    expect(readFileSync('components/primitives/wordmark.css', 'utf8')).toMatch(/\.wordmark-dot \{[^}]*animation: lime-breathe/);
+  });
+
+  it('stills the breath under reduced motion, from the OS and from the app switch', () => {
+    expect(css).toMatch(/prefers-reduced-motion: reduce\) \{[^@]*\[data-ai-dot='ready'\],\s*\[data-lime-dot\] \{\s*animation: none/);
+    expect(css).toMatch(/\[data-reduce-motion='true'\] :is\(\[data-ai-dot='ready'\], \[data-lime-dot\], \.wordmark-dot\)/);
+  });
 });

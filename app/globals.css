@@ -3044,6 +3044,29 @@ body {
   background: linear-gradient(135deg, var(--honey-solid), var(--coral-solid));
 }
 
+/* The breathing tile (Kirby's pick, 2026-10-31): the relay's single-tile
+   cousin, for a lime dot that says something is back for you. It swells and
+   glows once every 3.2s. The glow is a halo AROUND the dot and the swell is a
+   scale, so the lime itself never dims. Wears it: the AI finished dot (a row's
+   hover dot, `ready`), Ask's run that came back ([data-lime-dot]), and the
+   wordmark's dot (components/primitives/wordmark.css). */
+[data-ai-dot='ready'],
+[data-lime-dot] {
+  --breathe-glow: var(--lime-solid);
+  animation: lime-breathe 3.2s ease-in-out infinite;
+}
+@keyframes lime-breathe {
+  0%,
+  100% {
+    scale: 0.8;
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    scale: 1;
+    box-shadow: 0 0 5px 1px color-mix(in oklch, var(--breathe-glow) 70%, transparent);
+  }
+}
+
 /* The ready words: aurora TEXT, no fill (Kirby, 2026-10-23: the filled chip
    was one more box on a row). Still, never animated: the sheen means "working",
    and these mean "ready". The ground is clipped to the glyphs, so its stops are
@@ -3130,6 +3153,10 @@ button[data-ai-chip]:focus-visible {
     animation: none;
     scale: 0.8;
   }
+  [data-ai-dot='ready'],
+  [data-lime-dot] {
+    animation: none;
+  }
   [data-row-title='open']:has(~ [data-ai-working]),
   [data-ai-sheen-slow] {
     animation: none;
@@ -3138,6 +3165,9 @@ button[data-ai-chip]:focus-visible {
 [data-reduce-motion='true'] [data-ai-relay] > i {
   animation: none !important;
   scale: 0.8;
+}
+[data-reduce-motion='true'] :is([data-ai-dot='ready'], [data-lime-dot], .wordmark-dot) {
+  animation: none !important;
 }
 [data-reduce-motion='true'] [data-row-title='open']:has(~ [data-ai-working]) {
   animation: none !important;
