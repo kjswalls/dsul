@@ -11,7 +11,7 @@ import SwiftUI
 // already makes (GhostRowsModel.swift).
 //
 // No lime in a ghost row: the title is muted, the box a dashed outline in the
-// secondary ink, and arrive and breathe fade only those. The one lime mark is
+// secondary ink, and arrive's light crosses only those. The one lime mark is
 // "All sorted, you got this"'s dot, drawn at full strength with nothing above
 // it faded and no transition on it.
 
@@ -69,17 +69,25 @@ enum GhostCopy {
     }
 }
 
-/// The motion's numbers (ghost-rows.md "Motion: arrive + breathe").
+/// The motion's numbers (ghost-rows.md "Motion: arrive"). Arrive is the
+/// web's rise on the planner's light (app/globals.css `ghost-rise`): each title
+/// starts faint, and a band of full ink crosses it at a steady pace, leaving
+/// the secondary ink behind it, a beat apart down the fold. The box only draws
+/// in. Nothing breathes (Kirby, 2026-11-01).
 enum GhostMotion {
-    /// Arrive: from opacity 0 and a 2.5pt blur, over 1.1s, staggered 120ms.
-    static let arriveBlur: CGFloat = 2.5
-    static func arrive(_ index: Int) -> Animation {
-        .timingCurve(0.25, 0.1, 0.25, 1, duration: 1.1).delay(Double(index) * 0.12)
+    /// Half the band's width: the web's `--planner-shimmer-band` at a phone's width.
+    static let band: CGFloat = 40
+    /// The light's pace, points a second: the web's, about 690px/s.
+    static let speed: CGFloat = 690
+    /// The title's ink before the light reaches it, as a share of the secondary ink.
+    static let faint: Double = 0.3
+    /// 0.2s in, then 0.11s a row, capped as the web caps it.
+    static func delay(_ index: Int) -> Double { 0.2 + Double(min(index, 8)) * 0.11 }
+    static func rise(width: CGFloat, index: Int) -> Animation {
+        .linear(duration: Double((width + 2 * band) / speed)).delay(delay(index))
     }
-    /// Breathe: the dashed box alone, 1 to 0.6 and back over 8s, staggered.
-    static let breatheLow: Double = 0.6
-    static func breathe(_ index: Int) -> Animation {
-        .easeInOut(duration: 4).repeatForever(autoreverses: true).delay(Double(index % 6) * 0.7)
+    static func boxIn(_ index: Int) -> Animation {
+        .easeOut(duration: 0.6).delay(delay(index))
     }
 }
 
@@ -258,17 +266,11 @@ struct GhostFold: View {
     }
 
     private func row(_ ghost: SampleItem, index: Int) -> some View {
-        let settled = rowsAtRest
-        return GhostRow(item: ghost, index: index,
-                        onDone: { markDone(ghost.id) },
-                        onOpen: { planner.activeSheet = .ghost(ghost.id) },
-                        actions: GhostVerb.allCases.filter { planner.ghostOffers($0, ghost) && $0 != .reschedule },
-                        onAction: { settle(ghost.id, $0) })
-            // Arrive: opacity and a slight blur, staggered, once. No lime is
-            // drawn under it.
-            .opacity(settled ? 1 : 0)
-            .blur(radius: settled ? 0 : GhostMotion.arriveBlur)
-            .animation(reduceMotion ? nil : GhostMotion.arrive(index), value: settled)
+        GhostRow(item: ghost, index: index, lit: rowsAtRest,
+                 onDone: { markDone(ghost.id) },
+                 onOpen: { planner.activeSheet = .ghost(ghost.id) },
+                 actions: GhostVerb.allCases.filter { planner.ghostOffers($0, ghost) && $0 != .reschedule },
+                 onAction: { settle(ghost.id, $0) })
     }
 
     /// "All sorted, you got this" beside one small lime dot, at full
@@ -301,8 +303,8 @@ struct GhostFold: View {
             planner.ghostsHaveArrived = true
             return
         }
-        // After the first frame, so the rows have been drawn hidden and fade
-        // in from there.
+        // After the first frame, so the titles have been drawn faint and the
+        // light rises them from there.
         let planner = self.planner
         Task { @MainActor in
             planner.ghostsHaveArrived = true
@@ -346,6 +348,8 @@ struct GhostFold: View {
 struct GhostRow: View {
     var item: SampleItem
     var index: Int
+    /// False until arrive plays: the title faint, the box not drawn yet.
+    var lit: Bool = true
     var onDone: () -> Void
     var onOpen: () -> Void
     /// The verbs VoiceOver offers in place of the swipes, in the sheet's order.
@@ -353,36 +357,22 @@ struct GhostRow: View {
     var onAction: (GhostVerb) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var breathing = false
 
     var body: some View {
         HStack(spacing: 12) {
             Button(action: onDone) {
                 GhostBox()
-                    .opacity(breathing ? GhostMotion.breatheLow : 1)
+                    .opacity(lit ? 1 : 0)
+                    .animation(reduceMotion ? nil : GhostMotion.boxIn(index), value: lit)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(PressScaleStyle())
             .padding(-7)
-            .onAppear {
-                guard !reduceMotion else { return }
-                withAnimation(GhostMotion.breathe(index)) { breathing = true }
-            }
-            .onChange(of: reduceMotion) { _, reduce in
-                if reduce {
-                    var still = Transaction()
-                    still.disablesAnimations = true
-                    withTransaction(still) { breathing = false }
-                }
-            }
 
             Button(action: onOpen) {
                 HStack(spacing: 12) {
-                    Text(item.title)
-                        .foregroundStyle(Color.secondary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
+                    GhostRiseTitle(title: item.title, index: index, lit: lit)
                     Spacer(minLength: 8)
                     Text(ghostWeekday(ghostDay(item)))
                         .font(.footnote.monospacedDigit())
@@ -406,6 +396,54 @@ struct GhostRow: View {
             }
         }
         .accessibilityInputLabels([Text(item.title)])
+    }
+}
+
+/// A ghost's title under arrive's light. The title is drawn faint, and over it
+/// the same text, masked, shows a strip that is the secondary ink up to a band
+/// of full ink: the strip slides from wholly before the title to wholly over
+/// it, so the band crosses the title at `GhostMotion.speed` and leaves the
+/// secondary ink behind. Drawn at rest (`lit` from the start, or Reduce
+/// Motion), the strip already covers the title: plain secondary ink. Neutral
+/// inks only.
+struct GhostRiseTitle: View {
+    var title: String
+    var index: Int
+    var lit: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var text: some View {
+        Text(title)
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+    }
+
+    var body: some View {
+        text
+            .foregroundStyle(Color.secondary.opacity(GhostMotion.faint))
+            .overlay(alignment: .leading) {
+                GeometryReader { geo in
+                    let width = geo.size.width
+                    let band = GhostMotion.band
+                    HStack(spacing: 0) {
+                        Color.secondary.frame(width: width)
+                        LinearGradient(
+                            stops: [
+                                .init(color: .secondary, location: 0),
+                                .init(color: .primary, location: 0.5),
+                                .init(color: .clear, location: 1),
+                            ],
+                            startPoint: .leading, endPoint: .trailing
+                        )
+                        .frame(width: 2 * band)
+                    }
+                    .frame(width: width + 2 * band, height: geo.size.height, alignment: .leading)
+                    .offset(x: lit ? 0 : -(width + 2 * band))
+                    .animation(reduceMotion ? nil : GhostMotion.rise(width: width, index: index), value: lit)
+                }
+                .mask(alignment: .leading) { text }
+            }
     }
 }
 
