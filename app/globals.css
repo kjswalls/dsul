@@ -2760,8 +2760,8 @@ body {
    dashed outline with no fill, closing into a solid box on hover or focus.
    Neutral inks only, and kept that way on purpose: the priority bars are drawn
    muted (PriorityGlyph's `muted`, since `low` is lime) and the done line's lime
-   dot sits outside any row, so arrive's opacity composites no lime and nothing
-   here is the accent rule's exception. A box that cannot keep (disabled) never
+   dot sits outside any row, so arrive's light crosses no lime and nothing here
+   is the accent rule's exception. A box that cannot keep (disabled) never
    closes: the solid box and its Plus would promise a no-op. */
 [data-ghost-row] .ghost-box {
   background: transparent;
@@ -2775,52 +2775,70 @@ body {
   background: var(--surface-3);
   color: var(--foreground);
 }
-/* Kirby's pick, 2026-10-31: "arrive" and "breathe". Arrive fades each row in
-   from a 2.5px blur, staggered, opacity and filter only: a transform, or a
-   layer dropped at the end, re-rasterises the text and snaps, which is why
-   will-change stays on after the animation ends. Breathe is the box alone, its
-   ink easing to 0.6 and back over 8s, offset per row, and held while the row is
-   hovered. Both off under reduced motion, the OS's and the app's. */
-@media (prefers-reduced-motion: no-preference) {
-  [data-ghost-arrive] {
-    will-change: opacity, filter;
-    animation: ghost-arrive 1.1s cubic-bezier(0.25, 0.1, 0.25, 1) both;
-    animation-delay: calc(var(--ghost-i, 0) * 120ms + 150ms);
+/* Arrive: rise on the planner's light (Kirby's pick, 2026-11-01, mock round 4's
+   "E"; it replaced arrive's blur and breathe, which were too much ghost). Each
+   title starts faint and the planner shimmer's band (its width, its full-ink
+   peak, its soft shoulders) crosses it at a steady pace, leaving the ghost's own
+   muted ink behind it, a beat apart down the fold. The title is its ink clipped
+   to its glyphs, the planner's way, and ends on plain text: the last frame drops
+   the clip, so hover's colour and everything after it is the row's own. An emoji
+   keeps its own fill (RowTitleText's span). The box holds still; it only draws
+   its outline in. Neutral inks only, so nothing lime is ever under it. Off under
+   reduced motion (the OS's and the app's) and forced colours. */
+[data-ghost-row] {
+  --ghost-band: var(--planner-shimmer-band, 120px);
+  /* Wider than any title, so the light has crossed every title before the
+     image runs out. Only the distance a title spans is ever seen. */
+  --ghost-run: 1200px;
+}
+@media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
+  :root:not([data-reduce-motion='true']) [data-ghost-arrive] > [data-row-title] {
+    -webkit-background-clip: text;
+    background-clip: text;
+    background-repeat: no-repeat;
+    animation: ghost-rise 2.1s linear backwards;
+    animation-delay: calc(var(--ghost-i, 0) * 110ms + 200ms);
   }
-  [data-ghost-row] .ghost-box {
-    will-change: opacity;
-    animation: ghost-breathe 8s ease-in-out infinite;
-    animation-delay: calc(var(--ghost-i, 0) * -2.7s);
+  :root:not([data-reduce-motion='true']) [data-ghost-arrive] > [data-row-title] [data-row-emoji] {
+    -webkit-text-fill-color: currentColor;
   }
-  [data-ghost-row]:hover .ghost-box {
-    animation-play-state: paused;
+  :root:not([data-reduce-motion='true']) [data-ghost-arrive] > .ghost-box {
+    animation: ghost-box-in 0.6s var(--ease-out-soft) backwards;
+    animation-delay: calc(var(--ghost-i, 0) * 110ms + 200ms);
   }
 }
-@keyframes ghost-arrive {
-  0% {
-    opacity: 0;
-    filter: blur(2.5px);
+@keyframes ghost-rise {
+  from,
+  99.9% {
+    background-color: color-mix(in oklab, currentColor 30%, transparent);
+    background-image: linear-gradient(
+      90deg,
+      currentColor 0 var(--ghost-run),
+      color-mix(in oklab, var(--foreground) 45%, currentColor) calc(var(--ghost-run) + 0.55 * var(--ghost-band)),
+      var(--foreground) calc(var(--ghost-run) + var(--ghost-band)),
+      color-mix(in oklab, var(--foreground) 45%, color-mix(in oklab, currentColor 30%, transparent))
+        calc(var(--ghost-run) + 1.45 * var(--ghost-band)),
+      color-mix(in oklab, currentColor 30%, transparent) 100%
+    );
+    background-size: calc(var(--ghost-run) + 2 * var(--ghost-band)) 100%;
+    -webkit-text-fill-color: transparent;
   }
-  55% {
-    filter: blur(0px);
+  from {
+    background-position-x: calc(-1 * var(--ghost-run) - 2 * var(--ghost-band));
   }
-  100% {
-    opacity: 1;
-    filter: blur(0px);
+  99.9% {
+    background-position-x: 0;
+  }
+  to {
+    background-color: transparent;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
   }
 }
-@keyframes ghost-breathe {
-  0%,
-  100% {
-    opacity: 1;
+@keyframes ghost-box-in {
+  from {
+    outline-color: transparent;
   }
-  50% {
-    opacity: 0.6;
-  }
-}
-[data-reduce-motion='true'] [data-ghost-arrive],
-[data-reduce-motion='true'] [data-ghost-row] .ghost-box {
-  animation: none !important;
 }
 
 /* ─── AI work badges ─────────────────────────────────────────────────────────

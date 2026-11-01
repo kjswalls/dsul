@@ -33,7 +33,7 @@ ios/Dsul/Today/GhostFold.swift (the fold, its rows and sheet).
   the start-time slot, the reserved day-dots slot, tag / priority / duration
   rails at reduced opacity. The title is muted ink. **No lime in a ghost row**:
   a low priority's bars are lime, so the priority glyph is drawn `muted` (never
-  faded through opacity), and arrive's fade composites no accent. The box is a
+  faded through opacity), and arrive's light crosses no accent. The box is a
   **dashed outline, no fill**, that closes into a solid box with a muted Check
   on hover, and it is a checkbox: a click marks the item done
   (`toggleTaskStatus(id, 'completed')`, a one-off's scalar status, with the
@@ -42,14 +42,17 @@ ios/Dsul/Today/GhostFold.swift (the fold, its rows and sheet).
   item's original weekday ("Thu") sits in the start-time slot, its full date in
   the tooltip. Clicking the title opens the item (`openEditFor`) and writes
   nothing.
-- **Motion: arrive + breathe** (Kirby, 2026-10-31; drift was the runner-up and
-  is one CSS swap away). Arrive: each row fades in from opacity 0 and a 2.5px
-  blur over 1.1s, `cubic-bezier(.25,.1,.25,1)`, staggered 120ms, no transform,
-  with `will-change: opacity, filter` left on so the end does not snap (the snap
-  was text re-rasterising when a layer dropped). Breathe: the dashed box alone,
-  opacity 1 to 0.6 and back over 8s, staggered with negative delays, paused while
-  the row is hovered. Both off under `prefers-reduced-motion` and the app's own
-  reduce-motion switch.
+- **Motion: arrive** (Kirby, 2026-11-01, mock round 4's "E", replacing the
+  first build's blur-in and breathe, which were too much ghost). Arrive rises
+  each title on the planner shimmer's light: the title starts faint (30% of its
+  muted ink), and a band of full ink the planner's width
+  (`--planner-shimmer-band`, soft shoulders) crosses it at a steady ~690px/s,
+  leaving the muted ink behind it; 200ms in, 110ms a row, capped at 8. The title
+  is its ink clipped to its glyphs, the planner's way, and the last frame drops
+  the clip, so it ends on plain text (`ghost-rise` in globals.css; emoji keep
+  their fill through RowTitleText). The box holds still and only draws its
+  outline in. Nothing breathes. Off under `prefers-reduced-motion`, the app's
+  own reduce-motion switch and forced colours.
 - **Verbs**, on hover in the existing RowControlGroup capsule where TaskRow's
   sits, each an existing store action so undo history and the undo strip come
   with it (hooks/use-undo-toast.ts already lists every label):
@@ -204,14 +207,15 @@ the same once-a-day shape.
   where the tick is (a tap marks it done, `markGhostDone`: `toggleRow` on the
   ghost's day, as the web's box does), the title in the secondary ink,
   and the ghost's weekday ("Thu", `ghostWeekday`) where the time is. No lime
-  anywhere in a ghost row, so nothing lime is ever under arrive's or breathe's
-  opacity.
-- **Motion.** Arrive: opacity 0 and a 2.5pt blur to rest over 1.1s on the web's
-  curve, staggered 120ms, once per planner (`ghostsHaveArrived`, so a layout
-  switch draws the rows at rest). Breathe: the box alone, 1 to 0.6 and back
-  over 8s (4s each way, autoreversed), staggered. Both off under Reduce Motion,
-  and a first sight under Reduce Motion sets `ghostsHaveArrived` at once, so
-  turning Reduce Motion off with the fold on screen never hides the rows.
+  anywhere in a ghost row, so nothing lime is ever under arrive's light.
+- **Motion.** Arrive is the web's rise (`GhostMotion`, `GhostRiseTitle`): the
+  title drawn faint, and the same text, masked, over a strip of the secondary
+  ink ending in a band of full ink that slides across it at the web's pace,
+  0.2s in and 0.11s a row; the box fades its outline in. Once per planner
+  (`ghostsHaveArrived`, so a layout switch draws the rows at rest). Nothing
+  breathes. Off under Reduce Motion, and a first sight under Reduce Motion sets
+  `ghostsHaveArrived` at once, so turning Reduce Motion off with the fold on
+  screen never leaves the titles faint.
 - **Gestures.** Swipe right is Keep for today, swipe left Move to tomorrow:
   List's own `swipeActions` (full swipe runs it), and a horizontal-only drag
   (`GhostSwipe`, 80pt) in Buckets and Schedule, which have no List row to hang

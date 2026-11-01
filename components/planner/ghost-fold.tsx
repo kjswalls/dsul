@@ -16,6 +16,7 @@ import { openEditFor } from '@/lib/ui-store';
 import { parseDay } from '@/lib/collections';
 import { ItemContextMenu, ItemMenuRow } from '@/components/planner/item-context-menu';
 import { RowControl, RowControlGroup } from '@/components/primitives/row-control';
+import { RowTitleText } from '@/components/primitives/row-title-text';
 import { RescheduleControl } from '@/components/primitives/reschedule-control';
 import { MetaText, PriorityGlyph, TagDot, formatDuration } from '@/components/primitives/pills';
 import { BUCKET_LABEL_INK } from '@/components/primitives/bucket-card';
@@ -372,8 +373,8 @@ function GhostRow({
         data-testid="ghost-row"
         data-ghost-row
         data-item-id={t.id}
-        // The stagger for arrive and breathe (app/globals.css); capped so a long
-        // pile's last rows do not wait seconds to appear.
+        // The stagger for arrive's light (app/globals.css); capped so a long
+        // pile's last rows do not wait seconds to rise.
         style={{ ['--ghost-i' as string]: Math.min(index, 8) }}
         data-ghost-arrive
         className="group relative flex w-full cursor-default items-center gap-3 rounded-[5px] px-2 py-1.5 hover:bg-accent"
@@ -401,7 +402,7 @@ function GhostRow({
           onClick={() => openEditFor(t as unknown as Task, 'task')}
           className="min-w-0 flex-1 cursor-pointer text-left font-content text-content text-muted-foreground transition-colors line-clamp-1 group-hover:text-foreground/80 focus-visible:outline-none"
         >
-          {t.title}
+          <RowTitleText text={t.title} />
         </button>
 
         <div className="relative flex flex-shrink-0 items-center gap-3">
