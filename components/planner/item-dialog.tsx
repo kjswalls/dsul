@@ -41,6 +41,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { AskSection, CopyRows, DropdownRows } from '@/components/planner/item-context-menu';
+import { ReminderReachNote } from '@/components/planner/reminder-reach-note';
 import { Button, ButtonKey } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -2490,6 +2491,8 @@ function ItemDialogInner({
               listClassName="max-h-40"
               data-sub-input
             />
+
+            {d.reminderTime && <ReminderReachNote />}
 
             {d.reminderTime && reminderNeedsDate && (
               <p className="text-muted-foreground px-2 pt-1 pb-2 text-[10px]">
