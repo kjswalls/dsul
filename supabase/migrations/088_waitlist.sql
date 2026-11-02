@@ -18,6 +18,10 @@
 --                so the answer is saved by ticket and never by email: knowing
 --                someone's address is not enough to write on their row.
 --   answered_at  when the answer was last saved.
+--   from_preview true for a signup made anywhere but production (a PR
+--                preview's /welcome, a dev server). Preview shares this
+--                database, so its test rows land here; leave them out of the
+--                launch export, or delete them once a test is done.
 --
 -- ACCESS. Written only by POST and PATCH /api/waitlist (app/api/waitlist/
 -- route.ts) through the service role. RLS is on with NO policies and every
@@ -39,7 +43,8 @@ create table if not exists public.waitlist_signups (
   why         text,
   ticket      uuid not null default gen_random_uuid(),
   created_at  timestamptz not null default now(),
-  answered_at timestamptz
+  answered_at timestamptz,
+  from_preview boolean not null default false
 );
 
 do $$

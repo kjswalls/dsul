@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase-service';
 import { isMissingSchema } from '@/lib/ai-server/schema-codes';
+import { isSameOrigin, readJson } from '@/app/api/ai/_shared/guard';
 import {
   callerOf,
   clipWhy,
@@ -15,7 +16,7 @@ import {
 /**
  * The waitlist on dsul.app (public/site/index.html), anonymous by design.
  *
- *   POST  { email, source?, company? }        → 200 { ok, ticket }
+ *   POST  { email, source?, hp? }             → 200 { ok, ticket }
  *   PATCH { ticket, planner?, why? }          → 200 { ok }
  *
  * Writes go through the service role into `waitlist_signups` (migration 088),
@@ -30,8 +31,19 @@ import {
  * - Nothing personal is logged. An error logs its database code, never the
  *   address, the answer or the caller.
  *
- * `company` is a honeypot the page hides from people. A request that fills it
- * gets an ordinary-looking 200 and writes nothing.
+ * Only the page itself may post: a request another site's page sends is
+ * refused (isSameOrigin), and the body must be `application/json` (readJson),
+ * which a browser will not send across sites without a preflight this route
+ * never answers. Otherwise any page could sign its visitors' addresses up from
+ * their own browsers, past the per-address limit.
+ *
+ * `hp` is a honeypot the page hides from people, under a name no autofill
+ * knows. A request that fills it gets an ordinary-looking 200 and writes
+ * nothing.
+ *
+ * A signup from anywhere but production (a PR preview's /welcome, a dev
+ * server) is written with `from_preview` set: Preview shares production's
+ * database, so its test rows land in the real list and must be told apart.
  *
  * Until 088 is applied every write answers 503 'unavailable', and the page says
  * to try again later.
@@ -48,19 +60,12 @@ function answer(status: number, body: Record<string, unknown>): NextResponse {
 }
 
 async function readBody(req: Request): Promise<Body | NextResponse> {
-  const type = (req.headers.get('content-type') ?? '').toLowerCase();
-  if (!type.includes('application/json')) return answer(415, { error: 'unsupported' });
-  const declared = Number(req.headers.get('content-length') ?? 0);
-  if (declared > BODY_MAX) return answer(413, { error: 'too_large' });
-  const text = await req.text();
-  if (text.length > BODY_MAX) return answer(413, { error: 'too_large' });
-  try {
-    const body: unknown = JSON.parse(text);
-    if (body && typeof body === 'object' && !Array.isArray(body)) return body as Body;
-  } catch {
-    // Falls through to the 400 below.
-  }
-  return answer(400, { error: 'bad_request' });
+  if (!isSameOrigin(req)) return answer(403, { error: 'forbidden' });
+  const read = await readJson<unknown>(req, BODY_MAX);
+  if (!read.ok) return answer(read.status, { error: read.error });
+  const body = read.body;
+  if (body && typeof body === 'object' && !Array.isArray(body)) return body as Body;
+  return answer(400, { error: 'invalid' });
 }
 
 function failed(op: 'join' | 'answer', error: { code?: string | null }): NextResponse {
@@ -81,7 +86,7 @@ export async function POST(req: Request) {
   const body = await readBody(req);
   if (body instanceof NextResponse) return body;
 
-  if (typeof body.company === 'string' && body.company.trim() !== '') {
+  if (typeof body.hp === 'string' && body.hp.trim() !== '') {
     return answer(200, { ok: true, ticket: randomUUID() });
   }
   if (!takeWaitlistToken(callerOf(req.headers), 'join')) {
@@ -97,7 +102,10 @@ export async function POST(req: Request) {
   // ticket is a random one (see the first rule above).
   const { data, error } = await db
     .from(TABLE)
-    .upsert({ email, source: sourceOf(body.source) }, { onConflict: 'email', ignoreDuplicates: true })
+    .upsert(
+      { email, source: sourceOf(body.source), from_preview: process.env.VERCEL_ENV !== 'production' },
+      { onConflict: 'email', ignoreDuplicates: true }
+    )
     .select('ticket');
   if (error) return failed('join', error);
 

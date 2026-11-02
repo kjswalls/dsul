@@ -46,6 +46,7 @@ a{color:var(--ink)}a:hover{color:oklch(1 0 0)}
 .ky-pulse::before{content:"";position:absolute;left:15.5px;top:15.5px;width:31px;height:31px;border-radius:6px;background:color-mix(in oklch,currentColor 14%,transparent)}
 .ky-pulse::after{content:"";position:absolute;left:22.5px;top:22.5px;width:17px;height:17px;border-radius:4px;background:color-mix(in oklch,currentColor 85%,transparent)}
 @keyframes ky-pulse{0%{opacity:.05}12%{opacity:1}36%{opacity:.05}100%{opacity:.05}}
+.ky-field.ky-rest .ky-pulse{animation-play-state:paused}
 @media (prefers-reduced-motion:reduce){.ky-pulse{animation:none;opacity:.5}}
 .ky-h{background:linear-gradient(180deg,oklch(0.99 0 0) 30%,oklch(0.72 0.01 286));-webkit-background-clip:text;background-clip:text;color:transparent}
 .ky-h1{margin:0;font-size:clamp(40px,6.2vw,76px);line-height:1.02;letter-spacing:-0.05em;font-weight:600;white-space:pre-line;text-wrap:balance}
@@ -161,7 +162,10 @@ a{color:var(--ink)}a:hover{color:oklch(1 0 0)}
           <a href="#changelog">changelog</a>
         </nav>
       </div>
-      <a class="ky-btn ky-btn-light" href="#join" style="min-height: 36px; font-size: 14px; padding: 0 14px">get early access</a>
+      <div style="display: flex; align-items: center; gap: 16px">
+        <nav class="ky-nav" aria-label="Account"><a href="https://do.dsul.app">log in</a></nav>
+        <a class="ky-btn ky-btn-light" href="#join" style="min-height: 36px; font-size: 14px; padding: 0 14px">get early access</a>
+      </div>
     </div>
   </header>
 
@@ -180,7 +184,7 @@ a{color:var(--ink)}a:hover{color:oklch(1 0 0)}
 they're just hanging out.</h1>
       <p style="margin: 0; max-width: 660px; font-size: 18px; line-height: 1.55; color: oklch(0.78 0.008 286); text-wrap: balance">dsul is a day planner: braindump everything, drag a few onto today, carry the rest to tomorrow. whatever you didn't finish just waits its turn, and never goes red.</p>
       <p style="margin: 0; font-size: 14px; color: var(--ink-2)">built for (and by) brains that bounce off every other planner.</p>
-      <div id="join" class="ky-join" data-join="hero" style="margin-top: 4px"></div>
+      <div id="join" class="ky-join" data-join="hero" style="margin-top: 4px"><noscript><p class="ky-note">the signup needs javascript, sorry. just a tiny bit, promise.</p></noscript></div>
     </div>
 
     <!-- hero mock: today, with the leftovers fold open -->
@@ -541,7 +545,7 @@ they're just hanging out.</h1>
     <h2 class="ky-h" style="margin: 0; font-size: clamp(40px, 6vw, 72px); line-height: 1; letter-spacing: -0.05em; font-weight: 600; white-space: pre-line">ok! what are we
 doing today?</h2>
     <p style="margin: 0; max-width: 560px; font-size: 17px; line-height: 1.55; color: var(--muted)">at launch: your browser, phone included. add it to your home screen and it opens like an app. mac and windows apps are on the way, and an iphone app is in the works. get on the list and we'll tell you when each one lands.</p>
-    <div id="join-again" class="ky-join" data-join="closer"></div>
+    <div id="join-again" class="ky-join" data-join="closer"><noscript><p class="ky-note">the signup needs javascript, sorry. just a tiny bit, promise.</p></noscript></div>
   </div></section>
   </main>
 
@@ -562,7 +566,7 @@ doing today?</h2>
   <form class="ky-form" data-el="form">
     <label class="ky-sr" for="wl-email">email address</label>
     <input class="ky-email" id="wl-email" data-el="email" type="email" name="email" required autocomplete="email" inputmode="email" maxlength="254" placeholder="you@wherever.com">
-    <div class="ky-hp" aria-hidden="true"><label for="wl-company">leave this empty</label><input id="wl-company" data-el="hp" type="text" name="company" tabindex="-1" autocomplete="off"></div>
+    <div class="ky-hp" aria-hidden="true"><label for="wl-hp">leave this empty</label><input id="wl-hp" data-el="hp" type="text" name="hp" tabindex="-1" autocomplete="off"></div>
     <button type="submit" class="ky-btn ky-btn-light ky-joinbtn" data-el="join">get early access</button>
   </form>
   <p class="ky-note" data-el="note">one email when it's ready. maybe two. never sold, never spam.</p>
@@ -570,8 +574,8 @@ doing today?</h2>
   <div class="ky-joined" data-el="joined" hidden>
     <div class="ky-joined-h" data-el="joinedH" tabindex="-1" role="status"><span style="color: var(--lime)">ok!</span> you're on the list.</div>
     <div style="font-size: 14px; line-height: 1.5; color: var(--muted)">we'll email <span data-el="shown">you</span> when it's time to do stuff. while you're here, a quick one:</div>
-    <div style="font-size: 15px; font-weight: 500" data-el="q">which planner did you quit last, and why?</div>
-    <div class="ky-chips" role="group" data-el="chips">
+    <div style="font-size: 15px; font-weight: 500" id="wl-q" data-el="q">which planner did you quit last, and why?</div>
+    <div class="ky-chips" role="group" aria-labelledby="wl-q" data-el="chips">
       <button type="button" class="ky-chip" data-planner="todoist" aria-pressed="false">todoist</button>
       <button type="button" class="ky-chip" data-planner="notion" aria-pressed="false">notion</button>
       <button type="button" class="ky-chip" data-planner="reminders" aria-pressed="false">apple reminders</button>
@@ -642,6 +646,12 @@ doing today?</h2>
     field.replaceChildren(frag);
   }
   buildField();
+  // Off screen, the tiles rest: no reason to keep ~1,700 animations running under the fold.
+  if (field && 'IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) {
+      field.classList.toggle('ky-rest', !entries[0].isIntersecting);
+    }).observe(field);
+  }
   var resizing;
   window.addEventListener('resize', function () {
     clearTimeout(resizing);
@@ -652,11 +662,13 @@ doing today?</h2>
   var tpl = document.getElementById('ky-join-tpl');
   var state = { joined: false, email: '', ticket: '', picked: '', sent: false, busy: false };
   var blocks = [];
+  var saving = Promise.resolve();
 
   document.querySelectorAll('[data-join]').forEach(function (mount, n) {
     var node = tpl.content.cloneNode(true);
     node.querySelectorAll('[id]').forEach(function (el) { el.id += '-' + n; });
     node.querySelectorAll('label[for]').forEach(function (el) { el.htmlFor += '-' + n; });
+    node.querySelectorAll('[aria-labelledby]').forEach(function (el) { el.setAttribute('aria-labelledby', el.getAttribute('aria-labelledby') + '-' + n); });
     mount.appendChild(node);
     var el = {};
     mount.querySelectorAll('[data-el]').forEach(function (e) { el[e.getAttribute('data-el')] = e; });
@@ -710,7 +722,7 @@ doing today?</h2>
     var email = block.el.email.value.trim();
     if (!email) { block.el.email.focus(); return; }
     state.busy = true; render(); say(block, '');
-    send('POST', { email: email, source: block.source, company: block.el.hp.value }).then(function (r) {
+    send('POST', { email: email, source: block.source, hp: block.el.hp.value }).then(function (r) {
       state.busy = false;
       if (r.ok && r.body && r.body.ticket) {
         state.joined = true; state.email = email; state.ticket = r.body.ticket;
@@ -720,16 +732,21 @@ doing today?</h2>
       }
       render();
       say(block, r.status === 400 ? SAY.invalid : r.status === 429 ? SAY.slow : SAY.broke);
+      block.el.email.focus();
     }, function () {
-      state.busy = false; render(); say(block, SAY.offline);
+      state.busy = false; render(); say(block, SAY.offline); block.el.email.focus();
     });
   }
 
   function pick(key) {
     if (!LINES[key]) return;
     state.picked = key; render();
-    // Saved as soon as it is picked, so the answer survives a visitor who never types the why.
-    if (state.ticket) send('PATCH', { ticket: state.ticket, planner: key }).catch(function () {});
+    // Saved as soon as it is picked, so the answer survives a visitor who never
+    // types the why. One at a time, so two quick taps land in the order made.
+    if (state.ticket) {
+      var ticket = state.ticket;
+      saving = saving.then(function () { return send('PATCH', { ticket: ticket, planner: key }); }).catch(function () {});
+    }
   }
 
   function sendWhy(block) {
@@ -740,12 +757,12 @@ doing today?</h2>
     if (state.picked) body.planner = state.picked;
     if (why) body.why = why;
     state.busy = true; render(); say(block, '');
-    send('PATCH', body).then(function (r) {
+    saving.then(function () { return send('PATCH', body); }).then(function (r) {
       state.busy = false;
       if (r.ok) { state.sent = true; render(); block.el.thanks.focus(); return; }
-      render(); say(block, r.status === 429 ? SAY.slow : SAY.unsent);
+      render(); say(block, r.status === 429 ? SAY.slow : SAY.unsent); block.el.why.focus();
     }, function () {
-      state.busy = false; render(); say(block, SAY.offline);
+      state.busy = false; render(); say(block, SAY.offline); block.el.why.focus();
     });
   }
 

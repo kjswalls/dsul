@@ -85,6 +85,12 @@ const withSerwist = withSerwistInit({
   // it already rang (memory/plans/reminders-platforms.md §5.2, PR-1b).
   // hooks/use-local-cue-tick.ts listens for `online` instead.
   reloadOnOnline: false,
+  // Everything under public/ but site/, the marketing page's folder
+  // (lib/marketing-site.ts). The default, ['**/*'], put that page and its two
+  // fonts into every installed app's precache, fetched again on each edit to a
+  // page the app never shows. Serwist globs with no negation, so this is "the
+  // top-level files, and every folder but site/".
+  globPublicPatterns: ['*', '!(site)/**/*'],
 });
 
 export default withSerwist(nextConfig);

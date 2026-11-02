@@ -52,12 +52,16 @@ function call(op: string) {
 }
 
 beforeEach(() => {
+  vi.stubEnv('VERCEL_ENV', 'production');
   __resetWaitlistLimits();
   db.answer = { data: [], error: null };
   db.calls = [];
   db.throws = false;
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+});
 
 describe('lib/waitlist', () => {
   it('trims and lowercases an address, and refuses what cannot be one', () => {
@@ -106,7 +110,7 @@ describe('POST /api/waitlist', () => {
     expect(await res.json()).toEqual({ ok: true, ticket: TICKET });
     expect(call('from')?.args).toEqual(['waitlist_signups']);
     expect(call('upsert')?.args).toEqual([
-      { email: 'jo@example.com', source: 'closer' },
+      { email: 'jo@example.com', source: 'closer', from_preview: false },
       { onConflict: 'email', ignoreDuplicates: true },
     ]);
     expect(res.headers.get('cache-control')).toBe('no-store');
@@ -123,7 +127,7 @@ describe('POST /api/waitlist', () => {
   });
 
   it('takes the honeypot for a bot: an ordinary 200, and nothing written', async () => {
-    const res = await POST(req('POST', { email: 'jo@example.com', company: 'Acme' }));
+    const res = await POST(req('POST', { email: 'jo@example.com', hp: 'Acme' }));
     expect(res.status).toBe(200);
     expect((await res.json()).ticket).toMatch(UUID);
     expect(db.calls).toHaveLength(0);
@@ -136,7 +140,30 @@ describe('POST /api/waitlist', () => {
     expect(db.calls).toHaveLength(0);
   });
 
+  it('marks a signup made anywhere but production, since Preview shares the database', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    await POST(req('POST', { email: 'jo@example.com' }));
+    expect((call('upsert')!.args[0] as Record<string, unknown>).from_preview).toBe(true);
+  });
+
+  it("refuses another site's page, so it cannot sign its visitors up from their browsers", async () => {
+    for (const headers of [
+      { 'sec-fetch-site': 'cross-site' },
+      { 'sec-fetch-site': 'same-site' },
+      { origin: 'https://evil.example' },
+      { origin: 'null' },
+    ]) {
+      expect((await POST(req('POST', { email: 'jo@example.com' }, headers))).status).toBe(403);
+      expect((await PATCH(req('PATCH', { ticket: TICKET, planner: 'all' }, headers))).status).toBe(403);
+    }
+    expect(db.calls).toHaveLength(0);
+    const own = await POST(req('POST', { email: 'jo@example.com' }, { 'sec-fetch-site': 'same-origin', origin: 'https://dsul.app' }));
+    expect(own.status).toBe(200);
+  });
+
   it('takes JSON only, and only a small body', async () => {
+    // A preflight-free type with "application/json" tucked into a parameter is still not JSON.
+    expect((await POST(req('POST', '{"email":"jo@example.com"}', { 'content-type': 'text/plain; x=application/json' }))).status).toBe(415);
     expect((await POST(req('POST', 'email=jo%40example.com', { 'content-type': 'application/x-www-form-urlencoded' }))).status).toBe(415);
     expect((await POST(req('POST', '{"email":'))).status).toBe(400);
     expect((await POST(req('POST', '["jo@example.com"]'))).status).toBe(400);
