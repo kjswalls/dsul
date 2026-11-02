@@ -31,6 +31,14 @@ production deployment whose changes are all in `ios/`, `electron/`, `tests/`, `.
 deployment counts against the free team's 10 GB Deployment Storage. A new path the
 build never reads goes on that list; anything not on it builds.
 
+**dsul.app is the marketing page; do.dsul.app is the app.** Both are this one Vercel
+project. The apex's root is `public/site/index.html`, a static page that never loads the
+app (no root layout, no SupabaseProvider, no service worker), reached by a rewrite in
+`proxy.ts` before the sign-in gate; every other apex path still redirects to do.dsul.app
+(`next.config.mjs`). `/welcome` shows the same page on any host, which is how a PR preview
+shows it. Its waitlist form posts to `/api/waitlist` (migration 088, service-role only).
+Read [lib/marketing-site.ts](lib/marketing-site.ts) before touching any of the three.
+
 ## Setting up a new machine
 
 ```bash

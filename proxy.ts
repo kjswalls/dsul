@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { canonicalRedirect } from '@/lib/canonical-host';
+import { marketingRewrite } from '@/lib/marketing-site';
 import { isSignedOutPath, loginPathFor } from '@/lib/signed-out-redirect';
 
 export async function proxy(request: NextRequest) {
@@ -14,6 +15,16 @@ export async function proxy(request: NextRequest) {
   const canonical = canonicalRedirect(new URL(request.url), process.env.VERCEL_ENV);
   if (canonical) {
     return NextResponse.redirect(canonical, 307);
+  }
+
+  // dsul.app's root (and /welcome on any host, for previews) is the marketing
+  // page, a static file with no account behind it: served before the gate, so
+  // a visitor with no session sees it instead of being sent to /login. Every
+  // other apex path never gets here; next.config.mjs sends it to do.dsul.app.
+  // See lib/marketing-site.ts.
+  const marketing = marketingRewrite(new URL(request.url));
+  if (marketing) {
+    return NextResponse.rewrite(new URL(marketing, request.url));
   }
 
   // Allow disabling auth for v0 preview / local dev. The server gate only: a
@@ -93,6 +104,11 @@ export async function proxy(request: NextRequest) {
 // whose session has ended met the same redirect and failed as one. Neither file
 // holds anything an account owns.
 //
+// /site/ is the marketing page's folder under public/ (lib/marketing-site.ts):
+// the page and its fonts, which hold nothing of anyone's. Left out so a font
+// fetch costs no getUser() and never meets the login redirect. The page itself
+// is reached by a rewrite from / on the apex, which does run here.
+//
 // /mods/sandbox/<version> is the mod sandbox frame (app/mods/sandbox/[v]),
 // which holds no account data either: left out so a frame load costs no
 // getUser() and a signed-out moment cannot put the login page inside the
@@ -100,6 +116,6 @@ export async function proxy(request: NextRequest) {
 // still gated (tests/unit/proxy-matcher.test.ts).
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|mods/sandbox/|favicon.ico|icon|apple-icon|manifest\\.json$|sw\\.js$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|mods/sandbox/|site/|favicon.ico|icon|apple-icon|manifest\\.json$|sw\\.js$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

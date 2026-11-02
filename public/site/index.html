@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsul: the planner that doesn't hold a grudge</title>
+<meta name="description" content="dsul (pronounced diesel) is a day planner where unfinished tasks wait their turn instead of going red. built for ADHD and neurodivergent brains, and anyone who's quit a planner. join the waitlist.">
+<link rel="canonical" href="https://dsul.app/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://dsul.app/">
+<meta property="og:site_name" content="dsul">
+<meta property="og:title" content="dsul: your tasks aren't overdue. they're just hanging out.">
+<meta property="og:description" content="a day planner where whatever you didn't finish just waits its turn, and never goes red. join the waitlist.">
+<meta name="twitter:card" content="summary">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0b0d">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-icon.png">
+<link rel="preload" href="/site/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<!--
+  dsul.app's marketing page. One static file on purpose: it is served from the
+  app's own deployment but never loads the app (lib/marketing-site.ts says why
+  and how it is routed). The form posts to /api/waitlist; the planner keys and
+  length caps below match lib/waitlist.ts, and tests/unit/marketing-site.test.ts
+  fails if they drift. Copy rules: lowercase, playful, no em dashes, the AI has
+  no name, and only what ships today is described in the present tense.
+  Fonts: Geist and Geist Mono (SIL OFL 1.1, /site/fonts/OFL.txt).
+-->
+<style>
+@font-face{font-family:Geist;src:url(/site/fonts/Geist-Variable.woff2) format("woff2");font-weight:100 900;font-display:swap}
+@font-face{font-family:"Geist Mono";src:url(/site/fonts/GeistMono-Variable.woff2) format("woff2");font-weight:100 900;font-display:swap}
+:root{--bg:oklch(0.145 0.004 286);--ink:oklch(0.97 0.002 286);--ink-2:oklch(0.85 0.005 286);--muted:oklch(0.72 0.01 286);--faint:oklch(0.6 0.01 286);--lime:oklch(0.87 0.19 125);--lime-ink:oklch(0.22 0.05 130);--line:oklch(1 0 0 / 8%)}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Geist,system-ui,sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
+.ky-page{min-height:100vh;overflow:hidden}
+a{color:var(--ink)}a:hover{color:oklch(1 0 0)}
+:focus-visible{outline:2px solid var(--lime);outline-offset:2px}
+.ky-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.ky-mono{font-family:"Geist Mono",ui-monospace,monospace}
+.ky-field{position:absolute;left:50%;top:0;transform:translateX(-50%);display:grid;grid-auto-rows:32px;-webkit-mask-image:radial-gradient(ellipse 58% 62% at 50% 40%,#000 28%,transparent 100%);mask-image:radial-gradient(ellipse 58% 62% at 50% 40%,#000 28%,transparent 100%);pointer-events:none;z-index:0}
+.ky-scrim{position:absolute;left:0;right:0;top:0;height:640px;background:radial-gradient(ellipse 34% 40% at 50% 42%,oklch(0.145 0.004 286 / 78%),oklch(0.145 0.004 286 / 0%));pointer-events:none;z-index:0}
+.ky-tile{position:relative;mix-blend-mode:plus-lighter}
+.ky-pulse{position:absolute;inset:-15px;border-radius:50%;background:radial-gradient(closest-side,color-mix(in oklch,currentColor 24%,transparent),transparent);opacity:.05;animation:ky-pulse 3.6s linear infinite}
+.ky-pulse::before{content:"";position:absolute;left:15.5px;top:15.5px;width:31px;height:31px;border-radius:6px;background:color-mix(in oklch,currentColor 14%,transparent)}
+.ky-pulse::after{content:"";position:absolute;left:22.5px;top:22.5px;width:17px;height:17px;border-radius:4px;background:color-mix(in oklch,currentColor 85%,transparent)}
+@keyframes ky-pulse{0%{opacity:.05}12%{opacity:1}36%{opacity:.05}100%{opacity:.05}}
+@media (prefers-reduced-motion:reduce){.ky-pulse{animation:none;opacity:.5}}
+.ky-h{background:linear-gradient(180deg,oklch(0.99 0 0) 30%,oklch(0.72 0.01 286));-webkit-background-clip:text;background-clip:text;color:transparent}
+.ky-h1{margin:0;font-size:clamp(40px,6.2vw,76px);line-height:1.02;letter-spacing:-0.05em;font-weight:600;white-space:pre-line;text-wrap:balance}
+.ky-btn{display:inline-flex;align-items:center;gap:10px;min-height:44px;padding:0 18px;border-radius:10px;font-weight:500;font-size:15px;text-decoration:none}
+.ky-btn-light{background:var(--ink);color:oklch(0.16 0.004 286)}
+.ky-btn-light:hover{background:oklch(1 0 0);color:oklch(0.16 0.004 286)}
+.ky-nav a{color:var(--muted);text-decoration:none;font-size:14px}
+.ky-nav a:hover{color:var(--ink)}
+.ky-card{border-radius:16px;background:linear-gradient(180deg,oklch(0.19 0.004 286),oklch(0.165 0.004 286));border:1px solid var(--line);box-shadow:inset 0 1px 0 oklch(1 0 0 / 5%)}
+.ky-wrap{padding-left:24px;padding-right:24px}
+.ky-sec{max-width:1120px;margin:0 auto;box-sizing:content-box;padding-bottom:136px}
+.ky-eb{margin:0 0 14px;font-family:"Geist Mono",ui-monospace,monospace;font-size:13px;color:var(--lime)}
+.ky-h2{margin:0 0 16px;font-size:clamp(32px,4.4vw,52px);line-height:1.05;letter-spacing:-0.045em;font-weight:600;text-wrap:balance}
+.ky-lead{margin:0;max-width:540px;font-size:17px;line-height:1.55;color:var(--muted)}
+.ky-split{display:flex;flex-wrap:wrap;gap:56px;align-items:center}
+.ky-copy{flex:1 1 360px;min-width:0}
+.ky-art{flex:1.15 1 440px;min-width:0}
+.ky-items{list-style:none;margin:28px 0 0;padding:0;display:flex;flex-direction:column;gap:18px}
+.ky-items li{padding-left:18px;border-left:2px solid oklch(1 0 0 / 10%)}
+.ky-items h3{margin:0 0 4px;font-size:16px;font-weight:500;color:var(--ink)}
+.ky-items p{margin:0;font-size:15px;line-height:1.55;color:var(--muted)}
+.ky-fn{margin:24px 0 0;font-size:13px;line-height:1.5;color:var(--faint)}
+.ky-ann{font-family:"Geist Mono",ui-monospace,monospace;font-size:12px;line-height:1.4;color:var(--lime)}
+.ky-mock{border-radius:14px;background:oklch(0.17 0.004 286);border:1px solid oklch(1 0 0 / 9%);box-shadow:0 0 0 1px oklch(0 0 0 / 40%),0 24px 60px oklch(0 0 0 / 45%);overflow:hidden;font-size:13px;line-height:1.35;color:var(--ink-2)}
+.ky-chk{flex:none;width:14px;height:14px;border-radius:50%;box-sizing:border-box;border:1.5px solid oklch(1 0 0 / 28%)}
+.ky-chk-done{display:flex;align-items:center;justify-content:center;background:var(--lime);border-color:var(--lime)}
+.ky-chk-ghost{border-radius:4px;border:1.5px dashed oklch(1 0 0 / 26%)}
+.ky-row{display:flex;align-items:flex-start;gap:10px;padding:7px 10px;border-radius:8px;min-width:0}
+.ky-row .ky-chk{margin-top:1px}
+.ky-t{flex:1 1 auto;min-width:0}
+.ky-date{flex:none;font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums}
+.ky-lbl{font-size:11px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--faint)}
+.ky-obtn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;box-sizing:border-box;border-radius:7px;border:1px solid oklch(1 0 0 / 12%);font-size:12px;color:var(--ink-2);white-space:nowrap}
+.ky-pbtn{display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:7px;background:var(--ink);color:oklch(0.16 0.004 286);font-size:12px;font-weight:500;white-space:nowrap}
+.ky-ibtn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;color:var(--faint)}
+.ky-ann-out{position:absolute;left:calc(100% + 18px);white-space:nowrap}
+.ky-ann-in{display:none;margin:0 0 10px}
+@media (max-width:1180px){.ky-ann-out{display:none}.ky-ann-in{display:block}}
+.ky-side{flex:0 1 300px;min-width:0;border-right:1px solid oklch(1 0 0 / 7%);background:oklch(0.155 0.004 286)}
+.ky-canvas{flex:1 1 380px;min-width:0}
+@media (max-width:720px){.ky-side{flex:1 1 100%;border-right:0;border-bottom:1px solid oklch(1 0 0 / 7%)}}
+.ky-arr::before{content:"\2190\00a0"}
+@media (max-width:900px){.ky-anncol{padding:0!important;align-self:auto!important;flex-basis:100%!important}.ky-arr::before{content:"\2191\00a0"}}
+.ky-seg{display:inline-flex;padding:2px;border-radius:8px;background:oklch(1 0 0 / 5%);font-size:12px}
+.ky-seg span{padding:4px 10px;border-radius:6px;color:var(--faint)}
+.ky-seg .on{background:oklch(1 0 0 / 10%);color:var(--ink)}
+.ky-blk{position:absolute;box-sizing:border-box;padding:5px 8px;border-radius:6px;background:oklch(0.25 0.008 286);border-left:2px solid oklch(0.66 0.09 190);font-size:12px;color:oklch(0.92 0.004 286);overflow:hidden}
+.ky-sw{flex:none;width:30px;height:18px;border-radius:999px;box-sizing:border-box;padding:2px;background:oklch(1 0 0 / 12%);display:flex}
+.ky-sw::after{content:"";width:14px;height:14px;border-radius:50%;background:var(--muted)}
+.ky-menu{border-radius:10px;background:oklch(0.21 0.004 286);border:1px solid oklch(1 0 0 / 10%);box-shadow:0 16px 40px oklch(0 0 0 / 55%);padding:4px;font-size:12px;color:oklch(0.9 0.004 286)}
+.ky-menu > div{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px}
+.ky-ghost .ky-t{color:var(--faint)}
+.ky-sheen{background:linear-gradient(90deg,var(--muted) 0%,var(--muted) 35%,oklch(1 0 0) 50%,var(--muted) 65%,var(--muted) 100%);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:ky-sheen 2.6s linear infinite}
+@keyframes ky-sheen{from{background-position:100% 0}to{background-position:-150% 0}}
+@media (prefers-reduced-motion:reduce){.ky-sheen{animation:none;background:none;color:var(--ink-2)}}
+.ky-step{font-family:"Geist Mono",ui-monospace,monospace;font-size:12px;color:var(--faint);margin-bottom:6px}
+.ky-loop h3{margin:0 0 6px;font-size:17px;font-weight:500}
+.ky-loop p{margin:0;font-size:14px;line-height:1.5;color:var(--muted)}
+.ky-grid3{margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
+.ky-never li{padding:22px;display:flex;gap:14px;align-items:baseline}
+.ky-never b{display:block;font-size:16px;font-weight:500;margin-bottom:4px}
+.ky-never span:last-child{font-size:14px;line-height:1.5;color:var(--muted)}
+.ky-switch{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid oklch(1 0 0 / 6%)}
+.ky-switch:last-child{border-bottom:0}
+.ky-switch div{flex:1;min-width:0}
+.ky-switch b{display:block;font-weight:400;color:oklch(0.95 0.003 286)}
+.ky-switch small{font-size:12px;color:var(--faint)}
+.ky-log{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.ky-log div{display:flex;flex-wrap:wrap;gap:8px 40px;padding:20px 0;border-bottom:1px solid var(--line)}
+.ky-log time{flex:0 0 120px;font-family:"Geist Mono",ui-monospace,monospace;font-size:13px;color:var(--faint)}
+.ky-log span{flex:1 1 300px;font-size:16px;line-height:1.5}
+.ky-lane{display:flex;align-items:center;gap:8px;padding:10px 10px 4px}
+.ky-lane i{flex:none;width:8px;height:8px;border-radius:2px}
+.ky-lane em{font-style:normal;margin-left:auto;font-size:11px;color:var(--faint)}
+/* the form, cloned into each [data-join] from the template below */
+.ky-join{width:100%;max-width:480px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.ky-form{position:relative;width:100%;display:flex;flex-wrap:wrap;gap:8px;padding:6px;box-sizing:border-box;border-radius:14px;background:oklch(0.19 0.004 286);border:1px solid oklch(1 0 0 / 10%)}
+.ky-form:focus-within{border-color:oklch(0.87 0.19 125 / 55%)}
+.ky-email{flex:1 1 220px;min-width:0;min-height:44px;padding:0 14px;border:0;border-radius:10px;background:transparent;color:var(--ink);font:inherit;font-size:16px}
+.ky-email:focus-visible{outline:none}
+.ky-joinbtn{flex:0 0 auto;border:0;cursor:pointer;font-family:inherit}
+.ky-joinbtn[disabled]{opacity:.6;cursor:progress}
+.ky-hp{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
+.ky-note{margin:0;font-size:13px;color:var(--faint);text-align:center}
+.ky-err{margin:0;font-size:13px;color:oklch(0.85 0.1 80);text-align:center}
+.ky-joined{width:100%;box-sizing:border-box;padding:22px 20px;border-radius:14px;background:oklch(0.19 0.004 286);border:1px solid oklch(0.87 0.19 125 / 45%);display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center}
+.ky-joined-h{font-size:18px;font-weight:600}
+.ky-joined-h:focus,.ky-thanks:focus{outline:none}
+.ky-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:6px}
+.ky-chip{min-height:36px;padding:0 14px;border-radius:999px;font:inherit;font-size:14px;cursor:pointer;background:transparent;color:var(--ink-2);border:1px solid oklch(1 0 0 / 14%)}
+.ky-chip:hover{border-color:oklch(1 0 0 / 28%)}
+.ky-chip[aria-pressed="true"]{background:var(--lime);color:var(--lime-ink);border-color:var(--lime)}
+.ky-why{width:100%;display:flex;flex-wrap:wrap;gap:6px}
+.ky-why input{flex:1 1 200px;min-width:0;min-height:40px;padding:0 12px;box-sizing:border-box;border:1px solid oklch(1 0 0 / 12%);border-radius:10px;background:oklch(0.16 0.004 286);color:var(--ink);font:inherit;font-size:16px}
+.ky-why button{flex:0 0 auto;min-height:40px;padding:0 14px;border-radius:10px;border:1px solid oklch(1 0 0 / 14%);background:transparent;color:var(--ink);font:inherit;font-size:14px;cursor:pointer}
+.ky-thanks{font-size:13px;color:var(--lime)}
+[hidden]{display:none!important}
+@media (max-width:600px){.ky-verbs{display:none!important}.ky-wrap{padding-left:16px;padding-right:16px}.ky-topnav{display:none!important}.ky-h1{white-space:normal;font-size:38px}.ky-joinbtn{flex:1 1 100%!important;justify-content:center}.ky-sec{padding-bottom:104px}}
+</style>
+<script>window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };</script>
+<script defer src="/_vercel/insights/script.js"></script>
+</head>
+<body>
+<div class="ky-page">
+
+  <header style="position: relative; z-index: 3; border-bottom: 1px solid oklch(1 0 0 / 7%)">
+    <div class="ky-wrap" style="max-width: 1120px; margin: 0 auto; padding-top: 14px; padding-bottom: 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px 36px">
+        <a href="#top" aria-label="dsul home" style="display: flex; align-items: baseline; gap: 2px; text-decoration: none; font-weight: 600; font-size: 20px; letter-spacing: -0.04em">dsul<span style="display: inline-block; width: 5px; height: 5px; border-radius: 1.5px; background: var(--lime)"></span></a>
+        <nav class="ky-nav ky-topnav" aria-label="Main" style="display: flex; flex-wrap: wrap; gap: 8px 24px">
+          <a href="#reentry">the comeback</a>
+          <a href="#loop">how it works</a>
+          <a href="#changelog">changelog</a>
+        </nav>
+      </div>
+      <a class="ky-btn ky-btn-light" href="#join" style="min-height: 36px; font-size: 14px; padding: 0 14px">get early access</a>
+    </div>
+  </header>
+
+  <main>
+  <!-- hero -->
+  <section id="top" class="ky-wrap" style="position: relative; padding-top: 96px">
+    <div class="ky-field" id="ky-field" aria-hidden="true"></div>
+    <div class="ky-scrim" aria-hidden="true"></div>
+    <div style="position: relative; z-index: 1; max-width: 1040px; margin: 0 auto; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 22px">
+      <a href="#join" style="display: inline-flex; align-items: center; gap: 10px; padding: 6px 12px 6px 6px; border-radius: 999px; background: oklch(0.2 0.004 286); border: 1px solid oklch(1 0 0 / 9%); font-size: 13px; color: oklch(0.8 0.008 286); text-decoration: none">
+        <span style="padding: 2px 8px; border-radius: 999px; background: var(--lime); color: var(--lime-ink); font-weight: 600">soon</span>
+        engine's warming up. save your spot
+        <span aria-hidden="true">→</span>
+      </a>
+      <h1 class="ky-h ky-h1">your tasks aren't overdue.
+they're just hanging out.</h1>
+      <p style="margin: 0; max-width: 660px; font-size: 18px; line-height: 1.55; color: oklch(0.78 0.008 286); text-wrap: balance">dsul is a day planner: braindump everything, drag a few onto today, carry the rest to tomorrow. whatever you didn't finish just waits its turn, and never goes red.</p>
+      <p style="margin: 0; font-size: 14px; color: var(--ink-2)">built for (and by) brains that bounce off every other planner.</p>
+      <div id="join" class="ky-join" data-join="hero" style="margin-top: 4px"></div>
+    </div>
+
+    <!-- hero mock: today, with the leftovers fold open -->
+    <div style="position: relative; z-index: 1; max-width: 1000px; margin: 64px auto 0; padding-bottom: 136px">
+      <div class="ky-ann ky-ann-out" style="top: 112px"><span aria-hidden="true">←</span> just hanging out</div>
+      <div class="ky-ann ky-ann-in"><span aria-hidden="true">↓</span> just hanging out</div>
+      <div class="ky-mock" style="position: relative" role="img" aria-label="dsul's Today view. At the top, four things from earlier days wait in a faded fold called From earlier, each with the weekday it was planned for in grey and no red. Below, the morning, afternoon and evening lists, and the braindump on the left.">
+        <div style="display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-bottom: 1px solid oklch(1 0 0 / 7%); background: oklch(0.155 0.004 286)">
+          <span style="width: 9px; height: 9px; border-radius: 50%; background: oklch(0.32 0.004 286)"></span><span style="width: 9px; height: 9px; border-radius: 50%; background: oklch(0.32 0.004 286)"></span><span style="width: 9px; height: 9px; border-radius: 50%; background: oklch(0.32 0.004 286)"></span>
+        </div>
+        <div style="display: flex; flex-wrap: wrap; text-align: left">
+          <!-- braindump -->
+          <div class="ky-side" style="display: flex; flex-direction: column; gap: 10px; padding: 14px 12px">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 0 10px">
+              <span style="font-weight: 500; color: oklch(0.95 0.003 286)">Braindump</span>
+              <span class="ky-date">23 undated</span>
+              <span class="ky-obtn" style="margin-left: auto; height: 22px; padding: 0 8px; font-size: 11px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"></path></svg>do stuff</span>
+            </div>
+            <div>
+              <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">is it hot sauce season</span></div>
+              <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">gift for jo???</span></div>
+              <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">renew passport (before it's an emergency)</span></div>
+              <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">fix the wobbly chair</span></div>
+              <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">find the good tape</span></div>
+            </div>
+            <div style="flex: 1; min-height: 12px"></div>
+            <div style="border-radius: 12px; border: 1px solid oklch(1 0 0 / 9%); background: oklch(0.18 0.004 286); padding: 8px; display: flex; flex-direction: column; gap: 8px">
+              <div style="padding: 9px 10px; border-radius: 8px; background: oklch(0.15 0.004 286); border: 1px solid var(--line); color: oklch(0.55 0.01 286)">Add a task or search…</div>
+            </div>
+          </div>
+          <!-- today -->
+          <div class="ky-canvas" style="padding: 22px 24px 28px; display: flex; flex-direction: column; gap: 18px">
+            <div style="font-size: 20px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink)">Monday, November 2</div>
+            <div style="display: flex; flex-direction: column; gap: 2px">
+              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 0 10px 4px; font-size: 12px">
+                <span style="color: var(--muted)">From earlier</span>
+                <span style="color: var(--faint)">4</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="oklch(0.6 0.01 286)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+                <span style="margin-left: auto; display: inline-flex; gap: 12px; color: var(--faint)"><span>Keep all</span><span>Send all to sidebar</span></span>
+              </div>
+              <div class="ky-row ky-ghost" style="align-items: center; background: oklch(1 0 0 / 5%)">
+                <span class="ky-chk ky-chk-ghost" style="margin-top: 0"></span><span class="ky-t">text the group chat back</span>
+                <span class="ky-verbs" style="flex: none; display: inline-flex; align-items: center; gap: 2px">
+                  <span class="ky-ibtn" title="Keep for today"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></span>
+                  <span class="ky-ibtn" title="Move to tomorrow"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"></path></svg></span>
+                  <span class="ky-ibtn" title="Reschedule"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></span>
+                  <span class="ky-ibtn" title="Send to sidebar"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4v16M21 12H7M12 7l-5 5 5 5"></path></svg></span>
+                  <span class="ky-ibtn" title="Let it go"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></span>
+                </span>
+                <span class="ky-date">Sun</span>
+              </div>
+              <div class="ky-row ky-ghost"><span class="ky-chk ky-chk-ghost"></span><span class="ky-t">return the library book (it's fine)</span><span class="ky-date">Fri</span></div>
+              <div class="ky-row ky-ghost"><span class="ky-chk ky-chk-ghost"></span><span class="ky-t">cancel the free trial (before it's not free)</span><span class="ky-date">Thu</span></div>
+              <div class="ky-row ky-ghost"><span class="ky-chk ky-chk-ghost"></span><span class="ky-t">learn the ukulele</span><span class="ky-date">Tue</span></div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <div class="ky-lbl" style="padding: 0 10px">Morning</div>
+              <div class="ky-row" style="background: oklch(1 0 0 / 3%)"><span class="ky-chk ky-chk-done"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="oklch(0.22 0.05 130)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg></span><span class="ky-t" style="text-decoration: line-through; color: var(--faint)">drink a water</span></div>
+              <div class="ky-row" style="background: oklch(1 0 0 / 3%)"><span class="ky-chk"></span><span class="ky-t">reply to sam (the short reply, not the essay)</span></div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <div class="ky-lbl" style="padding: 0 10px">Afternoon</div>
+              <div class="ky-row" style="background: oklch(1 0 0 / 3%)"><span class="ky-chk"></span><span class="ky-t">go outside on purpose</span></div>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <div class="ky-lbl" style="padding: 0 10px">Evening</div>
+              <div style="height: 32px; border-radius: 8px; border: 1px dashed oklch(1 0 0 / 9%)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p style="margin: 18px auto 0; max-width: 560px; text-align: center; font-size: 14px; line-height: 1.5; color: var(--faint)">whatever you didn't get to waits at the top of today, a little faded, with the day you meant to do it. no red, not even for the ukulele.</p>
+    </div>
+  </section>
+
+  <!-- the comeback -->
+  <section id="reentry" class="ky-wrap"><div class="ky-sec ky-split">
+    <div class="ky-copy">
+      <p class="ky-eb">so. you're back.</p>
+      <h2 class="ky-h ky-h2">a planner you can ghost. it gets it.</h2>
+      <p class="ky-lead">bad week, long weekend, a few days of radio silence: come back to nothing red or yelling. in the search bar, choose "Pick things back up" and dsul hands you a few from the past week, no ai required.</p>
+      <ul class="ky-items">
+        <li><h3>five, tops</h3><p>it offers up to five things from the past week and leaves the rest alone. a card listing thirty forgotten things is just the pile again.</p></li>
+        <li><h3>leftovers, out where you can see them</h3><p>what you didn't get to shows up faded at the top of today. keep it, push it to tomorrow, send it back to the braindump or let it go. a long list starts folded.</p></li>
+        <li><h3>all sorted</h3><p>sort the last one and it says "All sorted, you got this". then it gets out of your way.</p></li>
+      </ul>
+      <p class="ky-fn">nothing gets shuffled behind your back. it all waits until you decide.</p>
+    </div>
+    <div class="ky-art" style="display: flex; flex-wrap: wrap; align-items: center; gap: 20px 24px">
+      <div class="ky-mock" role="img" aria-label="The catch-up card: Pick 3 things back up, with one line dropped and a Do these 2 button." style="flex: 1 1 320px; max-width: 400px; padding: 12px; background: oklch(0.155 0.004 286)">
+        <div style="border-radius: 12px; background: oklch(0.2 0.004 286); border: 1px solid oklch(1 0 0 / 10%); padding: 16px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; align-items: center; gap: 10px">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" style="overflow: visible; flex: none"><rect x="0" y="8" width="8" height="8" rx="2" fill="oklch(0.87 0.19 125)"></rect><rect x="7" y="3" width="6" height="6" rx="1.5" fill="oklch(0.86 0.16 160)"></rect><rect x="12" y="0" width="4" height="4" rx="1" fill="oklch(0.84 0.12 190)"></rect></svg>
+            <span style="font-size: 14px; font-weight: 500; color: var(--ink)">Pick 3 things back up</span>
+          </div>
+          <div style="color: var(--muted); line-height: 1.5">Moving these to today. The other 9 can keep waiting. They're not going anywhere.</div>
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <div class="ky-row" style="padding: 6px 8px; background: oklch(1 0 0 / 4%)"><span style="flex: none; width: 14px; text-align: center; color: var(--ink-2)">•</span><span class="ky-t">text the group chat back: move to Mon Nov 2</span></div>
+            <div class="ky-row" style="padding: 6px 8px"><span style="flex: none; width: 14px; text-align: center; color: oklch(0.55 0.01 286)">×</span><span class="ky-t" style="text-decoration: line-through; color: oklch(0.55 0.01 286)">return the library book (it's fine): move to Mon Nov 2</span></div>
+            <div class="ky-row" style="padding: 6px 8px; background: oklch(1 0 0 / 4%)"><span style="flex: none; width: 14px; text-align: center; color: var(--ink-2)">•</span><span class="ky-t">cancel the free trial (before it's not free): move to Mon Nov 2</span></div>
+          </div>
+          <div style="display: flex; gap: 8px; padding-top: 2px"><span class="ky-pbtn">Do these 2</span><span class="ky-obtn" style="height: 28px; border-color: transparent">Not now</span></div>
+        </div>
+      </div>
+      <div class="ky-anncol" style="flex: 0 1 190px; align-self: stretch; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; padding: 34px 0 26px">
+        <div class="ky-ann ky-arr">works with no ai connected</div>
+        <div class="ky-ann ky-arr">up to five, all from the past week</div>
+        <div class="ky-ann ky-arr">one undo takes it all back</div>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- the loop -->
+  <section id="loop" class="ky-wrap"><div class="ky-sec">
+    <p class="ky-eb">how it works</p>
+    <h2 class="ky-h ky-h2">dump it. drag it. do it.</h2>
+    <p class="ky-lead" style="margin-bottom: 44px">three moves, roughly in that order, on a good day. on a bad day, just the first one counts.</p>
+    <ol class="ky-grid3 ky-loop">
+      <li class="ky-card" style="padding: 22px; display: flex; flex-direction: column; gap: 20px">
+        <div role="img" aria-label="The braindump list, with one item lifted to drag." style="min-height: 200px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2)">
+          <div style="display: flex; justify-content: space-between; padding: 0 10px 6px"><span style="font-weight: 500; color: oklch(0.95 0.003 286)">Braindump</span><span class="ky-date">23 undated</span></div>
+          <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">renew passport (before it's an emergency)</span></div>
+          <div class="ky-row" style="background: oklch(0.25 0.004 286); box-shadow: 0 10px 24px oklch(0 0 0 / 50%), 0 0 0 1px oklch(1 0 0 / 10%); transform: translate(14px, 2px); align-items: center">
+            <svg width="10" height="14" viewBox="0 0 10 14" aria-hidden="true" style="flex: none; color: var(--faint)"><circle cx="2.5" cy="2.5" r="1.3" fill="currentColor"></circle><circle cx="7.5" cy="2.5" r="1.3" fill="currentColor"></circle><circle cx="2.5" cy="7" r="1.3" fill="currentColor"></circle><circle cx="7.5" cy="7" r="1.3" fill="currentColor"></circle><circle cx="2.5" cy="11.5" r="1.3" fill="currentColor"></circle><circle cx="7.5" cy="11.5" r="1.3" fill="currentColor"></circle></svg>
+            <span class="ky-chk" style="margin-top: 0"></span><span class="ky-t" style="color: var(--ink)">is it hot sauce season</span>
+          </div>
+          <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">gift for jo???</span></div>
+          <div style="margin-top: 6px; padding: 8px 10px; border-radius: 8px; border: 1px solid oklch(1 0 0 / 9%); color: oklch(0.55 0.01 286)">Add item</div>
+        </div>
+        <div><div class="ky-step">01</div><h3>dump it</h3><p>every loose thought goes in the braindump, no date required. it's extremely good at waiting.</p></div>
+      </li>
+      <li class="ky-card" style="padding: 22px; display: flex; flex-direction: column; gap: 20px">
+        <div role="img" aria-label="An hour strip with the item dropped at 2 pm." style="min-height: 200px; display: grid; grid-template-columns: 44px minmax(0, 1fr); grid-template-rows: 52px 52px 52px; align-content: center; font-size: 12px">
+          <span class="ky-mono" style="color: var(--faint); border-top: 1px solid oklch(1 0 0 / 7%); padding-top: 4px">1 pm</span><span style="border-top: 1px solid oklch(1 0 0 / 7%)"></span>
+          <span class="ky-mono" style="color: var(--faint); border-top: 1px solid oklch(1 0 0 / 7%); padding-top: 4px">2 pm</span>
+          <span style="border-top: 1px solid oklch(1 0 0 / 7%); position: relative"><span class="ky-blk" style="left: 0; right: 0; top: 2px; height: 46px; font-size: 13px">is it hot sauce season</span></span>
+          <span class="ky-mono" style="color: var(--faint); border-top: 1px solid oklch(1 0 0 / 7%); padding-top: 4px">3 pm</span><span style="border-top: 1px solid oklch(1 0 0 / 7%)"></span>
+        </div>
+        <div><div class="ky-step">02</div><h3>drag it</h3><p>pull the ones that matter onto today, right onto an hour if you want. the rest can wait, they're fine.</p></div>
+      </li>
+      <li class="ky-card" style="padding: 22px; display: flex; flex-direction: column; gap: 20px">
+        <div role="img" aria-label="One item ticked off, and the right-click menu open on another." style="min-height: 200px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2)">
+          <div class="ky-row" style="align-items: center"><span class="ky-chk ky-chk-done"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="oklch(0.22 0.05 130)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg></span><span style="text-decoration: line-through; color: var(--faint)">is it hot sauce season</span><span class="ky-ann">(it was.)</span></div>
+          <div class="ky-row" style="background: oklch(1 0 0 / 6%)"><span class="ky-chk"></span><span class="ky-t">fold the laundry chair</span></div>
+          <div class="ky-menu" style="align-self: flex-start; margin: 2px 0 0 34px; min-width: 190px">
+            <div><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>Mark done</div>
+            <div style="background: oklch(1 0 0 / 8%)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"></path></svg>Move to tomorrow</div>
+            <div><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg><span style="flex: 1">Reschedule</span><span style="color: var(--faint)">›</span></div>
+            <div><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path></svg>Move to Braindump</div>
+          </div>
+        </div>
+        <div><div class="ky-step">03</div><h3>do it</h3><p>tick it off, or carry it to tomorrow. both count as being a person.</p></div>
+      </li>
+    </ol>
+    <p class="ky-fn">on a phone, drag a thought from the braindump right onto an hour too, or tap its menu and pick morning, afternoon or evening.</p>
+  </div></section>
+
+  <!-- the grid -->
+  <section id="grid" class="ky-wrap"><div class="ky-sec ky-split">
+    <div class="ky-copy">
+      <p class="ky-eb">then, the actual day</p>
+      <h2 class="ky-h ky-h2">plan your day on a grid</h2>
+      <p class="ky-lead">give it an exact hour, or toss it in a loose morning, afternoon or evening. on a computer, flip from day to week and see all seven.</p>
+      <ul class="ky-items">
+        <li><h3>stretchy blocks</h3><p>on a computer, pull an edge when the "five minute" thing takes ninety. it snaps to 15 minutes, because 13 is chaos.</p></li>
+        <li><h3>double-booked? fine.</h3><p>overlaps share the hour, fully labelled, no warning badge. an overlap isn't an error, it's a tuesday.</p></li>
+        <li><h3>a little lime marker</h3><p>it shows where you are in today. it does not tap its watch.</p></li>
+        <li><h3>the planner that never goes red at you.</h3><p>no overdue badges, no warning labels, no side-eye. leftovers just show up a little faded.</p></li>
+      </ul>
+      <p class="ky-fn">calendar sync is on the list.</p>
+    </div>
+    <div class="ky-art" style="display: flex; flex-direction: column; gap: 12px">
+      <div class="ky-mock" role="img" aria-label="The day schedule: an anytime item, two overlapping blocks sharing an hour, a small lime now marker, and a block being stretched to an hour and a half." style="padding: 16px 16px 20px">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px">
+          <span class="ky-seg"><span class="on">Day</span><span>Week</span></span>
+          <span class="ky-seg"><span>Buckets</span><span class="on">Schedule</span><span>List</span></span>
+        </div>
+        <div style="font-size: 18px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink); margin-bottom: 12px">Monday, November 2</div>
+        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 0 12px; margin-left: 48px">
+          <span class="ky-lbl">Anytime</span>
+          <span style="padding: 4px 10px; border-radius: 999px; background: oklch(0.25 0.008 286); font-size: 12px">water the plant (the one that's still alive)</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 48px minmax(0, 1fr)">
+          <div class="ky-mono" style="display: grid; grid-template-rows: repeat(5, 52px); font-size: 11px; color: var(--faint)">
+            <span style="transform: translateY(-7px)">9 am</span><span style="transform: translateY(-7px)">10 am</span><span style="transform: translateY(-7px)">11 am</span><span style="transform: translateY(-7px)">12 pm</span><span style="transform: translateY(-7px)">1 pm</span>
+          </div>
+          <div style="position: relative; height: 260px; background: repeating-linear-gradient(180deg, oklch(1 0 0 / 7%) 0 1px, transparent 1px 52px)">
+            <div class="ky-blk" style="left: 2px; right: 2px; top: 2px; height: 24px; padding-top: 4px">standup (cameras optional)</div>
+            <div class="ky-blk" style="left: 2px; width: calc(50% - 4px); top: 54px; height: 24px; padding-top: 4px; border-left-color: oklch(0.64 0.11 265)">dentist</div>
+            <div class="ky-blk" style="left: calc(50% + 2px); right: 2px; top: 54px; height: 24px; padding-top: 4px; border-left-color: oklch(0.66 0.1 55)">call mom back</div>
+            <div aria-hidden="true" style="position: absolute; left: 2px; right: 2px; top: 53px; height: 1px; background: oklch(1 0 0 / 14%)"></div>
+            <div aria-hidden="true" style="position: absolute; left: -4px; top: 83px; width: 8px; height: 8px; background: var(--lime); transform: rotate(45deg); border-radius: 1.5px"></div>
+            <div aria-hidden="true" style="position: absolute; left: 4px; top: 86.5px; width: 22px; height: 1.5px; background: var(--lime)"></div>
+            <div class="ky-blk" style="left: 2px; right: 2px; top: 106px; height: 74px; border-left-color: oklch(0.66 0.1 140); background: oklch(0.28 0.008 286); box-shadow: 0 8px 22px oklch(0 0 0 / 45%), 0 0 0 1px oklch(1 0 0 / 12%); display: flex; flex-direction: column; justify-content: space-between">
+              <span>write the thing for sam</span>
+              <span class="ky-mono" style="align-self: flex-end; font-size: 11px; color: oklch(0.78 0.008 286)">1h 30m</span>
+              <span style="position: absolute; left: 50%; bottom: 3px; width: 22px; height: 3px; margin-left: -11px; border-radius: 2px; background: oklch(1 0 0 / 45%)"></span>
+            </div>
+            <div class="ky-blk" style="left: 2px; right: 2px; top: 184px; height: 36px; border-left-color: oklch(0.72 0.1 85)">lunch, actually</div>
+          </div>
+        </div>
+      </div>
+      <div class="ky-mock" role="img" aria-label="The same day as loose buckets: morning, afternoon and evening." style="padding: 14px 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px">
+        <div><div class="ky-lbl" style="margin-bottom: 6px">Morning</div><div class="ky-row" style="padding: 6px 8px; background: oklch(1 0 0 / 4%)"><span class="ky-chk"></span><span class="ky-t">stretch, sort of</span></div></div>
+        <div><div class="ky-lbl" style="margin-bottom: 6px">Afternoon</div><div class="ky-row" style="padding: 6px 8px; background: oklch(1 0 0 / 4%)"><span class="ky-chk"></span><span class="ky-t">the thing for sam</span></div></div>
+        <div><div class="ky-lbl" style="margin-bottom: 6px">Evening</div><div class="ky-row" style="padding: 6px 8px; background: oklch(1 0 0 / 4%)"><span class="ky-chk"></span><span class="ky-t">text jo back</span></div></div>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- do stuff -->
+  <section id="do-stuff" class="ky-wrap"><div class="ky-sec ky-split">
+    <div class="ky-copy">
+      <p class="ky-eb">too much to pick from?</p>
+      <h2 class="ky-h ky-h2">press do stuff. the pile gets moving.</h2>
+      <p class="ky-lead">once the braindump gets long, a "do stuff" key shows up in its corner. press it and the pile splits into lanes: do it now, do it for me, today, another day, later, whatever. then the next thing opens in today's free time, with done and skip.</p>
+      <ul class="ky-items">
+        <li><h3>fifteen things, all the same weight</h3><p>so none of them gets picked. splitting off the quick ones is usually all it takes to start.</p></li>
+        <li><h3>you're the boss of the lanes</h3><p>don't like where something landed? tap its lane chip, or swipe it on a phone.</p></li>
+        <li><h3>nothing moves until "make it so"</h3><p>done counts as you go. the lanes wait for "make it so", then everything lands on its day in one go.</p></li>
+      </ul>
+      <p class="ky-fn">it's on from the start, and it stays out of sight until the list is long enough to need it.</p>
+    </div>
+    <div class="ky-art">
+      <div class="ky-mock" role="img" aria-label="The braindump sorted into lanes: do it now, today, another day, later and whatever, with a make it so button." style="max-width: 460px; margin: 0 auto; padding: 8px 8px 12px">
+        <div class="ky-lane"><i style="background: var(--ink)"></i><span>do it now</span><em>yes u can</em></div>
+        <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">reply to sam (the short reply)</span><span class="ky-date">5m</span></div>
+        <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">water the plant</span><span class="ky-date">2m</span></div>
+        <div class="ky-lane"><i style="background: oklch(0.66 0.1 55)"></i><span>today</span></div>
+        <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">renew passport (before it's an emergency)</span></div>
+        <div class="ky-lane"><i style="background: oklch(0.66 0.09 190)"></i><span>another day</span></div>
+        <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">fix the wobbly chair</span><span class="ky-date">Sat</span></div>
+        <div class="ky-lane"><i style="background: var(--faint)"></i><span>later</span></div>
+        <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">learn the ukulele</span></div>
+        <div class="ky-lane"><i style="background: oklch(1 0 0 / 14%)"></i><span>whatever</span></div>
+        <div class="ky-row"><span class="ky-chk"></span><span class="ky-t" style="color: var(--faint)">is it hot sauce season</span></div>
+        <div style="display: flex; justify-content: flex-end; padding: 10px 10px 0"><span class="ky-pbtn">make it so</span></div>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- ai -->
+  <section id="ai" class="ky-wrap"><div class="ky-sec ky-split">
+    <div class="ky-copy">
+      <p class="ky-eb">need a hand?</p>
+      <h2 class="ky-h ky-h2">bring your own ai. or don't.</h2>
+      <p class="ky-lead">connect openai, anthropic, google gemini, openrouter or anything openai-compatible, or start with google's free key, no card needed. your key is sealed on our server and never shown again, not even the last four.</p>
+      <ul class="ky-items">
+        <li><h3>it proposes, you tap</h3><p>suggestions arrive as a card. drop any line you don't like, take the rest in one tap, and one undo takes the whole plan back.</p></li>
+        <li><h3>no ai? still a whole planner</h3><p>with no model connected there are no ai buttons, just one "set up ai" key. say "no ai, thanks" and that goes too.</p></li>
+        <li><h3>dsul never charges for ai</h3><p>there's no model key of our own. google's free key costs nothing, other providers bill you directly. when you ask, your question and the bits of your plan it needs go from our server to your model.</p></li>
+        <li><h3>nothing to paste</h3><p>sign in with openrouter in your browser and there's no key to copy at all.</p></li>
+      </ul>
+      <p class="ky-fn">"anything openai-compatible" means a public https address. sorry, localhost. on google's free plan, google may use what you send to improve its products.</p>
+    </div>
+    <div class="ky-art">
+      <div class="ky-mock" role="img" aria-label="Setting up AI: get a free key from Google and paste it in, or sign in with OpenRouter, or use a key you already have. Below, good to know: cost and your key." style="padding: 22px; display: flex; flex-direction: column; gap: 14px; max-width: 520px; margin: 0 auto">
+        <div style="display: flex; align-items: center; gap: 10px"><span style="font-size: 15px; font-weight: 600; color: var(--ink)">Connection</span><span style="padding: 1px 8px; border-radius: 999px; background: oklch(1 0 0 / 8%); font-size: 11px; color: var(--muted)">Not set up</span></div>
+        <div style="border-radius: 10px; border: 1px solid oklch(1 0 0 / 10%); padding: 14px; display: flex; flex-direction: column; gap: 10px">
+          <span style="align-self: flex-start; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--lime); font-size: 11px; color: var(--lime)">Free, no card</span>
+          <div style="font-weight: 500; color: oklch(0.95 0.003 286)">Get a free key from Google</div>
+          <div style="font-size: 12px; color: var(--faint); line-height: 1.45">Anyone with a Google account can make one.</div>
+          <span style="font-size: 12px; font-weight: 500; color: oklch(0.9 0.004 286)">Your Gemini key</span>
+          <div class="ky-mono" style="padding: 9px 10px; border-radius: 8px; border: 1px solid oklch(1 0 0 / 12%); background: oklch(0.15 0.004 286); font-size: 12px; color: oklch(0.5 0.01 286)">AIza…</div>
+          <div><span class="ky-pbtn">Connect</span></div>
+        </div>
+        <div style="border-radius: 10px; border: 1px solid oklch(1 0 0 / 10%); padding: 12px 14px; display: flex; align-items: center; gap: 12px">
+          <div style="flex: 1; min-width: 0"><div style="font-weight: 500; color: oklch(0.95 0.003 286); margin-bottom: 3px">Sign in with OpenRouter</div><div style="font-size: 12px; color: var(--faint)">Free models on a new, free account. Nothing to copy.</div></div><span style="color: var(--faint)">›</span>
+        </div>
+        <div style="border-radius: 10px; border: 1px solid oklch(1 0 0 / 10%); padding: 12px 14px; display: flex; align-items: center; gap: 12px">
+          <div style="flex: 1; min-width: 0"><div style="font-weight: 500; color: oklch(0.95 0.003 286); margin-bottom: 3px">I already use OpenAI, Anthropic, Gemini or another service</div><div style="font-size: 12px; color: var(--faint)">Paste a key you have, use your own server, or pair OpenClaw.</div></div><span style="color: var(--faint)">›</span>
+        </div>
+        <div style="font-size: 12px; line-height: 1.5; color: var(--faint)"><b style="font-weight: 500; color: var(--muted)">Cost.</b> Google’s free key costs nothing. dsul never charges for AI.<br><b style="font-weight: 500; color: var(--muted)">Your key.</b> Stored encrypted on dsul’s server and never shown again, not even to you.</div>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- agent, future tense -->
+  <section id="agent" class="ky-wrap"><div class="ky-sec ky-split">
+    <div class="ky-copy">
+      <p class="ky-eb">coming soon</p>
+      <h2 class="ky-h ky-h2">soon: link an agent.</h2>
+      <p class="ky-lead">openclaw, claude, cursor, anything that speaks mcp. you'll hand it a task, watch it work and take it back any time, and we'll keep the receipts.</p>
+      <ul class="ky-items">
+        <li><h3>it'll ask, not guess</h3><p>when it's stuck, it'll leave you a question under "Needs you", with one-tap answers.</p></li>
+        <li><h3>it'll say when it stalls</h3><p>if there's no word for an hour, the row will just say "Gone quiet". no drama.</p></li>
+        <li><h3>take it back, no hard feelings</h3><p>you'll right-click and pick "Take back from OpenClaw" whenever you like. it won't sulk.</p></li>
+      </ul>
+      <p class="ky-fn">this section is in the future tense on purpose. it flips once we've watched it work end to end.</p>
+    </div>
+    <div class="ky-art">
+      <div class="ky-mock" role="img" aria-label="A preview of the agent hand-off, marked coming: a question from OpenClaw with one-tap answers, a task it is working on, and the menu row to take it back." style="position: relative; padding: 20px; max-width: 480px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px">
+        <span class="ky-mono" style="position: absolute; top: 14px; right: 14px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--lime); font-size: 11px; color: var(--lime)">coming</span>
+        <div class="ky-lbl">Needs you · 1</div>
+        <div style="border-radius: 10px; background: oklch(0.2 0.004 286); border: 1px solid oklch(1 0 0 / 9%); padding: 14px; display: flex; flex-direction: column; gap: 10px">
+          <div style="font-size: 11px; color: var(--faint)">OpenClaw asks</div>
+          <div style="font-size: 14px; color: var(--ink)">book the dentist (the nice one): Tue or Thu?</div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px"><span class="ky-obtn">Tue 3pm</span><span class="ky-obtn">Thu 10am</span><span class="ky-obtn">Other…</span></div>
+        </div>
+        <div class="ky-row" style="align-items: center; padding: 8px 10px; background: oklch(1 0 0 / 4%)"><span class="ky-chk" style="margin-top: 0"></span><span class="ky-t"><span class="ky-sheen">renew the car registration</span></span></div>
+        <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; margin-left: 24px">
+          <div class="ky-menu" style="min-width: 110px"><div style="background: oklch(1 0 0 / 8%)"><span style="flex: 1">AI</span><span style="color: var(--faint)">›</span></div></div>
+          <div class="ky-menu" style="min-width: 200px"><div><span style="flex: 1">Take back from OpenClaw</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- never -->
+  <section id="never" class="ky-wrap"><div class="ky-sec">
+    <p class="ky-eb">promises</p>
+    <h2 class="ky-h ky-h2">things dsul will never do</h2>
+    <p class="ky-lead" style="margin-bottom: 40px">do stuff unlimited. guilt extremely limited.</p>
+    <ul class="ky-grid3 ky-never">
+      <li class="ky-card"><span class="ky-step">01</span><span><b>turn late stuff red</b>not even a little. not even on a monday.</span></li>
+      <li class="ky-card"><span class="ky-step">02</span><span><b>tell you how far behind you are</b>it shows what's left and the day you meant to do it. never how many days late.</span></li>
+      <li class="ky-card"><span class="ky-step">03</span><span><b>throw out the stuff you didn't get to</b>even the optional auto-clear only moves old stuff back to the braindump. the same morning, there's a "Put back" button.</span></li>
+      <li class="ky-card"><span class="ky-step">04</span><span><b>send you a motivational quote</b>you're welcome.</span></li>
+      <li class="ky-card"><span class="ky-step">05</span><span><b>call you a "high performer"</b>you're a person. that's plenty.</span></li>
+      <li class="ky-card"><span class="ky-step">06</span><span><b>make you pick a methodology</b>no frogs were eaten in the making of this planner.</span></li>
+    </ul>
+  </div></section>
+
+  <!-- teeth, way down -->
+  <section id="teeth" class="ky-wrap"><div class="ky-sec ky-split" style="gap: 40px">
+    <div class="ky-copy">
+      <p class="ky-eb">way down here, on purpose</p>
+      <h2 class="ky-h" style="margin: 0 0 14px; font-size: clamp(26px, 3.2vw, 36px); line-height: 1.1; letter-spacing: -0.04em; font-weight: 600">teeth, if you want them.</h2>
+      <p class="ky-lead" style="font-size: 16px">all of it starts off. switch on reminders and they knock at the time you pick, with done and snooze right on the notification. want more? streaks count from day one and the flames show when you say so. there's a last call in the evening, a beeminder goal that puts money on the habit, a friend who gets your day in slack or discord, and a phone that actually rings.</p>
+      <p class="ky-fn">texts and calls run on your own twilio account. in our own words: "a call for every reminder is a lot."</p>
+    </div>
+    <div class="ky-art" style="flex-grow: 1">
+      <div class="ky-mock" role="img" aria-label="Opt-in switches, all off: streaks, Beeminder, an accountability partner, calls and texts." style="max-width: 460px; margin: 0 auto; padding: 6px 0">
+        <div class="ky-switch"><div><b>Streaks</b><small>Keep the chain visible</small></div><span class="ky-sw"></span></div>
+        <div class="ky-switch"><div><b>Beeminder</b><small>Put money on the habit</small></div><span class="ky-sw"></span></div>
+        <div class="ky-switch"><div><b>Accountability partner</b><small>Someone reads your day</small></div><span class="ky-sw"></span></div>
+        <div class="ky-switch"><div><b>Call me</b><small>A last call that rings</small></div><span class="ky-sw"></span></div>
+        <div class="ky-switch"><div><b>Text me</b><small>Reminders by text</small></div><span class="ky-sw"></span></div>
+      </div>
+    </div>
+  </div></section>
+
+  <!-- changelog -->
+  <section id="changelog" class="ky-wrap"><div class="ky-sec">
+    <p class="ky-eb">changelog</p>
+    <h2 class="ky-h ky-h2" style="margin-bottom: 36px">not out yet. shipping anyway.</h2>
+    <div class="ky-log">
+      <div><time datetime="2026-11-01">nov 1</time><span>reminders got a "send a test" button, and they tell you plainly when something would stop one ringing.</span></div>
+      <div><time datetime="2026-10-31">oct 31</time><span>atlas: your projects, routines, seasons and goals as cards on a map you can pan and zoom. on a computer, for now.</span></div>
+      <div><time datetime="2026-10-30">oct 30</time><span>leftovers on today. yesterday's unfinished bits wait, faded, at the top until you keep them, move them or let them go.</span></div>
+      <div><time datetime="2026-10-23">oct 23</time><span>change it on your phone and the open laptop catches up on its own. also: rename things in place, and drag rows to reorder.</span></div>
+      <div><time datetime="2026-10-20">oct 20</time><span>paste a messy paragraph and your ai splits it into separate things, then gets them ready.</span></div>
+    </div>
+  </div></section>
+
+  <!-- closer -->
+  <section id="get" class="ky-wrap" style="position: relative"><div class="ky-sec" style="padding-top: 24px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 22px">
+    <h2 class="ky-h" style="margin: 0; font-size: clamp(40px, 6vw, 72px); line-height: 1; letter-spacing: -0.05em; font-weight: 600; white-space: pre-line">ok! what are we
+doing today?</h2>
+    <p style="margin: 0; max-width: 560px; font-size: 17px; line-height: 1.55; color: var(--muted)">at launch: your browser, phone included. add it to your home screen and it opens like an app. mac and windows apps are on the way, and an iphone app is in the works. get on the list and we'll tell you when each one lands.</p>
+    <div id="join-again" class="ky-join" data-join="closer"></div>
+  </div></section>
+  </main>
+
+  <footer style="border-top: 1px solid oklch(1 0 0 / 7%)">
+    <div class="ky-wrap" style="max-width: 1120px; margin: 0 auto; padding-top: 40px; padding-bottom: 40px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 32px; font-size: 14px; line-height: 1.6; color: var(--faint)">
+      <div style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 8px">
+        <span style="color: var(--ink); font-weight: 600; letter-spacing: -0.03em; font-size: 16px">dsul</span>
+        <span>do stuff unlimited. pronounced diesel. vin sold separately.</span>
+        <span>made by one person at <a href="https://sundaysoftworks.com" style="color: var(--ink-2)">sunday softworks</a>. the code is public (MIT). no model key of our own.</span>
+      </div>
+      <nav class="ky-nav" aria-label="Footer" style="display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px 24px"><a href="#changelog">changelog</a><a href="https://github.com/kjswalls/dsul">the code</a><a href="https://do.dsul.app">already in? log in</a></nav>
+    </div>
+  </footer>
+</div>
+
+<!-- The signup, drawn into each [data-join] above. Ids get a suffix per copy. -->
+<template id="ky-join-tpl">
+  <form class="ky-form" data-el="form">
+    <label class="ky-sr" for="wl-email">email address</label>
+    <input class="ky-email" id="wl-email" data-el="email" type="email" name="email" required autocomplete="email" inputmode="email" maxlength="254" placeholder="you@wherever.com">
+    <div class="ky-hp" aria-hidden="true"><label for="wl-company">leave this empty</label><input id="wl-company" data-el="hp" type="text" name="company" tabindex="-1" autocomplete="off"></div>
+    <button type="submit" class="ky-btn ky-btn-light ky-joinbtn" data-el="join">get early access</button>
+  </form>
+  <p class="ky-note" data-el="note">one email when it's ready. maybe two. never sold, never spam.</p>
+  <p class="ky-err" data-el="err" role="alert" hidden></p>
+  <div class="ky-joined" data-el="joined" hidden>
+    <div class="ky-joined-h" data-el="joinedH" tabindex="-1" role="status"><span style="color: var(--lime)">ok!</span> you're on the list.</div>
+    <div style="font-size: 14px; line-height: 1.5; color: var(--muted)">we'll email <span data-el="shown">you</span> when it's time to do stuff. while you're here, a quick one:</div>
+    <div style="font-size: 15px; font-weight: 500" data-el="q">which planner did you quit last, and why?</div>
+    <div class="ky-chips" role="group" data-el="chips">
+      <button type="button" class="ky-chip" data-planner="todoist" aria-pressed="false">todoist</button>
+      <button type="button" class="ky-chip" data-planner="notion" aria-pressed="false">notion</button>
+      <button type="button" class="ky-chip" data-planner="reminders" aria-pressed="false">apple reminders</button>
+      <button type="button" class="ky-chip" data-planner="paper" aria-pressed="false">paper</button>
+      <button type="button" class="ky-chip" data-planner="brain" aria-pressed="false">my own brain</button>
+      <button type="button" class="ky-chip" data-planner="all" aria-pressed="false">all of them</button>
+    </div>
+    <div style="font-size: 13px; color: var(--ink-2)" data-el="line" hidden></div>
+    <form class="ky-why" data-el="whyForm">
+      <label class="ky-sr" for="wl-why">why did you quit it?</label>
+      <input id="wl-why" data-el="why" type="text" maxlength="280" placeholder="why? one line. spill.">
+      <button type="submit" data-el="send">send it</button>
+    </form>
+    <div class="ky-thanks" data-el="thanks" tabindex="-1" role="status" hidden>got it. thanks for the gossip.</div>
+  </div>
+</template>
+
+<script>
+(function () {
+  'use strict';
+  var API = '/api/waitlist';
+  var LINES = {
+    todoist: "47 overdue tasks in red? not here.",
+    notion: "we will not ask you to build a template. promise.",
+    reminders: "the little red number. we don't do those.",
+    paper: "paper gang. respect. ours has an undo button.",
+    brain: "same. that's literally why this exists.",
+    all: "for everyone who's quit a planner. or six. pull up a chair."
+  };
+  var SAY = {
+    invalid: "that email looks a little off. one more try?",
+    slow: "whoa, lots of tries. give it a few minutes?",
+    broke: "our end tripped over something. try again in a minute?",
+    offline: "couldn't reach us. check the connection and try again?",
+    unsent: "that didn't send. one more try?"
+  };
+
+  // ── the relay field behind the hero ─────────────────────────────────────
+  var field = document.getElementById('ky-field');
+  var palette = ['oklch(0.87 0.19 125)', 'oklch(0.87 0.19 125)', 'oklch(0.87 0.19 125)', 'oklch(0.76 0.13 125)', 'oklch(0.66 0.1 55)', 'oklch(0.72 0.1 85)', 'oklch(0.66 0.09 190)', 'oklch(0.64 0.11 265)', 'oklch(0.66 0.1 140)'];
+  var ROWS = 34, MAX_COLS = 52, PERIOD = 3.6, INTENSITY = 0.7;
+  var builtCols = 0;
+  function hash(i, seed) { var r = 43758.5453 * Math.sin((i + 1) * 12.9898 + 78.233 * seed); return r - Math.floor(r); }
+  function colsFor(width) { return Math.min(MAX_COLS, Math.ceil(width / 32) + 4); }
+  function buildField() {
+    var cols = colsFor(window.innerWidth);
+    if (!field || cols <= builtCols) return;
+    builtCols = cols;
+    var fx = cols * 0.5, fy = ROWS * 0.36, maxD = Math.hypot(fx, fy);
+    var frag = document.createDocumentFragment();
+    for (var r = 0; r < ROWS; r++) {
+      for (var c = 0; c < cols; c++) {
+        var i = r * MAX_COLS + c;
+        var d = Math.min(1, Math.hypot(c + 0.5 - fx, r + 0.5 - fy) / maxD);
+        var phase = (2.4 * d + 0.09 * hash(i, 1)) % 1;
+        var tile = document.createElement('div');
+        tile.className = 'ky-tile';
+        tile.style.color = palette[Math.floor(hash(i, 2) * palette.length) % palette.length];
+        tile.style.opacity = ((0.35 + 0.65 * hash(i, 3)) * INTENSITY).toFixed(3);
+        var pulse = document.createElement('div');
+        pulse.className = 'ky-pulse';
+        pulse.style.animationDelay = (-(1 - phase) * PERIOD).toFixed(2) + 's';
+        tile.appendChild(pulse);
+        frag.appendChild(tile);
+      }
+    }
+    field.style.gridTemplateColumns = 'repeat(' + cols + ', 32px)';
+    field.replaceChildren(frag);
+  }
+  buildField();
+  var resizing;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizing);
+    resizing = setTimeout(buildField, 200);
+  });
+
+  // ── the signup, one state for both copies of the form ───────────────────
+  var tpl = document.getElementById('ky-join-tpl');
+  var state = { joined: false, email: '', ticket: '', picked: '', sent: false, busy: false };
+  var blocks = [];
+
+  document.querySelectorAll('[data-join]').forEach(function (mount, n) {
+    var node = tpl.content.cloneNode(true);
+    node.querySelectorAll('[id]').forEach(function (el) { el.id += '-' + n; });
+    node.querySelectorAll('label[for]').forEach(function (el) { el.htmlFor += '-' + n; });
+    mount.appendChild(node);
+    var el = {};
+    mount.querySelectorAll('[data-el]').forEach(function (e) { el[e.getAttribute('data-el')] = e; });
+    var block = { mount: mount, source: mount.getAttribute('data-join'), el: el };
+    el.form.addEventListener('submit', function (e) { e.preventDefault(); join(block); });
+    el.whyForm.addEventListener('submit', function (e) { e.preventDefault(); sendWhy(block); });
+    el.chips.querySelectorAll('[data-planner]').forEach(function (chip) {
+      chip.addEventListener('click', function () { pick(chip.getAttribute('data-planner')); });
+    });
+    blocks.push(block);
+  });
+
+  function render() {
+    blocks.forEach(function (b) {
+      var el = b.el;
+      el.form.hidden = state.joined;
+      el.note.hidden = state.joined;
+      el.joined.hidden = !state.joined;
+      el.join.disabled = state.busy;
+      el.send.disabled = state.busy;
+      el.shown.textContent = state.email || 'you';
+      el.chips.querySelectorAll('[data-planner]').forEach(function (chip) {
+        chip.setAttribute('aria-pressed', chip.getAttribute('data-planner') === state.picked ? 'true' : 'false');
+      });
+      el.line.hidden = !state.picked;
+      el.line.textContent = state.picked ? LINES[state.picked] : '';
+      el.whyForm.hidden = state.sent;
+      el.thanks.hidden = !state.sent;
+    });
+  }
+
+  function say(block, text) {
+    blocks.forEach(function (b) { b.el.err.hidden = true; b.el.err.textContent = ''; });
+    if (!text) return;
+    block.el.err.textContent = text;
+    block.el.err.hidden = false;
+  }
+
+  function send(method, body) {
+    return fetch(API, {
+      method: method,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (json) { return { status: res.status, ok: res.ok, body: json }; });
+    });
+  }
+
+  function join(block) {
+    if (state.busy) return;
+    var email = block.el.email.value.trim();
+    if (!email) { block.el.email.focus(); return; }
+    state.busy = true; render(); say(block, '');
+    send('POST', { email: email, source: block.source, company: block.el.hp.value }).then(function (r) {
+      state.busy = false;
+      if (r.ok && r.body && r.body.ticket) {
+        state.joined = true; state.email = email; state.ticket = r.body.ticket;
+        render();
+        block.el.joinedH.focus();
+        return;
+      }
+      render();
+      say(block, r.status === 400 ? SAY.invalid : r.status === 429 ? SAY.slow : SAY.broke);
+    }, function () {
+      state.busy = false; render(); say(block, SAY.offline);
+    });
+  }
+
+  function pick(key) {
+    if (!LINES[key]) return;
+    state.picked = key; render();
+    // Saved as soon as it is picked, so the answer survives a visitor who never types the why.
+    if (state.ticket) send('PATCH', { ticket: state.ticket, planner: key }).catch(function () {});
+  }
+
+  function sendWhy(block) {
+    if (state.busy || !state.ticket) return;
+    var why = block.el.why.value.trim();
+    if (!why && !state.picked) { block.el.why.focus(); return; }
+    var body = { ticket: state.ticket };
+    if (state.picked) body.planner = state.picked;
+    if (why) body.why = why;
+    state.busy = true; render(); say(block, '');
+    send('PATCH', body).then(function (r) {
+      state.busy = false;
+      if (r.ok) { state.sent = true; render(); block.el.thanks.focus(); return; }
+      render(); say(block, r.status === 429 ? SAY.slow : SAY.unsent);
+    }, function () {
+      state.busy = false; render(); say(block, SAY.offline);
+    });
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
