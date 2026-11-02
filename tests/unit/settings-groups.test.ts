@@ -47,6 +47,7 @@ describe('Rituals', () => {
       'rituals.reminders',
       'rituals.stakes',
       'rituals.push',
+      'rituals.pushTest',
     ]);
   });
 

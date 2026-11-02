@@ -91,6 +91,7 @@ import {
 } from '@/lib/keyboard-shortcuts-store';
 import { decodeKeys, encodeKeys, formatKeys, isApplePlatform } from '@/lib/commands/keys';
 import { getDesktopBridge } from '@/lib/desktop';
+import { IOS_TAB_PUSH_COPY, isIosBrowserTabHere } from '@/lib/reminders/reach';
 import type { TimeBucket } from '@/lib/planner-types';
 
 /**
@@ -328,6 +329,8 @@ export interface SettingCtx {
     openLedger: () => void;
     /** Opens Delete account's dialog, which the settings page owns. */
     deleteAccount: () => void;
+    /** Sends a test notification to every device on the account, and says how it went. */
+    sendTestPush: () => void;
   };
 }
 
@@ -1381,7 +1384,9 @@ export const SETTINGS: SettingRecord[] = [
       // desktop app is not one of them.
       if (getDesktopBridge())
         return 'not available in the desktop app yet, so turn push on from your phone or browser';
-      if (!ctx.push.isSupported) return 'not supported in this browser';
+      // iOS gives web push only to the Home Screen app, so in a Safari tab the
+      // honest answer is the step that fixes it, not "not supported".
+      if (!ctx.push.isSupported) return isIosBrowserTabHere() ? IOS_TAB_PUSH_COPY : 'not supported in this browser';
       if (ctx.push.permissionState === 'denied')
         return 'blocked in your browser settings; allow notifications, then reload';
       return null;
@@ -1395,6 +1400,19 @@ export const SETTINGS: SettingRecord[] = [
       });
     },
     defaultValue: false,
+  },
+  {
+    id: 'rituals.pushTest',
+    pane: 'rituals',
+    label: 'Send a test',
+    description: 'Sends one notification to every device that has push on, so you can see a reminder will get through.',
+    control: 'action',
+    // Not under the Push switch: that switch is THIS browser's, and the test
+    // goes to every device, so it is as useful from a desk as from the phone.
+    keywords: ['test', 'try', 'check', 'notification', 'push', 'working', 'phone'],
+    read: () => 'Send',
+    write: (_v, ctx) => ctx.actions?.sendTestPush(),
+    defaultValue: 'Send',
   },
 
   /* ── AI (pane id 'beacon') ────────────────────────────────────────────
