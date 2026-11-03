@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ArrowUpRight, CircleHelp, Keyboard as KeyboardIcon, MessageSquarePlus, Sparkles } from 'lucide-react';
+import { ArrowUpRight, CircleHelp, Keyboard as KeyboardIcon, MessageSquarePlus, Newspaper } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -95,7 +95,7 @@ export function HelpMenu({ className }: { className?: string }) {
           </DropdownMenuItem>
           <DropdownMenuItem asChild className="cursor-pointer">
             <a href={MARKETING_CHANGELOG_URL} target="_blank" rel="noopener noreferrer">
-              <Sparkles className="mr-2 h-4 w-4" />
+              <Newspaper className="mr-2 h-4 w-4" />
               <span>What’s new</span>
               <DropdownMenuShortcut aria-hidden>
                 <ArrowUpRight className="h-3.5 w-3.5" />
