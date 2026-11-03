@@ -47,10 +47,19 @@ const nextConfig = {
       // browser indefinitely, so the day the apex starts serving its own page,
       // every visitor who ever hit it would keep being bounced here with no way
       // to notice. Reversibility is worth more than the redirect being cached.
+      //
+      // That day came: the apex's ROOT is the marketing page now
+      // (lib/marketing-site.ts; proxy.ts rewrites it to public/site/index.html).
+      // So this takes every path but '/' (the `.+`), and lets through what the
+      // page itself fetches: its folder (site/), its form's route
+      // (api/waitlist), Vercel's analytics script (_vercel/) and the three icon
+      // files. Anything else on the apex, an old bookmark or a shared link,
+      // still lands in the app. tests/unit/marketing-site.test.ts runs this
+      // rule through Next's own matcher.
       {
-        source: '/:path*',
+        source: '/:path((?!site/|api/waitlist$|_vercel/|favicon\\.ico$|icon\\.svg$|apple-icon\\.png$).+)',
         has: [{ type: 'host', value: 'dsul.app' }],
-        destination: 'https://do.dsul.app/:path*',
+        destination: 'https://do.dsul.app/:path',
         permanent: false,
       },
       // Seasons were "programs" until migration 046, and a season's page lived
@@ -76,6 +85,12 @@ const withSerwist = withSerwistInit({
   // it already rang (memory/plans/reminders-platforms.md §5.2, PR-1b).
   // hooks/use-local-cue-tick.ts listens for `online` instead.
   reloadOnOnline: false,
+  // Everything under public/ but site/, the marketing page's folder
+  // (lib/marketing-site.ts). The default, ['**/*'], put that page and its two
+  // fonts into every installed app's precache, fetched again on each edit to a
+  // page the app never shows. Serwist globs with no negation, so this is "the
+  // top-level files, and every folder but site/".
+  globPublicPatterns: ['*', '!(site)/**/*'],
 });
 
 export default withSerwist(nextConfig);
