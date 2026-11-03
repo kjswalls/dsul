@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { CircleHelp, Keyboard as KeyboardIcon, MessageSquarePlus } from 'lucide-react';
+import { ArrowUpRight, CircleHelp, Keyboard as KeyboardIcon, MessageSquarePlus, Sparkles } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,6 +12,7 @@ import {
 import { useUIStore } from '@/lib/ui-store';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { formatKeys } from '@/lib/commands/keys';
+import { MARKETING_CHANGELOG_URL } from '@/lib/marketing-site';
 import { cn } from '@/lib/utils';
 
 /**
@@ -34,10 +35,15 @@ function KbdHint() {
  * The floating "?" help hub — desktop only, the canvas's bottom-right corner.
  *
  * One affordance that gathers the scattered help entry points into the spot the
- * bare shortcuts hint used to sit. Every row is an ordinary `ActiveDialog`
- * variant, so each is just an `openDialog` call. A row lands here only once it
- * points somewhere real — a menu whose items dead-end reads as more broken than
- * no menu at all — so Changelog / Guides / Support wait until they exist.
+ * bare shortcuts hint used to sit. Every row but one is an ordinary
+ * `ActiveDialog` variant, so each is just an `openDialog` call. The exception is
+ * "What's new", a link out to the dated changelog on dsul.app
+ * (lib/marketing-site.ts), opened in a new tab so the planner stays put; the
+ * desktop shell sends it to the browser. A row lands here only once it points
+ * somewhere real — a menu whose items dead-end reads as more broken than no
+ * menu at all — so Guides / Support wait until they exist. The changelog is
+ * hand-written in public/site/index.html, so a release worth telling about adds
+ * a line there.
  *
  * Placed by its one mount, DesktopShell, which puts it INSIDE <main>
  * (`absolute bottom-2.5 right-2.5`) rather than fixed to the window: the right
@@ -86,6 +92,15 @@ export function HelpMenu({ className }: { className?: string }) {
           >
             <MessageSquarePlus className="mr-2 h-4 w-4" />
             <span>Send feedback</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild className="cursor-pointer">
+            <a href={MARKETING_CHANGELOG_URL} target="_blank" rel="noopener noreferrer">
+              <Sparkles className="mr-2 h-4 w-4" />
+              <span>What’s new</span>
+              <DropdownMenuShortcut aria-hidden>
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </DropdownMenuShortcut>
+            </a>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

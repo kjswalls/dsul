@@ -19,6 +19,13 @@
  *
  * The URL never changes on a rewrite, so the page links its own files by
  * absolute path (/site/fonts/…).
+ *
+ * The app links back to it in two places, both by MARKETING_URL: the help
+ * menu's "What's new" (components/shell/help-menu.tsx) and Settings › dsul's
+ * dsul.app row (lib/settings/manifest.ts). Nothing on the apex can tell who is
+ * signed in (the session cookies are do.dsul.app's alone), so it shows the page
+ * to everyone and never sends an account holder on to the app by itself; its
+ * "log in" opens the planner in one click for someone already in.
  */
 
 /** The apex. Only the root is the page; every other path on it still goes to the app (next.config.mjs). */
@@ -33,6 +40,19 @@ export const MARKETING_PAGE = '/site/index.html';
  * same public page on do.dsul.app, which holds nothing of anyone's.
  */
 export const MARKETING_PREVIEW_PATH = '/welcome';
+
+/**
+ * The page's address, for a link to it from inside the app. Always this
+ * absolute URL, never MARKETING_PREVIEW_PATH: in the desktop shell a link on
+ * the app's own host loads inside the window and takes the planner's place,
+ * and a new-window one does nothing, while dsul.app opens in the browser
+ * (electron/lib/policy.cjs isAppUrl, main.cjs setWindowOpenHandler). From a
+ * preview deployment it opens production's page, which is the one people see.
+ */
+export const MARKETING_URL = `https://${MARKETING_HOST}`;
+
+/** The page's dated changelog, which the help menu's "What's new" opens. */
+export const MARKETING_CHANGELOG_URL = `${MARKETING_URL}/#changelog`;
 
 /** The path to serve in place of this request's, or null to leave it alone. */
 export function marketingRewrite(url: URL): string | null {

@@ -48,6 +48,7 @@ import {
 import { consoleSectionExtension } from '@/components/planner/organize/console-rail';
 import { extensionEnabled } from '@/lib/extension-gates';
 import { sendTestPush } from '@/lib/reminders/test-push';
+import { MARKETING_URL } from '@/lib/marketing-site';
 
 /**
  * Settings, as a route.
@@ -442,6 +443,7 @@ export default function SettingsPage() {
         openLedger: () => router.push('/ledger'),
         deleteAccount: () => openLocalDialog('deleteAccount'),
         sendTestPush: () => void sendTestPush(userId),
+        openSite: () => void window.open(MARKETING_URL, '_blank', 'noopener,noreferrer'),
       },
     }),
     // The ticks are the point: they are not read here, they are what makes this
