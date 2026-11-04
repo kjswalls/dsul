@@ -770,7 +770,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
           measurement anchored to that row — survive the navigation.
         */}
         <div
-          key={`${weekDays[0].toDateString()}-${navDirection ?? 'none'}`}
+          key={weekDays[0].toDateString()}
           // Scopes the recede to THIS row's columns. A pointer resting in a
           // gap between two columns hovers neither, so `:has()` misses and
           // nothing dims — which is why the rule keys on the columns rather

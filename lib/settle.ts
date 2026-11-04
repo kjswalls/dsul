@@ -859,7 +859,7 @@ function motionAllowed(): boolean {
     typeof HTMLElement.prototype.animate === 'function' &&
     // dnd-kit measures droppables at drag start, through any moving ancestor.
     !useDragStore.getState?.()?.activeId &&
-    // The nav slide is a transform on the keyed container that remounts at +600ms.
+    // The nav slide is a transform on the date-keyed container, playing until +600ms.
     (usePlannerStore.getState?.()?.navDirection ?? null) === null &&
     !useViewStore.getState?.()?.zenMoving
   );

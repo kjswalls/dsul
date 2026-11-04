@@ -175,7 +175,7 @@ export function WeekList() {
   return (
     <ScrollArea className="h-full flex-1">
       <div
-        key={`${weekDays[0].toDateString()}-${navDirection ?? 'none'}`}
+        key={weekDays[0].toDateString()}
         className={cn(
           'canvas-container space-y-6 py-6 pb-20',
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
