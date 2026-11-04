@@ -97,7 +97,7 @@ export function DayList() {
     <ScrollArea className="h-full flex-1">
       <div
         ref={rootRef}
-        key={`${selectedDate.toDateString()}-${navDirection ?? 'none'}`}
+        key={selectedDate.toDateString()}
         className={cn(
           'canvas-container space-y-5 py-6 pb-20',
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`

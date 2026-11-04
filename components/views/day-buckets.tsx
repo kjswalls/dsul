@@ -407,7 +407,7 @@ export function DayBuckets({ activeId }: { activeId: string | null }) {
   return (
     <ScrollArea className="h-full flex-1">
       <div
-        key={`${selectedDate.toDateString()}-${navDirection ?? 'none'}`}
+        key={selectedDate.toDateString()}
         // Full container width — the cards run the same edges as the header
         // capsule above them (that is what `canvas-container` is for). A
         // narrower centred column was tried and reverted: the moat read as the

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import { render, cleanup, screen } from '@testing-library/react';
+import { render, cleanup, screen, act } from '@testing-library/react';
 import { DndContext } from '@dnd-kit/core';
 
 /**
@@ -110,5 +110,22 @@ describe('the ghost fold’s mounts', () => {
     cleanup();
     mount(<DayBuckets activeId={null} />);
     expect(screen.getAllByTestId('ghost-fold-stub')).toHaveLength(1);
+  });
+
+  // The fold's arrive is a CSS animation that plays on mount, so a second
+  // mount replays it. Going to a day sets the slide direction and clears it
+  // 600ms later (lib/nav-commands.ts); the day's container must not remount
+  // on that clear, or the fold rises twice.
+  it.each([
+    ['Day × Schedule', () => <DaySchedule activeId={null} />],
+    ['Day × List', () => <DayList />],
+    ['Day × Buckets', () => <DayBuckets activeId={null} />],
+  ])('%s keeps the fold mounted when the slide direction clears', (_name, ui) => {
+    seed();
+    usePlannerStore.setState({ navDirection: 'left' });
+    render(<DndContext>{ui()}</DndContext>);
+    const before = screen.getByTestId('ghost-fold-stub');
+    act(() => usePlannerStore.setState({ navDirection: null }));
+    expect(screen.getByTestId('ghost-fold-stub')).toBe(before);
   });
 });

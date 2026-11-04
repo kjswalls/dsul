@@ -1733,7 +1733,7 @@ export function DaySchedule({
   return (
     <ScrollArea className="h-full flex-1">
       <div
-        key={`${selectedDate.toDateString()}-${navDirection ?? 'none'}`}
+        key={selectedDate.toDateString()}
         className={cn(
           'canvas-container space-y-4 py-6 pb-20',
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`

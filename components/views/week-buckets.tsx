@@ -355,7 +355,7 @@ export function WeekBuckets({ activeId }: { activeId: string | null }) {
     <ScrollArea className="h-full flex-1">
       <div
         ref={weekColsRef}
-        key={`${weekDays[0].toDateString()}-${navDirection ?? 'none'}`}
+        key={weekDays[0].toDateString()}
         data-wide="true"
         // Scopes the recede to this row's columns — see week-schedule's row.
         data-week-cols=""
