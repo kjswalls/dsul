@@ -9,6 +9,7 @@ import { SettingRow } from './setting-row';
 import { SettingChip } from './setting-chip';
 import { LookPicker } from './look-picker';
 import {
+  SETTINGS,
   ALL_PANES,
   PANES,
   paneById,
@@ -36,7 +37,7 @@ import {
 } from '@/lib/settings/groups';
 import { ExtensionRailList } from './extension-rail-list';
 import { SettingsLink, showSettings } from './settings-link';
-import { ExtensionHero } from './extension-hero';
+import { ExtensionHero, ExtensionHeroFooter } from './extension-hero';
 import { EXT_SOUNDS } from '@/lib/extension-registry';
 import { ExtensionBrowse } from '@/components/extensions/extension-browse';
 import { DevicesList } from './devices-list';
@@ -165,6 +166,11 @@ export function SettingsShell({
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activePane = paneById(pane)!;
+  const extensionSlug = activePane.parent === 'extensions' ? extensionSlugFromPane(pane) : null;
+  // The extension's own switch: the first switch on its pane with nothing above it.
+  const extensionMasterId = extensionSlug
+    ? (SETTINGS.find((r) => r.pane === pane && !r.dependsOn && r.control === 'switch')?.id ?? null)
+    : null;
   const parentPane = activePane.parent ? paneById(activePane.parent) : undefined;
   // The rail row this pane belongs to — itself, or its parent inside a sub-pane.
   const railPane = railPaneFor(pane);
@@ -450,6 +456,9 @@ export function SettingsShell({
           ranges={extra?.ranges}
           matchedValue={extra?.matchedValue}
           action={extra?.action}
+          // An extension's own switch, on its own pane: the hero above it
+          // already says what it does, so the row doesn't say it twice.
+          quietDescription={!extra?.paneName && record.id === extensionMasterId}
         />
       </div>
     );
@@ -912,6 +921,10 @@ export function SettingsShell({
                   {advOpen && <SettingsCard>{advanced.map((record) => rowFor(record))}</SettingsCard>}
                 </div>
               )}
+
+              {/* The maker's note and the adoption line close an extension's
+                  pane, so its switch sits right under what it does. */}
+              {activePane.parent === 'extensions' && <ExtensionHeroFooter slug={extensionSlugFromPane(pane)!} />}
             </>
           )}
       </div>

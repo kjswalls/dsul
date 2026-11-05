@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { EXT_DO_STUFF, EXT_ORGANIZE, EXT_STREAKS, OFFICIAL_EXTENSIONS } from '@/lib/extension-registry';
+import { SETTINGS, extensionPaneId } from '@/lib/settings/manifest';
 
 /**
  * The default-on rule (lib/extension-registry.ts, the note on `defaultEnabled`).
@@ -36,5 +37,13 @@ describe('extensions that start on', () => {
 
   it('leave Streaks off, since a chain on screen can read as guilt (Kirby, 2026-10-10)', () => {
     expect(OFFICIAL_EXTENSIONS.find((e) => e.slug === EXT_STREAKS)?.defaultEnabled).toBe(false);
+  });
+
+  it('give each extension’s own switch the registry’s default, so an untouched account reads unchanged', () => {
+    for (const e of OFFICIAL_EXTENSIONS) {
+      const own = SETTINGS.find((r) => r.pane === extensionPaneId(e.slug) && !r.dependsOn && r.control === 'switch');
+      if (!own) continue;
+      expect(own.defaultValue, e.slug).toBe(e.defaultEnabled);
+    }
   });
 });

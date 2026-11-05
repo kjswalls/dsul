@@ -1954,15 +1954,15 @@ export const SETTINGS: SettingRecord[] = [
     control: 'switch',
     keywords: ['streak', 'flame', 'fire', 'chain', 'consecutive', 'momentum', 'habits'],
     unavailable: extUnavailable,
-    // extPending matters MORE here than for the off-by-default rows: the switch
-    // defaults ON, so without it the pre-hydration window would draw it on and a
-    // stray click could write OFF over a server row that is actually on.
+    // Off by default since 2026-10-10 (a chain on screen can read as guilt), so
+    // the default here follows the registry's: anything else marks an untouched
+    // account as changed, and Reset would turn the flames on.
     pending: extPending,
     read: () => ext().isEnabled(EXT_STREAKS),
     write: (v, ctx) => {
       if (ctx.userId) ext().setEnabled(ctx.userId, EXT_STREAKS, Boolean(v));
     },
-    defaultValue: true,
+    defaultValue: false,
   },
   {
     id: 'extensions.habitHeatmap',
