@@ -208,8 +208,9 @@ export const ATLAS_COPY = {
   frameTab: (name: string, dates: string | null) => (dates ? `${name} · ${dates}` : name),
   /** The Look setting (look.atlasFar). */
   farSettingLabel: 'Atlas zoomed out, light mode',
-  farSettingDescription:
-    'How Atlas looks on this computer when you zoom out past half size on a light theme. Bloom keeps the paper. Dusk turns it to slate so the tiles glow.',
+  farSettingDescription: 'How Atlas looks zoomed out, on a light theme.',
+  /** The rest of it, behind the row's More. */
+  farSettingMore: 'On this computer, past half size. Bloom keeps the paper. Dusk turns it to slate so the tiles glow.',
   /** Under the row while a dark theme is showing, when neither pick changes anything yet. */
   farSettingDarkNote: 'You are on a dark theme, where Atlas always glows. This takes effect on a light theme.',
   farBloom: 'Bloom',

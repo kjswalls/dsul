@@ -411,7 +411,14 @@ export interface SettingRecord {
   id: string;
   pane: PaneId;
   label: string;
+  /** One line under the label. What doesn't fit goes in `more`. */
   description?: string;
+  /**
+   * The rest of the explanation, behind a small "More" after the description
+   * (components/settings/setting-row.tsx). Searched like the description, and
+   * read to a screen reader with it whether or not it is open.
+   */
+  more?: string;
   control: ControlKind;
   /**
    * The words you use when you're annoyed, not the words in the code.
@@ -620,6 +627,7 @@ function channelRecords(): SettingRecord[] {
         pane,
         label: field.label,
         description: field.description,
+        more: field.more,
         control: 'text',
         textVariant: 'line',
         placeholder: field.placeholder,
@@ -644,6 +652,7 @@ function channelRecords(): SettingRecord[] {
         pane,
         label: field.label,
         description: field.description,
+        more: field.more,
         control: 'text',
         textVariant: 'secret',
         placeholder: () =>
@@ -760,7 +769,7 @@ export const SHORTCUT_RECORDS: ShortcutSettingRecord[] = DEFAULT_SHORTCUTS.map((
         // Each part is its own sentence. Most registry descriptions end bare
         // ("Flips between the two"), and joined as-is they ran into the next
         // one: "…picking one directly Desktop only."
-        .map((part) => (/[.!?)]$/.test(part!.trim()) ? part!.trim() : `${part!.trim()}.`))
+        .map((part) => (/[.!?]\)?$/.test(part!.trim()) ? part!.trim() : `${part!.trim()}.`))
         .join(' ') || undefined,
     control: 'keys' as const,
     // NOT desktopOnly. The pane would be empty on every phone, and the rail
@@ -971,7 +980,7 @@ export const SETTINGS: SettingRecord[] = [
     id: 'look.layout',
     pane: 'look',
     label: 'Layout',
-    description: 'How the desktop is put together. The same in light and dark.',
+    description: 'How the desktop is put together, in light and dark.',
     // The phone keeps its own shell; a layout only ever reaches the desktop one.
     desktopOnly: true,
     control: 'enum',
@@ -1094,7 +1103,7 @@ export const SETTINGS: SettingRecord[] = [
     id: 'look.appIcon',
     pane: 'look',
     label: 'App icon',
-    description: "The icon in your browser tab, the desktop app's Dock and taskbar, and the iPhone app's Home Screen icon.",
+    description: 'The icon in your browser tab, Dock and Home Screen.',
     control: 'enum',
     dbColumn: 'app_icon',
     options: APP_ICONS.map((i) => ({ value: i.value, label: i.label })),
@@ -1118,6 +1127,7 @@ export const SETTINGS: SettingRecord[] = [
     pane: 'look',
     label: ATLAS_COPY.farSettingLabel,
     description: ATLAS_COPY.farSettingDescription,
+    more: ATLAS_COPY.farSettingMore,
     control: 'enum',
     desktopOnly: true,
     dbColumn: 'atlas_far_paper',
@@ -1179,7 +1189,7 @@ export const SETTINGS: SettingRecord[] = [
     // Names its scope, because the braindump and the canvas filter popovers
     // each keep their own hideCompleted and all three answer for a different
     // surface. Search returns them together; they are not merged.
-    description: 'Keep finished work on the grid instead of clearing it. Tasks only; habits always stay.',
+    description: 'Keep finished tasks on the grid. Habits always stay.',
     control: 'switch',
     dbColumn: 'show_completed_tasks',
     keywords: ['done', 'finished', 'checked', 'hide', 'tick', 'complete'],
@@ -1269,8 +1279,8 @@ export const SETTINGS: SettingRecord[] = [
     // fold at the top of Today took over the waiting line this used to show.
     // Same id, column and default, so nothing stored moves.
     label: 'Leftovers on Today',
-    description:
-      "Things you didn't get to show up faded at the top of today until you decide what happens to them.",
+    description: "What you didn't get to, faded at the top of Today.",
+    more: 'It stays there until you decide what happens to each one.',
     control: 'switch',
     dbColumn: 'morning_check_enabled',
     keywords: ['leftovers', 'ghost', 'ghost rows', 'from earlier', 'overdue', 'past due', 'waiting', 'yesterday', 'morning check', 'stale', 'backlog'],
@@ -1284,8 +1294,8 @@ export const SETTINGS: SettingRecord[] = [
     id: 'rituals.autoAge',
     pane: 'rituals',
     label: 'Auto-clear stale items',
-    description:
-      'Moves items past due by more than the chosen number of days to your Braindump, once a day, without asking.',
+    description: 'Moves long past-due items to your Braindump each day.',
+    more: 'Past due by more than the days you pick. It does not ask first.',
     control: 'switch',
     dependsOn: 'rituals.morningCheck',
     dbColumn: 'morning_auto_age_enabled',
@@ -1319,8 +1329,8 @@ export const SETTINGS: SettingRecord[] = [
     id: 'rituals.reminders',
     pane: 'notifications',
     label: 'Habit reminders',
-    description:
-      'A nudge at the time you set on each habit. Set the time on the habit itself. This is the switch that lets any of them through.',
+    description: 'A nudge at the time you set on each habit.',
+    more: 'Set the time on the habit itself. This switch lets any of them through.',
     control: 'switch',
     dbColumn: 'habit_reminders_enabled',
     keywords: ['remind', 'nudge', 'alarm', 'prompt', 'cue', 'notify', 'ping', 'alert'],
@@ -1335,7 +1345,7 @@ export const SETTINGS: SettingRecord[] = [
     // Names the mechanism honestly. It is not a second copy of the reminder —
     // a repeat of the same prompt is what people stop reading — it is a
     // different message, once, that says what the day still owes.
-    description: 'One message in the evening naming what is still open, and the streak riding on it.',
+    description: "One evening message naming what's open, and its streak.",
     control: 'switch',
     dependsOn: 'rituals.reminders',
     dbColumn: 'habit_last_call_enabled',
@@ -1348,7 +1358,7 @@ export const SETTINGS: SettingRecord[] = [
     id: 'rituals.lastCallTime',
     pane: 'notifications',
     label: 'Last call at',
-    description: 'Late enough that the day has had its chance; early enough to still act on it.',
+    description: 'Late enough to count the day, early enough to act on it.',
     control: 'time',
     dependsOn: 'rituals.lastCall',
     dbColumn: 'habit_last_call_time',
@@ -1363,8 +1373,8 @@ export const SETTINGS: SettingRecord[] = [
     label: 'Settle the day',
     // Says what it does and what it does NOT do, because the extensions behind
     // it can cost money and "settle" alone does not warn anyone.
-    description:
-      'Once a night, work out what yesterday came to and report it to whatever you have attached: a Beeminder goal, a pledge, a person. Nothing happens until you turn one of those on.',
+    description: "Each night, report yesterday to what you've attached.",
+    more: 'A Beeminder goal, a pledge, or a person. Nothing happens until you turn one of those on.',
     control: 'switch',
     dbColumn: 'stakes_enabled',
     keywords: ['stakes', 'settle', 'ledger', 'accountability', 'beeminder', 'pledge', 'consequence', 'money'],
@@ -1376,8 +1386,7 @@ export const SETTINGS: SettingRecord[] = [
     id: 'rituals.stakesTime',
     pane: 'rituals',
     label: 'Settle at',
-    description:
-      'Settles the day before. Late enough that nothing is still in flight.',
+    description: 'Settles the day before, once nothing is still in flight.',
     control: 'time',
     dependsOn: 'rituals.stakes',
     dbColumn: 'stakes_settle_time',
@@ -1394,7 +1403,8 @@ export const SETTINGS: SettingRecord[] = [
     // produces it. The pledge tier's whole claim is that "you owe £30" is
     // backed by rows a person can look at, and a record with no reader is a
     // number the app made up.
-    description: 'Every settled day, and what it came to. Read-only. dsul keeps the record; it cannot take payment.',
+    description: 'Every settled day and what it came to. Read-only.',
+    more: 'dsul keeps the record; it cannot take payment.',
     control: 'action',
     dependsOn: 'rituals.stakes',
     keywords: ['owe', 'owed', 'debt', 'pledge', 'history', 'record', 'money', 'settled', 'stakes'],
@@ -1438,7 +1448,8 @@ export const SETTINGS: SettingRecord[] = [
     id: 'rituals.pushTest',
     pane: 'notifications',
     label: 'Send a test',
-    description: 'Sends one notification to every device that has push on, so you can see a reminder will get through.',
+    description: 'Sends one notification to every device with push on.',
+    more: 'So you can see a reminder will get through.',
     control: 'action',
     // Not under the Push switch: that switch is THIS browser's, and the test
     // goes to every device, so it is as useful from a desk as from the phone.
@@ -1495,7 +1506,7 @@ export const SETTINGS: SettingRecord[] = [
     id: 'beacon.provider',
     pane: 'beacon',
     label: 'Who answers in chat',
-    description: 'Who replies when you open Ask here. Off keeps Ask closed on this device only.',
+    description: 'Who answers in Ask on this device. Off keeps it closed.',
     control: 'enum',
     options: [
       { value: 'model', label: 'Your model' },
@@ -1525,7 +1536,8 @@ export const SETTINGS: SettingRecord[] = [
     id: 'beacon.instructions',
     pane: 'beacon',
     label: 'Custom instructions',
-    description: 'What the AI should know about how you work. Added to every message you send from this device.',
+    description: 'How you work, for the AI. Kept on this device only.',
+    more: 'Added to every message you send from this device.',
     control: 'text',
     textVariant: 'multiline',
     placeholder: 'I plan in two-hour blocks and I’d rather you were blunt…',
@@ -1538,8 +1550,9 @@ export const SETTINGS: SettingRecord[] = [
     id: 'beacon.gatewayUrl',
     pane: 'connections',
     label: 'Gateway URL',
-    description:
-      "Let dsul's server talk to your gateway, so OpenClaw answers in Ask on every device without pairing each browser. Conversations keep their memory between sessions.",
+    description: "Lets dsul's server talk to your gateway.",
+    more:
+      'Then OpenClaw answers in Ask on every device without pairing each browser, and conversations keep their memory between sessions.',
     control: 'text',
     textVariant: 'line',
     placeholder: 'https://gateway.example.ts.net:8787',
@@ -1558,7 +1571,8 @@ export const SETTINGS: SettingRecord[] = [
     id: 'beacon.gatewayToken',
     pane: 'connections',
     label: 'Gateway token',
-    description: 'Full operator access to your gateway. Kept server-side and never sent back.',
+    description: "Full operator access. Stays on dsul's server.",
+    more: 'It is never sent back to a browser.',
     control: 'text',
     // Write-only: there is nothing to read back, by design.
     textVariant: 'secret',
@@ -1664,7 +1678,7 @@ export const SETTINGS: SettingRecord[] = [
     id: 'make.allOff',
     pane: 'make',
     label: 'Turn all mods off',
-    description: 'Switches off every recipe and mod you made, on every device.',
+    description: 'Turns off every recipe and mod you made, everywhere.',
     control: 'action',
     keywords: [
       'mods',
@@ -1694,7 +1708,7 @@ export const SETTINGS: SettingRecord[] = [
     id: 'dsul.tour',
     pane: 'dsul',
     label: 'Replay the tour',
-    description: 'Walks you back through the shell. Takes you to the planner.',
+    description: 'Walks you through dsul again, on the planner.',
     control: 'action',
     keywords: ['onboarding', 'tutorial', 'walkthrough', 'intro', 'guide'],
     read: () => 'Replay',
@@ -1743,7 +1757,8 @@ export const SETTINGS: SettingRecord[] = [
     id: 'dsul.deleteAccount',
     pane: 'dsul',
     label: 'Delete account',
-    description: 'Deletes your account and everything in it, on every device. It cannot be undone.',
+    description: 'Deletes your account and everything in it, for good.',
+    more: 'On every device. It cannot be undone.',
     control: 'action',
     // Not 'delete account': that is the label, which search already reads.
     keywords: ['remove account', 'close account', 'erase', 'gdpr'],
@@ -1829,8 +1844,8 @@ export const SETTINGS: SettingRecord[] = [
     id: 'extensions.doStuff.background',
     pane: extensionPaneId(EXT_DO_STUFF),
     label: 'Get things ready in the background',
-    description:
-      "While dsul is open, your AI drafts and plans the things you've been putting off, so they're ready when you look. It never sends, books or buys anything. Up to 20 a day.",
+    description: "Drafts what you've put off. Never sends, books or buys.",
+    more: 'Your AI works while dsul is open, so things are ready when you look. Up to 20 a day.',
     control: 'switch',
     dependsOn: 'extensions.doStuff',
     keywords: ['prep', 'prepare', 'draft', 'background', 'ready', 'ai', 'agent', 'openclaw'],
@@ -1848,8 +1863,9 @@ export const SETTINGS: SettingRecord[] = [
     id: 'extensions.doStuff.research',
     pane: extensionPaneId(EXT_DO_STUFF),
     label: 'Let your AI look things up',
-    description:
-      'When getting things ready, your AI may search the web for booking pages, open times, prices and forms, and gives you the links. Each search costs a little on your own AI account.',
+    description: 'Your AI may search the web. Each search costs a little.',
+    more:
+      'It looks for booking pages, open times, prices and forms, and gives you the links. Searches are billed on your own AI account.',
     control: 'switch',
     dependsOn: 'extensions.doStuff',
     keywords: ['research', 'search', 'web', 'browse', 'links', 'appointments', 'shopping', 'forms'],
@@ -1872,8 +1888,9 @@ export const SETTINGS: SettingRecord[] = [
     id: 'extensions.doStuff.worker',
     pane: extensionPaneId(EXT_DO_STUFF),
     label: 'Who gets them ready',
-    description:
-      'Your AI writes drafts, steps and questions. An agent gets the item handed over to get ready only, and reports back. Hand off to… on an item still gives it the whole job.',
+    description: 'Your AI, or an agent that gets it ready and reports back.',
+    more:
+      'Your AI writes drafts, steps and questions. An agent gets the item to get ready only. Hand off to… on an item still gives it the whole job.',
     control: 'enum',
     dependsOn: 'extensions.doStuff.background',
     options: [
@@ -1895,8 +1912,8 @@ export const SETTINGS: SettingRecord[] = [
     id: 'extensions.doStuff.learnStyle',
     pane: extensionPaneId(EXT_DO_STUFF),
     label: 'Learn how you write',
-    description:
-      'When you change a draft before you use it, your AI notes how you write, so the next one needs less changing. Your edits are never kept, only the note below.',
+    description: 'Your AI notes how you change its drafts.',
+    more: 'So the next one needs less changing. Your edits are never kept, only the note below.',
     control: 'switch',
     dependsOn: 'extensions.doStuff',
     keywords: ['style', 'voice', 'tone', 'writing', 'learn', 'drafts', 'sign off', 'emails'],
@@ -1912,7 +1929,7 @@ export const SETTINGS: SettingRecord[] = [
     id: 'extensions.doStuff.style',
     pane: extensionPaneId(EXT_DO_STUFF),
     label: 'How you write',
-    description: 'What your AI follows when it writes for you. Change anything, or clear it to start over.',
+    description: 'Your AI follows this when it writes. Change or clear it.',
     control: 'text',
     textVariant: 'multiline',
     placeholder: 'Short and warm. Opens with "Hi" and the name. Signs off "Thanks, K".',
@@ -1930,8 +1947,8 @@ export const SETTINGS: SettingRecord[] = [
     id: 'extensions.doStuff.knows',
     pane: extensionPaneId(EXT_DO_STUFF),
     label: 'What your AI knows',
-    description:
-      'Answers you told your AI to remember for every task, a line each. It reads them before it gets anything ready. Change or delete any line.',
+    description: 'What you told your AI to remember, a line each.',
+    more: 'It reads them before it gets anything ready. Change or delete any line.',
     control: 'text',
     textVariant: 'multiline',
     placeholder: "Who's Sammy? My dog\nWe moved to Portland in September",

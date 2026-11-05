@@ -614,7 +614,7 @@ describe('the AI pane', () => {
   it('"Who answers in chat" offers the three choices and waits for the gate', () => {
     const record = settingById('beacon.provider')!;
     expect(record.label).toBe('Who answers in chat');
-    expect(record.description).toBe('Who replies when you open Ask here. Off keeps Ask closed on this device only.');
+    expect(record.description).toBe('Who answers in Ask on this device. Off keeps it closed.');
     expect(record.options!.map((o) => [o.value, o.label])).toEqual([
       ['model', 'Your model'],
       ['openclaw', 'OpenClaw'],
@@ -656,9 +656,8 @@ describe('the AI pane', () => {
 
   it('"Custom instructions" says it stays on this device, with a curly placeholder', () => {
     const record = settingById('beacon.instructions')!;
-    expect(record.description).toBe(
-      'What the AI should know about how you work. Added to every message you send from this device.'
-    );
+    expect(record.description).toBe('How you work, for the AI. Kept on this device only.');
+    expect(record.more).toBe('Added to every message you send from this device.');
     expect(record.placeholder).toBe('I plan in two-hour blocks and I’d rather you were blunt…');
   });
 

@@ -22,6 +22,8 @@ export interface ChannelField {
   placeholder?: string
   /** Shown under the input. Say what it is and where to get it. */
   description?: string
+  /** The rest of the explanation, behind "More" (SettingRecord.more). */
+  more?: string
   /**
    * Extra search terms for this field alone, on top of its channel's.
    *
@@ -62,8 +64,8 @@ export const CHANNEL_SETTINGS: ChannelSettingsSpec[] = [
         placeholder: 'https://home.example.com',
         // Worth saying, because the obvious value is the one that cannot work:
         // dsul calls this from a server, not from your browser.
-        description:
-          'Must be reachable from the internet. dsul calls it from its own server, so a LAN address only works on a self-hosted dsul.',
+        description: 'Must be reachable from the internet.',
+        more: 'dsul calls it from its own server, so a LAN address only works on a self-hosted dsul.',
       },
       {
         key: 'players',
@@ -76,20 +78,22 @@ export const CHANNEL_SETTINGS: ChannelSettingsSpec[] = [
         key: 'ttsEntity',
         label: 'Voice entity',
         placeholder: 'tts.google_translate_say',
-        description: 'The tts.* entity to speak through. Blank uses Home Assistant’s default.',
+        description: 'The tts.* entity to speak through. Blank uses the default.',
       },
       {
         key: 'kinds',
         label: 'Speak',
         placeholder: 'cue, last-call',
-        description: 'Blank means both. Use "last-call" alone to keep the house quiet all day.',
+        description: 'Blank means both.',
+        more: 'Use "last-call" alone to keep the house quiet all day.',
       },
     ],
     secrets: [
       {
         key: 'token',
         label: 'Long-lived access token',
-        description: 'Home Assistant → your profile → Long-lived access tokens. Stored where the browser cannot read it back.',
+        description: 'Home Assistant: your profile → Long-lived access tokens.',
+        more: 'Stored where the browser cannot read it back.',
       },
     ],
   },
@@ -119,7 +123,8 @@ export const CHANNEL_SETTINGS: ChannelSettingsSpec[] = [
         // The default is stated because it is unusually consequential, and
         // because someone who types "cue" here should know what they are asking
         // for before the phone rings at 07:30.
-        description: 'Defaults to last call only. Add "cue" to be called for every reminder.',
+        description: 'Blank means last call only.',
+        more: 'Add "cue" to be called for every reminder too.',
       },
       {
         key: 'voice',

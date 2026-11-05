@@ -141,10 +141,9 @@ export const USE_AI_CHECK_FAILED_LINE = 'Unavailable until the check below works
 export const USE_AI_NEEDS_UPDATE = 'Needs a database update that has not landed here yet.';
 /** "Use AI in dsul"'s description, by form. `on` is also the record's description. */
 export const USE_AI_COPY: Readonly<{ button: string; on: string; off: string }> = Object.freeze({
-  button:
-    'AI is optional. No AI, thanks hides Ask and every invitation to set it up, on all your devices. You can turn it back on here.',
-  on: 'Off hides Ask, plan suggestions, Break it down and every invitation to set AI up, on all your devices. dsul works fully either way.',
-  off: 'AI is off. Ask, plan suggestions, Break it down and every invitation to set AI up are hidden on all your devices.',
+  button: 'Optional. No AI, thanks hides Ask on all your devices.',
+  on: 'Off hides Ask and every AI invite, on all your devices.',
+  off: 'AI is off. Ask is hidden on all your devices.',
 });
 
 export interface AIPaneInput {

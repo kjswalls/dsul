@@ -162,6 +162,10 @@ function scoreRecord(
       const desc = scoreText(term, record.description);
       if (desc !== NO_MATCH) best = Math.max(best, desc * FIELD.description);
     }
+    if (record.more) {
+      const more = scoreText(term, record.more);
+      if (more !== NO_MATCH) best = Math.max(best, more * FIELD.description);
+    }
 
     // AND across terms: every word must find a home somewhere on the record.
     if (best === NO_MATCH) return null;

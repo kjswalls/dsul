@@ -75,7 +75,7 @@ export function AgentFinishSection() {
           <p id={`${id}-desc`} className="text-muted-foreground mt-[3px] max-w-[46ch] text-xs">
             {load.kind === 'unavailable'
               ? "Can't be changed until dsul's database is updated. Until then, you tick off what agents finish."
-              : 'Off: when OpenClaw, Claude or another agent finishes something you handed it, the item waits for you to check it and tick it off. On: the agent can tick it off itself.'}
+              : 'Off, what they finish waits for you to check and tick off.'}
           </p>
         </div>
         <Switch

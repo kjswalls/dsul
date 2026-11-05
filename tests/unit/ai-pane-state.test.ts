@@ -420,10 +420,9 @@ describe('aiPaneLayout', () => {
 
   it('USE_AI_COPY holds the three sentences', () => {
     expect(USE_AI_COPY).toEqual({
-      button:
-        'AI is optional. No AI, thanks hides Ask and every invitation to set it up, on all your devices. You can turn it back on here.',
-      on: 'Off hides Ask, plan suggestions, Break it down and every invitation to set AI up, on all your devices. dsul works fully either way.',
-      off: 'AI is off. Ask, plan suggestions, Break it down and every invitation to set AI up are hidden on all your devices.',
+      button: 'Optional. No AI, thanks hides Ask on all your devices.',
+      on: 'Off hides Ask and every AI invite, on all your devices.',
+      off: 'AI is off. Ask is hidden on all your devices.',
     });
     expect(Object.isFrozen(USE_AI_COPY)).toBe(true);
     expect(USE_AI_CHECK_FAILED).toBe('Couldn’t check your AI connection.');
