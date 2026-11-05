@@ -20,7 +20,11 @@ import type { ChatTarget, ModelConnectionView, OpenClawView } from './ai-types';
 import type { AIConnectionState, ConnectionPhase } from './ai-connection-store';
 import { nothingConnected } from './ai-registry';
 
-/** Every record the AI pane draws or anchors. The ids are permanent (settings deep links). */
+/**
+ * Every record the AI pane and the Connections pane draw or anchor. The ids are
+ * permanent (settings deep links). The two gateway rows live on Connections
+ * (CONNECTIONS_PANE_IDS), in the OpenClaw section, and keep their beacon.* ids.
+ */
 export const AI_PANE_IDS = [
   'beacon.useAi',
   'beacon.apiKey',
@@ -31,6 +35,8 @@ export const AI_PANE_IDS = [
   'beacon.gatewayToken',
 ] as const;
 export type AIPaneRecordId = (typeof AI_PANE_IDS)[number];
+/** The records ConnectionsPane anchors (the rest of AI_PANE_IDS are AIPane's). */
+export const CONNECTIONS_PANE_IDS = ['beacon.gatewayUrl', 'beacon.gatewayToken'] as const;
 
 // Aliases of the store's own types, never restated unions that can drift.
 export type AIPhase = ConnectionPhase;
@@ -173,34 +179,31 @@ export interface AIPaneLayout {
   showOpenClaw: boolean;
   /** known && !aiOff && (!nothingConnected || choice === 'none' || keepDevice) */
   showDevice: boolean;
-  /** Which of the Connection section's four fixed alias slots wear their id. */
+  /** Which of the Connection section's two fixed alias slots wear their id. */
   connectionAliases: readonly AliasId[];
-  /** Which ids the AI-off card wears (all six while it is shown). */
+  /** Which ids the AI-off card wears (all four while it is shown). */
   offCardAliases: readonly AliasId[];
+  /** Which ids the Connections pane's stand-in wears (both gateway rows while OpenClaw is hidden). */
+  gatewayAliases: readonly AliasId[];
 }
 
 const NO_ALIASES: readonly AliasId[] = Object.freeze([]);
-const CONNECTION_SLOTS: readonly AliasId[] = Object.freeze([
-  'beacon.provider',
-  'beacon.instructions',
-  'beacon.gatewayUrl',
-  'beacon.gatewayToken',
-] as const);
-const DEVICE_IDS: readonly AliasId[] = Object.freeze(['beacon.provider', 'beacon.instructions'] as const);
+const CONNECTION_SLOTS: readonly AliasId[] = Object.freeze(['beacon.provider', 'beacon.instructions'] as const);
+const DEVICE_IDS: readonly AliasId[] = CONNECTION_SLOTS;
 const OFF_CARD_IDS: readonly AliasId[] = Object.freeze([
   'beacon.apiKey',
   'beacon.model',
   'beacon.provider',
   'beacon.instructions',
-  'beacon.gatewayUrl',
-  'beacon.gatewayToken',
 ] as const);
+const GATEWAY_IDS: readonly AliasId[] = Object.freeze([...CONNECTIONS_PANE_IDS]);
 
 /**
- * The pane's shape for one state. Every id in AI_PANE_IDS has exactly one
- * anchor in every state: a real row, or an alias on the section that stands
- * in for it (the Connection slots while unknown, failed, or while On this
- * device is hidden; the AI-off card while AI is off).
+ * The two panes' shape for one state. Every id in AI_PANE_IDS has exactly one
+ * anchor in every state, on its own pane: a real row, or an alias on the
+ * section that stands in for it (on AI, the Connection slots while unknown,
+ * failed, or while On this device is hidden, and the AI-off card while AI is
+ * off; on Connections, the stand-in card while OpenClaw is hidden).
  */
 export function aiPaneLayout(i: AIPaneInput): AIPaneLayout {
   const known = i.phase === 'ready';
@@ -236,6 +239,7 @@ export function aiPaneLayout(i: AIPaneInput): AIPaneLayout {
 
   const connectionAliases = !known ? CONNECTION_SLOTS : aiOff ? NO_ALIASES : showDevice ? NO_ALIASES : DEVICE_IDS;
   const offCardAliases = aiOff ? OFF_CARD_IDS : NO_ALIASES;
+  const gatewayAliases = showOpenClaw ? NO_ALIASES : GATEWAY_IDS;
 
   return {
     known,
@@ -249,6 +253,7 @@ export function aiPaneLayout(i: AIPaneInput): AIPaneLayout {
     showDevice,
     connectionAliases,
     offCardAliases,
+    gatewayAliases,
   };
 }
 

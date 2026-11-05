@@ -436,9 +436,8 @@ describe('the AI pane', () => {
 
   it('has no shell Advanced fold: the gateway rows live in the OpenClaw section’s own', async () => {
     given(NOTHING_CONNECTED);
-    renderShell('beacon');
-    const advanced = screen.getAllByRole('button', { name: /Advanced/ });
-    expect(advanced).toEqual([screen.getByTestId('openclaw-gateway-toggle')]);
+    renderShell('connections');
+    expect(screen.queryByRole('button', { name: /^Advanced/ })).toBeNull();
     expect(row('beacon.gatewayUrl')).toBeNull();
     fireEvent.click(screen.getByTestId('openclaw-gateway-toggle'));
     expect(row('beacon.gatewayUrl')).not.toBeNull();
@@ -449,7 +448,7 @@ describe('the AI pane', () => {
   it('a deep link to a gateway row opens the fold and lands on the row', async () => {
     given(NOTHING_CONNECTED);
     render(
-      <SettingsShell pane="beacon" ctx={ctx} focusId="beacon.gatewayUrl" isMobile={false} onOpenDestination={() => {}} />
+      <SettingsShell pane="connections" ctx={ctx} focusId="beacon.gatewayUrl" isMobile={false} onOpenDestination={() => {}} />
     );
     await waitFor(() => expect(row('beacon.gatewayUrl')?.dataset.highlight).toBe('true'));
     expect(screen.getByTestId('openclaw-gateway-toggle')).toHaveAttribute('aria-expanded', 'true');

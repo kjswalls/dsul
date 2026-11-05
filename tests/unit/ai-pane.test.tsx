@@ -52,6 +52,7 @@ vi.mock('@/lib/settings-service', () => ({
 }));
 
 import { AIPane, AIPaneMark } from '@/components/settings/ai-pane';
+import { ConnectionsPane } from '@/components/settings/connections-pane';
 import { UNPAIR_FAILED } from '@/components/settings/disconnect';
 import { ScopeChip } from '@/components/settings/scope-chip';
 import { __armUserForTests, useAIConnectionStore } from '@/lib/ai-connection-store';
@@ -257,16 +258,22 @@ const rowFor = (r: SettingRecord) => (
   </div>
 );
 
+/**
+ * The AI pane and, under it, the Connections pane, as the rail shows them one
+ * after the other: OpenClaw and the agent sections moved there on 2026-11-05
+ * but read the same layout, so one mount walks both.
+ */
 function renderPane(o: { gatewayOpen?: boolean; onToggleGateway?: () => void; highlightId?: string | null } = {}) {
   return render(
-    <AIPane
-      ctx={ctx}
-      isMobile={false}
-      highlightId={o.highlightId ?? null}
-      rowFor={rowFor}
-      gatewayOpen={o.gatewayOpen ?? false}
-      onToggleGateway={o.onToggleGateway ?? (() => {})}
-    />
+    <>
+      <AIPane ctx={ctx} isMobile={false} highlightId={o.highlightId ?? null} rowFor={rowFor} />
+      <ConnectionsPane
+        highlightId={o.highlightId ?? null}
+        rowFor={rowFor}
+        gatewayOpen={o.gatewayOpen ?? false}
+        onToggleGateway={o.onToggleGateway ?? (() => {})}
+      />
+    </>
   );
 }
 
@@ -314,11 +321,11 @@ const lime = () =>
 describe('sections, in order', () => {
   it.each([
     ['F18, nothing connected', NOTHING_CONNECTED, ['explainer', 'use', 'connection', 'openclaw', 'connected-apps', 'agent-finish']],
-    ['F18 with chat Off here', { ...NOTHING_CONNECTED, choice: 'none' }, ['explainer', 'use', 'connection', 'openclaw', 'device', 'connected-apps', 'agent-finish']],
+    ['F18 with chat Off here', { ...NOTHING_CONNECTED, choice: 'none' }, ['explainer', 'use', 'connection', 'device', 'openclaw', 'connected-apps', 'agent-finish']],
     ['no model on this server', { ...NOTHING_CONNECTED, available: false }, ['explainer', 'use', 'connection', 'openclaw', 'connected-apps', 'agent-finish']],
-    ['F19, working', GEMINI_WORKING, ['explainer', 'use', 'connection', 'openclaw', 'device', 'connected-apps', 'agent-finish']],
-    ['F22, AI off with a model kept', AI_OFF_CONNECTED, ['use', 'ai-off', 'connected-apps', 'agent-finish']],
-    ['AI off on a server with no model', { ...AI_HIDDEN, available: false }, ['use', 'ai-off', 'connected-apps', 'agent-finish']],
+    ['F19, working', GEMINI_WORKING, ['explainer', 'use', 'connection', 'device', 'openclaw', 'connected-apps', 'agent-finish']],
+    ['F22, AI off with a model kept', AI_OFF_CONNECTED, ['use', 'ai-off', 'openclaw-hidden', 'connected-apps', 'agent-finish']],
+    ['AI off on a server with no model', { ...AI_HIDDEN, available: false }, ['use', 'ai-off', 'openclaw-hidden', 'connected-apps', 'agent-finish']],
   ] as const)('%s', async (_name, seed, order) => {
     await mount(seed as SeedAI);
     expect(sections()).toEqual(order);
@@ -331,19 +338,19 @@ describe('sections, in order', () => {
   // its Disconnect is there whether AI is on, off or still being checked.
   it('while the check is out: Use AI, Connection and Connected apps', async () => {
     await mount('unknown');
-    expect(sections()).toEqual(['use', 'connection', 'connected-apps', 'agent-finish']);
+    expect(sections()).toEqual(['use', 'connection', 'openclaw-hidden', 'connected-apps', 'agent-finish']);
   });
 
   it('when the check failed: Use AI, Connection and Connected apps', async () => {
     await mount('error');
     expect(useAIConnectionStore.getState().phase).toBe('error');
-    expect(sections()).toEqual(['use', 'connection', 'connected-apps', 'agent-finish']);
+    expect(sections()).toEqual(['use', 'connection', 'openclaw-hidden', 'connected-apps', 'agent-finish']);
   });
 
-  it('is one pane root', async () => {
+  it('is one root per pane', async () => {
     await mount(NOTHING_CONNECTED);
-    const pane = screen.getByTestId('ai-pane');
-    expect(pane.querySelectorAll('[data-ai-section]')).toHaveLength(6);
+    expect(screen.getByTestId('ai-pane').querySelectorAll('[data-ai-section]')).toHaveLength(3);
+    expect(screen.getByTestId('connections-pane').querySelectorAll('[data-ai-section]')).toHaveLength(3);
   });
 });
 
@@ -664,7 +671,7 @@ describe('Use AI in dsul: writes and focus', () => {
 /* ── The Connection section ─────────────────────────────────────────────── */
 
 describe('the Connection section never remounts', () => {
-  /** The panel's ancestors up to the Connection wrapper: the four fixed alias slots. */
+  /** The panel's ancestors up to the Connection wrapper: the two fixed alias slots. */
   function slotDepth() {
     const panel = screen.getByTestId('model-connection-panel');
     let n = 0;
@@ -708,7 +715,7 @@ describe('the Connection section never remounts', () => {
     renderPane();
     const panel = screen.getByTestId('model-connection-panel');
     expect(screen.getByTestId('mcp-flow-notice')).toBeInTheDocument();
-    expect(slotDepth()).toBe(4);
+    expect(slotDepth()).toBe(2);
     await waitFor(() => expect(useAIConnectionStore.getState().phase).toBe('ready'));
     await settle();
     expect(screen.getByTestId('model-connection-panel')).toBe(panel);
@@ -725,9 +732,9 @@ describe('the Connection section never remounts', () => {
     ['F20', KEY_TURNED_DOWN],
     ['F21', DAILY_LIMIT],
     ['pull-only', OPENCLAW_PULL_ONLY],
-  ] as const)('sits under four alias slots: %s', async (_name, seed) => {
+  ] as const)('sits under two alias slots: %s', async (_name, seed) => {
     await mount(seed as SeedAI | 'unknown' | 'error');
-    expect(slotDepth()).toBe(4);
+    expect(slotDepth()).toBe(2);
   });
 });
 
@@ -749,7 +756,7 @@ describe('On this device', () => {
     );
     const rows = Array.from(device.querySelectorAll<HTMLElement>('[data-setting-row]'));
     expect(rows.map((r) => r.dataset.settingRow)).toEqual(['beacon.provider', 'beacon.instructions']);
-    expect(rows[0].parentElement).toHaveClass('border-t');
+    expect(rows[0].parentElement).toHaveAttribute('data-settings-card');
   });
 
   it('stays for the visit once shown: choosing a chat target keeps it', async () => {
@@ -1171,7 +1178,7 @@ describe('OpenClaw', () => {
 
   it('both section pills sit flush right in their header rows', async () => {
     await mount(GEMINI_WORKING);
-    expect(pill().parentElement).toHaveClass('justify-between');
+    expect(pill().parentElement).toHaveClass('ml-auto');
     expect(screen.getByTestId('mcp-status').parentElement).toHaveClass('justify-between');
   });
 
@@ -1180,7 +1187,7 @@ describe('OpenClaw', () => {
     const first = await mount(NOTHING_CONNECTED, { onToggleGateway: toggle });
     const button = screen.getByTestId('openclaw-gateway-toggle');
     expect(button).toHaveAttribute('aria-expanded', 'false');
-    expect(button).toHaveTextContent('Advanced');
+    expect(button).toHaveTextContent('Gateway');
     expect(document.querySelector('[data-setting-row="beacon.gatewayUrl"]')).toBeNull();
     fireEvent.click(button);
     expect(toggle).toHaveBeenCalledTimes(1);
@@ -1202,12 +1209,14 @@ type Where =
   | { kind: 'row' }
   | { kind: 'slot' }
   | { kind: 'off' }
+  | { kind: 'hidden' }
   | { kind: 'holds'; testId: string }
   | { kind: 'says'; text: string };
 
 const R: Where = { kind: 'row' };
 const SLOT: Where = { kind: 'slot' };
 const OFF: Where = { kind: 'off' };
+const HID: Where = { kind: 'hidden' };
 const holds = (testId: string): Where => ({ kind: 'holds', testId });
 const says = (text: string): Where => ({ kind: 'says', text });
 
@@ -1237,6 +1246,8 @@ function expectAnchor(id: string, where: Where) {
     expect(panel && el.contains(panel), `${id}: a Connection slot`).toBe(true);
   } else if (where.kind === 'off') {
     expect(el.contains(screen.getByTestId('mcp-ai-off')), `${id}: the AI-off card`).toBe(true);
+  } else if (where.kind === 'hidden') {
+    expect(el.contains(screen.getByTestId('openclaw-hidden-copy')), `${id}: the Connections stand-in`).toBe(true);
   } else {
     expect(panel?.contains(el), `${id}: inside the Connection section`).toBe(true);
     if (where.kind === 'holds') {
@@ -1258,7 +1269,7 @@ describe('every record has exactly one anchor, in every state', () => {
   });
   const READY_SLOTS = { 'beacon.provider': SLOT, 'beacon.instructions': SLOT, 'beacon.gatewayUrl': R, 'beacon.gatewayToken': R };
   const ROWS = { 'beacon.provider': R, 'beacon.instructions': R, 'beacon.gatewayUrl': R, 'beacon.gatewayToken': R };
-  const ALL_SLOTS = { 'beacon.provider': SLOT, 'beacon.instructions': SLOT, 'beacon.gatewayUrl': SLOT, 'beacon.gatewayToken': SLOT };
+  const ALL_SLOTS = { 'beacon.provider': SLOT, 'beacon.instructions': SLOT, 'beacon.gatewayUrl': HID, 'beacon.gatewayToken': HID };
 
   const table: Array<[string, SeedAI | 'unknown' | 'error', ModelConnectionView | null, Record<(typeof IDS)[number], Where>]> = [
     ['checking', 'unknown', null, { 'beacon.useAi': R, 'beacon.apiKey': holds('mcp-checking'), 'beacon.model': holds('mcp-checking'), ...ALL_SLOTS }],
@@ -1271,7 +1282,7 @@ describe('every record has exactly one anchor, in every state', () => {
     ['F20, a key', KEY_TURNED_DOWN, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('fix-key'), 'beacon.model': holds('fix-line'), ...ROWS }],
     ['F20, a sign-in (no key box)', KEY_TURNED_DOWN, oauthFailing, { 'beacon.useAi': R, 'beacon.apiKey': holds('fix-explain'), 'beacon.model': holds('fix-line'), ...ROWS }],
     ['F21', DAILY_LIMIT, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('mcp-provider'), 'beacon.model': holds('model-picker'), ...ROWS }],
-    ['F22', AI_OFF_CONNECTED, null, { 'beacon.useAi': R, 'beacon.apiKey': OFF, 'beacon.model': OFF, 'beacon.provider': OFF, 'beacon.instructions': OFF, 'beacon.gatewayUrl': OFF, 'beacon.gatewayToken': OFF }],
+    ['F22', AI_OFF_CONNECTED, null, { 'beacon.useAi': R, 'beacon.apiKey': OFF, 'beacon.model': OFF, 'beacon.provider': OFF, 'beacon.instructions': OFF, 'beacon.gatewayUrl': HID, 'beacon.gatewayToken': HID }],
     ['OpenClaw only', OPENCLAW_CHAT, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('connect-key'), 'beacon.model': holds('mcp-connect-fresh'), ...ROWS }],
     ['pull-only', OPENCLAW_PULL_ONLY, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('connect-key'), 'beacon.model': holds('mcp-connect-fresh'), ...ROWS }],
   ];
@@ -1304,7 +1315,7 @@ describe('every record has exactly one anchor, in every state', () => {
 /* ── The files ──────────────────────────────────────────────────────────── */
 
 describe('the pane files', () => {
-  it.each(['components/settings/ai-pane.tsx', 'components/settings/scope-chip.tsx'])(
+  it.each(['components/settings/ai-pane.tsx', 'components/settings/connections-pane.tsx', 'components/settings/scope-chip.tsx'])(
     '%s has no em dashes, never names the AI, and says Ctrl, not ⌘',
     (file) => {
       const src = readFileSync(join(process.cwd(), file), 'utf8');

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DANGER_TEXT_ACTION, TEXT_ACTION } from '@/components/ai/connect/connect-shared';
 import { cn } from '@/lib/utils';
+import { SETTINGS_CARD_CLASS, SettingsSectionLabel } from './settings-card';
 import { SCOPE_WORDS, type Scope } from '@/lib/mcp-oauth/scopes';
 
 /**
@@ -123,17 +124,17 @@ export function AgentKeysSection() {
       aria-labelledby="ai-agent-keys-title"
       className="flex flex-col gap-3"
     >
-      <h3 id="ai-agent-keys-title" className="text-foreground text-sm font-medium">
+      <SettingsSectionLabel id="ai-agent-keys-title" className="mb-0">
         Agent keys
-      </h3>
-      <p className="text-muted-foreground text-xs">
+      </SettingsSectionLabel>
+      <p className="text-muted-foreground -mt-2 px-1 text-xs">
         A key for another agent or a script, sent as <code className="font-mono">Authorization: Bearer</code> to the
         agent API or <code className="font-mono">/api/mcp</code>. Give each one a name, and make it read only unless it
         needs to change things.
       </p>
 
       {fresh && (
-        <div className="border-border flex flex-col gap-2 rounded-[8px] border p-4" data-testid="agent-key-fresh">
+        <div className="bg-card border-border flex flex-col gap-2 rounded-[calc(var(--radius)*0.75)] border p-4" data-testid="agent-key-fresh">
           <p className="text-foreground text-sm">Your key for {fresh.name}</p>
           <div className="flex items-center gap-2">
             <code
@@ -168,9 +169,9 @@ export function AgentKeysSection() {
       )}
 
       {load.kind === 'ready' && load.keys.length > 0 && (
-        <ul className="border-border divide-border divide-y rounded-[8px] border">
+        <ul className={SETTINGS_CARD_CLASS}>
           {load.keys.map((k) => (
-            <li key={k.id} className="flex flex-wrap items-center justify-between gap-3 p-4" data-testid="agent-key">
+            <li key={k.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" data-testid="agent-key">
               <div className="min-w-0 flex-1 basis-48">
                 <p className="text-foreground truncate text-sm">{k.name}</p>
                 <p className="text-muted-foreground text-xs">
@@ -215,7 +216,7 @@ export function AgentKeysSection() {
       {load.kind === 'ready' &&
         (making ? (
           <form
-            className="border-border flex flex-col gap-3 rounded-[8px] border p-4"
+            className="bg-card border-border flex flex-col gap-3 rounded-[calc(var(--radius)*0.75)] border p-4"
             data-testid="agent-key-form"
             onSubmit={(e) => {
               e.preventDefault();
@@ -274,7 +275,7 @@ export function AgentKeysSection() {
         ) : (
           <button
             type="button"
-            className={cn(TEXT_ACTION, 'self-start')}
+            className={cn(TEXT_ACTION, 'self-start px-1')}
             onClick={() => {
               setMaking(true);
               setError(null);

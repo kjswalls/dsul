@@ -6,6 +6,7 @@ import { SCOPE_WORDS, type Scope } from '@/lib/mcp-oauth/scopes';
 import { assigneeForName, type AgentAssignee } from '@/lib/agent-assignees';
 import { wakeKey } from '@/lib/agent-wake';
 import { AppWake, canWake } from './app-wake';
+import { SETTINGS_CARD_CLASS, SettingsSectionLabel } from './settings-card';
 
 /**
  * Settings → AI → Connected apps: the apps signed in to dsul's MCP server over
@@ -92,10 +93,10 @@ export function ConnectedAppsSection() {
       aria-labelledby="ai-connected-apps-title"
       className="flex flex-col gap-3"
     >
-      <h3 id="ai-connected-apps-title" className="text-foreground text-sm font-medium">
+      <SettingsSectionLabel id="ai-connected-apps-title" className="mb-0">
         Connected apps
-      </h3>
-      <p className="text-muted-foreground text-xs">
+      </SettingsSectionLabel>
+      <p className="text-muted-foreground -mt-2 px-1 text-xs">
         Claude, Cursor and other apps that speak MCP can read and change your planner. Add{' '}
         <code className="bg-muted text-foreground rounded px-1 py-0.5 font-mono" data-testid="mcp-url">
           {origin}/api/mcp
@@ -104,7 +105,7 @@ export function ConnectedAppsSection() {
       </p>
 
       {load.kind === 'ready' && load.apps.length > 0 && (
-        <ul className="border-border divide-border divide-y rounded-[8px] border">
+        <ul className={SETTINGS_CARD_CLASS}>
           {load.apps.map((app, i) => {
             const assignee = assigneeForName(app.name);
             // A Claude that may change the planner, the first of its name only:
@@ -115,7 +116,7 @@ export function ConnectedAppsSection() {
               canWake(app.name) &&
               !load.apps.slice(0, i).some((a) => a.scope === 'planner' && wakeKey(a.name) === wakeKey(app.name));
             return (
-            <li key={app.id} className="flex flex-wrap items-center justify-between gap-3 p-4" data-testid="connected-app">
+            <li key={app.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" data-testid="connected-app">
               <div className="min-w-0 flex-1 basis-48">
                 <p className="text-foreground truncate text-sm">{app.name}</p>
                 <p className="text-muted-foreground text-xs">

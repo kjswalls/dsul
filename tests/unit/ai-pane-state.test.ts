@@ -190,16 +190,13 @@ describe('connectionBody', () => {
 
 /* ── aiPaneLayout ────────────────────────────────────────────────────────── */
 
-const FOUR: readonly AliasId[] = ['beacon.provider', 'beacon.instructions', 'beacon.gatewayUrl', 'beacon.gatewayToken'];
+/** The Connection section's two slots (the gateway rows moved to Connections). */
+const TWO: readonly AliasId[] = ['beacon.provider', 'beacon.instructions'];
+/** The Connections pane's stand-in, while OpenClaw is hidden. */
+const GATEWAY: readonly AliasId[] = ['beacon.gatewayUrl', 'beacon.gatewayToken'];
 const DEVICE: readonly AliasId[] = ['beacon.provider', 'beacon.instructions'];
-const SIX: readonly AliasId[] = [
-  'beacon.apiKey',
-  'beacon.model',
-  'beacon.provider',
-  'beacon.instructions',
-  'beacon.gatewayUrl',
-  'beacon.gatewayToken',
-];
+/** The AI-off card's four. */
+const OFF_FOUR: readonly AliasId[] = ['beacon.apiKey', 'beacon.model', 'beacon.provider', 'beacon.instructions'];
 
 /** A whole layout: a ready, connected, on state, overridden per row. */
 function layout(over: Partial<AIPaneLayout>): AIPaneLayout {
@@ -215,6 +212,7 @@ function layout(over: Partial<AIPaneLayout>): AIPaneLayout {
     showDevice: true,
     connectionAliases: [],
     offCardAliases: [],
+    gatewayAliases: [],
     ...over,
   };
 }
@@ -226,7 +224,8 @@ const UNKNOWN_LAYOUT = layout({
   useAiLine: 'Still loading…',
   showOpenClaw: false,
   showDevice: false,
-  connectionAliases: FOUR,
+  connectionAliases: TWO,
+  gatewayAliases: GATEWAY,
 });
 
 const TABLE: [string, AIPaneInput, AIPaneLayout][] = [
@@ -243,7 +242,8 @@ const TABLE: [string, AIPaneInput, AIPaneLayout][] = [
       useAiLine: USE_AI_CHECK_FAILED_LINE,
       showOpenClaw: false,
       showDevice: false,
-      connectionAliases: FOUR,
+      connectionAliases: TWO,
+      gatewayAliases: GATEWAY,
     }),
   ],
   [
@@ -288,7 +288,8 @@ const TABLE: [string, AIPaneInput, AIPaneLayout][] = [
       useAi: 'off',
       showOpenClaw: false,
       showDevice: false,
-      offCardAliases: SIX,
+      offCardAliases: OFF_FOUR,
+      gatewayAliases: GATEWAY,
     }),
   ],
   [
@@ -301,7 +302,8 @@ const TABLE: [string, AIPaneInput, AIPaneLayout][] = [
       useAi: 'off',
       showOpenClaw: false,
       showDevice: false,
-      offCardAliases: SIX,
+      offCardAliases: OFF_FOUR,
+      gatewayAliases: GATEWAY,
     }),
   ],
   ['Gemini working (F19)', paneInputFor(GEMINI_WORKING), layout({})],
@@ -318,7 +320,8 @@ const TABLE: [string, AIPaneInput, AIPaneLayout][] = [
       useAi: 'off',
       showOpenClaw: false,
       showDevice: false,
-      offCardAliases: SIX,
+      offCardAliases: OFF_FOUR,
+      gatewayAliases: GATEWAY,
     }),
   ],
   [
@@ -330,7 +333,8 @@ const TABLE: [string, AIPaneInput, AIPaneLayout][] = [
       useAi: 'off',
       showOpenClaw: false,
       showDevice: false,
-      offCardAliases: SIX,
+      offCardAliases: OFF_FOUR,
+      gatewayAliases: GATEWAY,
     }),
   ],
   [
@@ -392,6 +396,7 @@ describe('aiPaneLayout', () => {
         const covered = [
           ...l.connectionAliases,
           ...l.offCardAliases,
+          ...l.gatewayAliases,
           ...(l.showDevice ? device : []),
           ...(l.showOpenClaw ? gateway : []),
         ];
@@ -410,7 +415,7 @@ describe('aiPaneLayout', () => {
 
   it('names every record the pane anchors, and Use AI is first', () => {
     expect(AI_PANE_IDS[0]).toBe('beacon.useAi');
-    expect([...AI_PANE_IDS].sort()).toEqual(['beacon.useAi', ...SIX].sort());
+    expect([...AI_PANE_IDS].sort()).toEqual(['beacon.useAi', ...OFF_FOUR, ...GATEWAY].sort());
   });
 
   it('USE_AI_COPY holds the three sentences', () => {

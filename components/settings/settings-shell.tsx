@@ -42,6 +42,7 @@ import { ExtensionBrowse } from '@/components/extensions/extension-browse';
 import { DevicesList } from './devices-list';
 import { ShortcutsPanel } from './shortcuts-panel';
 import { AIPane, AIPaneMark, UseAIRow } from './ai-pane';
+import { ConnectionsPane } from './connections-pane';
 import { MakePane } from './make-pane';
 import { SoundsConsole } from './sounds-console';
 import { SettingsCard, SettingsSection } from './settings-card';
@@ -279,7 +280,7 @@ export function SettingsShell({
   // <body>. Once it answers, focusPending changes and the effect runs again
   // against the ready layout. PENDING_WAIT_MS still bounds the wait.
   const aiPhase = useAIConnectionStore((s) => s.phase);
-  const aiHold = focusRecord?.pane === 'beacon' && aiPhase === 'unknown';
+  const aiHold = (focusRecord?.pane === 'beacon' || focusRecord?.pane === 'connections') && aiPhase === 'unknown';
   const focusPending = (focusRecord ? anyAncestorPending(focusRecord, ctx) : false) || aiHold;
   // A load that never finishes (a failed extensions hydrate leaves its loaded
   // flag false until the next auth event) must not strand the arrival — and the
@@ -499,10 +500,11 @@ export function SettingsShell({
   };
 
   const paneOwn = paneRows(pane, { isMobile });
-  // The AI pane draws every one of its records itself (AIPane), the gateway
-  // rows included, in the OpenClaw section's own fold: so no flat rows and no
-  // Advanced fold here.
-  const advanced = pane === 'beacon' ? [] : paneOwn.advanced;
+  // The AI and Connections panes draw every one of their records themselves
+  // (AIPane, ConnectionsPane: the gateway rows sit in the OpenClaw section's
+  // own fold), so no flat rows and no Advanced fold there.
+  const drawsOwnRecords = pane === 'beacon' || pane === 'connections';
+  const advanced = drawsOwnRecords ? [] : paneOwn.advanced;
   // The AI pane's records are drawn by AIPane, which gives each one a row or
   // a `data-setting-alias` anchor in every state, and the Look pane's mode,
   // themes, tint and layout by LookPicker, which carries a `data-setting-row`
@@ -512,7 +514,7 @@ export function SettingsShell({
   // opens the panel, setUpAction; Use AI in dsul as UseAIRow; the rest as the
   // ordinary rows they are).
   const rows =
-    pane === 'beacon'
+    drawsOwnRecords
       ? paneOwn.rows.filter((r) => !AI_PANE_RECORD_IDS.has(r.id))
       : pane === 'look'
         ? paneOwn.rows.filter((r) => !LOOK_PICKER_RECORD_IDS.has(r.id))
@@ -866,9 +868,9 @@ export function SettingsShell({
                   onReset={reset}
                 />
               ) : pane === 'beacon' ? (
-                <AIPane
-                  ctx={ctx}
-                  isMobile={isMobile}
+                <AIPane ctx={ctx} isMobile={isMobile} highlightId={highlight} rowFor={(r) => rowFor(r)} />
+              ) : pane === 'connections' ? (
+                <ConnectionsPane
                   highlightId={highlight}
                   rowFor={(r) => rowFor(r)}
                   gatewayOpen={advOpen}
