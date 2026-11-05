@@ -1728,16 +1728,11 @@ body {
     box-shadow: none;
   }
 
-  /* The key on a main button (ButtonKey, components/ui/button.tsx): the one
-     spot of accent on an ink button, drawn only where Enter really presses it.
-     Hovering or focusing the button runs one glint across it. The glint is a
-     highlight passing OVER the accent; the accent itself is never faded. A
-     disabled button fades through opacity-50, and the accent must never be
-     faded through a parent's opacity, so the key goes neutral instead. */
+  /* The key on a main button (ButtonKey, components/ui/button.tsx), printed
+     on the keycap as a small neutral inset where Enter really presses it.
+     Neutral since the keycap round (2026-11-05): the main key's lime is its
+     skirt (.key-main below), one lime thing per key. */
   [data-slot='button-key'] {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
     display: inline-grid;
     place-items: center;
     min-width: 18px;
@@ -1745,30 +1740,12 @@ body {
     margin-right: -5px;
     padding: 0 4px;
     border-radius: 4px;
-    background: var(--primary);
-    color: var(--primary-foreground);
+    background: color-mix(in oklab, currentColor 9%, transparent);
+    color: inherit;
     font-family: var(--font-mono);
     font-size: 10.5px;
     font-weight: 500;
     line-height: 1;
-  }
-  [data-slot='button-key']::after {
-    content: '';
-    position: absolute;
-    inset-block: -2px;
-    left: -80%;
-    width: 60%;
-    transform: skewX(-20deg);
-    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.75), transparent);
-    pointer-events: none;
-  }
-  :is(button, a):is(:hover, :focus-visible) > [data-slot='button-key']::after {
-    animation: button-key-glint 700ms ease-out;
-  }
-  /* Dark: the ink button is near-white and the lime chip is pale too, so a
-     lime-ink hairline keeps the key's edge. */
-  .dark [data-slot='button-key'] {
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary-foreground) 45%, transparent);
   }
   /* Phones have no Enter to teach. */
   @media (max-width: 639px) {
@@ -1776,23 +1753,108 @@ body {
       display: none;
     }
   }
-  :is(button:disabled, [aria-disabled='true']) > [data-slot='button-key'] {
-    background: color-mix(in oklab, currentColor 16%, transparent);
-    color: inherit;
+
+  /* The keycap's face (.key, the rest is unlayered below). A face colour in
+     the components layer, so a caller's bg-* utility still wins it. */
+  .key {
+    background-color: var(--surface-2);
   }
-  :is(button:disabled, [aria-disabled='true']) > [data-slot='button-key']::after {
-    display: none;
+  .key-danger {
+    background-color: color-mix(in oklab, var(--destructive) 5%, var(--surface-2));
   }
-}
-@keyframes button-key-glint {
-  from { left: -80%; }
-  to { left: 130%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  [data-slot='button-key']::after {
-    display: none;
-  }
   .field {
+    transition: none;
+  }
+}
+
+/* ─── Keycap buttons (components/ui/button.tsx) ─────────────────────────────
+   Kirby's pick "F" (2026-11-05, mocks at /mnt/project-files/keycap-buttons/).
+   Every Button variant with a face (default, outline, secondary, destructive)
+   is the same paper key as the sidebar's Ctrl K launcher ([data-do-key]):
+
+     the face    background-color (layered above, so bg-* still wins) under a
+                 translucent bevel, brighter at the top as a lit key is
+                 (--key-bevel-*, shared with Ask's and the do stuff key)
+     the rim     a 1px inset hairline
+     the skirt   a 3px edge under the face, which a press sinks 2px into
+     the cast    --shadow-key-rest, --shadow-key-pressed on a press
+
+   .key-main stands on a LIME skirt: --primary itself, a flat edge, never
+   mixed or faded, and never a glow (a rim lit with lime is AI's alone). A
+   disabled button fades through opacity-50, and the accent must never be
+   faded through a parent's opacity, so a disabled main key's skirt goes to
+   the hairline instead. Unlayered on purpose: these box-shadows must beat
+   the base class's focus-visible ring utility, so the ring is redrawn here. */
+.key {
+  --key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 12%);
+  --key-skirt: var(--key-rim);
+  --key-wash: 0%;
+  --key-ring: 0 0 0 0 transparent;
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--foreground) calc(var(--key-bevel-top) + var(--key-wash)), transparent),
+    color-mix(in oklab, var(--foreground) calc(var(--key-bevel-bottom) + var(--key-wash)), transparent)
+  );
+  box-shadow:
+    inset 0 0 0 1px var(--key-rim),
+    0 3px 0 var(--key-skirt),
+    var(--key-ring),
+    var(--shadow-key-rest);
+  transition:
+    translate 120ms var(--ease-out-soft),
+    box-shadow 120ms var(--ease-out-soft),
+    background-color 150ms var(--ease-out-soft),
+    color 150ms var(--ease-out-soft);
+}
+:where(.dark) .key {
+  --key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 9%);
+}
+.key-main {
+  --key-rim: color-mix(in oklab, var(--primary), var(--surface-2) 40%);
+  --key-skirt: var(--primary);
+}
+.dark .key-main {
+  --key-rim: color-mix(in oklab, var(--primary), var(--surface-2) 45%);
+}
+.key-danger {
+  --key-rim: color-mix(in oklab, var(--destructive) 40%, var(--surface-2));
+  --key-skirt: var(--key-rim);
+}
+@media (hover: hover) {
+  .key:hover {
+    --key-wash: 3%;
+  }
+}
+.key:focus-visible {
+  --key-ring: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+.key:active {
+  translate: 0 2px;
+  box-shadow:
+    inset 0 0 0 1px var(--key-rim),
+    0 1px 0 var(--key-skirt),
+    var(--key-ring),
+    var(--shadow-key-pressed);
+}
+.key:is(:disabled, [aria-disabled='true']) {
+  --key-wash: 0%;
+}
+.key-main:is(:disabled, [aria-disabled='true']) {
+  --key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 12%);
+  --key-skirt: var(--key-rim);
+}
+.key[aria-disabled='true']:active {
+  translate: none;
+  box-shadow:
+    inset 0 0 0 1px var(--key-rim),
+    0 3px 0 var(--key-skirt),
+    var(--key-ring),
+    var(--shadow-key-rest);
+}
+@media (prefers-reduced-motion: reduce) {
+  .key {
     transition: none;
   }
 }
@@ -5397,4 +5459,22 @@ body {
     translate: none;
     scale: none;
   }
+}
+
+/* ─── The capture modal's deck (components/planner/item-dialog.tsx) ─────────
+   A recessed strip along the add/edit modal's foot holding the chip field and
+   the submit key, the way keys sit in a keyboard's well (Kirby's pick, the
+   keycap round, 2026-11-05). It bleeds to the dialog's edges and is clipped by
+   the dialog's own radius. In light it is a step toward the well; in dark it
+   sinks toward the backdrop. Unset chips drop their dashed outline here: the
+   deck is already the frame, and a dashed box inside it read as a hole. */
+[data-item-deck] {
+  border-top: 1px solid var(--border);
+  background-color: color-mix(in oklab, var(--surface-3), var(--modal) 35%);
+}
+.dark [data-item-deck] {
+  background-color: color-mix(in oklab, var(--surface-0), var(--modal) 20%);
+}
+[data-item-deck] [data-slot='property-chip']:not([data-set]) {
+  border-color: transparent;
 }

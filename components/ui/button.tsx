@@ -9,25 +9,21 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Ink, not accent: the main button is filled with the theme's text
-        // color, so it is the same quiet weight on every theme and on any
-        // color a person picks. The accent lives only in its ButtonKey.
-        default: 'bg-foreground text-background hover:bg-foreground/85',
-        // Red words on a red hairline with a faint wash. A filled red block
-        // was the loudest thing on screen, louder than the dialog's own title.
-        destructive:
-          'border border-destructive/45 bg-destructive/[0.07] text-destructive-text hover:bg-destructive/[0.13] focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40',
-        // outline + secondary can carry a resting fill (secondary always, outline
-        // when a caller passes one, e.g. login's frosted bg-card/55), so their
-        // hover LAYERS the wash (hover-wash) rather than swapping
-        // background-color — swapping would drop the fill and composite
-        // --accent onto whatever is behind. ghost is transparent at rest, so
-        // plain hover:bg-accent is correct. --accent is defined per theme (ink
-        // 4% light, white 6% dark), so one class is right in both.
-        outline:
-          'border border-input bg-transparent hover-wash hover:text-accent-foreground',
-        secondary:
-          'bg-secondary text-secondary-foreground hover-wash',
+        // Keycaps (Kirby, 2026-11-05: "F" in the keycap round). Every button
+        // that carries a face is the same paper key as the sidebar's Ctrl K
+        // launcher: a bevelled face, a hairline rim, a 3px skirt it sinks into
+        // when pressed. The shape, the skirt and the press live in globals.css
+        // under `.key`; the face colour is a background-color in the
+        // components layer, so a caller's bg-* still wins it.
+        //
+        // The main button stands on a lime skirt: the raw accent as a flat
+        // edge, never a glow (a lit rim is AI's alone) and never faded. That
+        // skirt is its only lime; its ButtonKey goes neutral.
+        default: 'key key-main font-semibold text-foreground',
+        // Red words on a red-rimmed key with a faint wash.
+        destructive: 'key key-danger text-destructive-text',
+        outline: 'key text-foreground',
+        secondary: 'key text-secondary-foreground',
         ghost:
           'hover:bg-accent hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
@@ -72,12 +68,12 @@ function Button({
 }
 
 /**
- * The key a main button answers to, drawn as a small accent keycap at the end
- * of its label (↵ by default). Put one ONLY where that key really presses the
- * button, and never on a destructive one: it is the button's single spot of
- * accent, and it says "this is what Enter does". It is decorative to assistive
- * tech; say the shortcut in aria-keyshortcuts on the button if it matters.
- * Styles, the hover glint and the disabled rule are in globals.css.
+ * The key a main button answers to, printed on the keycap as a small neutral
+ * inset at the end of its label (↵ by default). Put one ONLY where that key
+ * really presses the button, and never on a destructive one: it says "this is
+ * what Enter does". The main key's lime is its skirt, so this stays neutral.
+ * It is decorative to assistive tech; say the shortcut in aria-keyshortcuts on
+ * the button if it matters. Styles and the disabled rule are in globals.css.
  */
 function ButtonKey({ children = '↵', ...props }: React.ComponentProps<'kbd'>) {
   return (
