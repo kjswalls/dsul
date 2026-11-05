@@ -48,6 +48,7 @@ import {
   userLookState,
 } from '@/lib/user-looks';
 import { cn } from '@/lib/utils';
+import { SettingsCard, SettingsSectionLabel } from './settings-card';
 
 /**
  * Settings → Look's top half: the six look records drawn as pictures you tap.
@@ -373,15 +374,13 @@ export function LookPicker({
   const otherMode = theme === 'dark' ? 'Light' : 'Dark';
 
   return (
-    <div data-testid="look-picker" className="flex flex-col gap-5">
+    <div data-testid="look-picker" className="flex flex-col gap-8">
       {!isMobile && (
         <section aria-labelledby={`${switchId}-looks`} className="flex flex-col gap-2.5">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <h3 id={`${switchId}-looks`} className="text-foreground text-sm font-medium">
-              Looks
-            </h3>
-            <span className={QUIET}>A layout with the colours it was made with</span>
-          </div>
+          <SettingsSectionLabel id={`${switchId}-looks`} className="mb-0">
+            Looks
+            <span className="font-normal">· a layout with the colours it was made with</span>
+          </SettingsSectionLabel>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {LOOKS.map((look) => {
               const raw = lookState(look, current);
@@ -439,56 +438,56 @@ export function LookPicker({
               </div>
             </div>
           )}
-          <div className="text-muted-foreground mt-2 flex items-center gap-3 text-xs font-medium">
-            <span>Make it yours</span>
-            <span aria-hidden className="bg-border h-px flex-1" />
-          </div>
         </section>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {side('light')}
-        {side('dark')}
-      </div>
-
-      {safeMode && (hasThemeRows || hasLookRows || isUserThemeSlug(lightPick) || isUserThemeSlug(darkPick)) && (
-        <p className={cn(QUIET, '-mt-2')} data-testid="look-safe-mode">
-          {safeModeLine(hasThemeRows || isUserThemeSlug(lightPick) || isUserThemeSlug(darkPick), hasLookRows)}
-        </p>
-      )}
-
-      {!isMobile && ownColours && (
-        <p className={cn(QUIET, '-mt-2')} data-testid="look-own-colours">
-          {def.styleLabel ?? def.label} brings its own colours. Your themes rest while it’s on, and
-          still dress menus and dialogs.
-        </p>
-      )}
-
-      <div
-        {...anchor('look.theme')}
-        className={cn(
-          '-mx-3 flex items-center justify-between gap-6 rounded-[5px] px-3 py-2.5',
-          ANCHOR_RING
-        )}
-      >
-        <div className="min-w-0">
-          <label htmlFor={switchId} className="text-foreground text-sm font-medium">
-            Follow device
-          </label>
-          <p id={followDesc} className="text-muted-foreground mt-[3px] max-w-[46ch] text-xs">
-            {following
-              ? `Light or dark, as your device is set. It’s ${showing} now.`
-              : `Off. dsul stays ${theme} until you tap ${otherMode}.`}
-          </p>
+      <section aria-labelledby={`${switchId}-yours`} className="flex flex-col gap-2.5">
+        <SettingsSectionLabel id={`${switchId}-yours`} className="mb-0">
+          {isMobile ? 'Theme' : 'Make it yours'}
+        </SettingsSectionLabel>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {side('light')}
+          {side('dark')}
         </div>
-        <Switch
-          id={switchId}
-          data-testid="look-follow-device"
-          aria-describedby={followDesc}
-          checked={following}
-          onCheckedChange={(on) => writeMode(on ? 'system' : showing)}
-        />
-      </div>
+
+        {safeMode && (hasThemeRows || hasLookRows || isUserThemeSlug(lightPick) || isUserThemeSlug(darkPick)) && (
+          <p className={QUIET} data-testid="look-safe-mode">
+            {safeModeLine(hasThemeRows || isUserThemeSlug(lightPick) || isUserThemeSlug(darkPick), hasLookRows)}
+          </p>
+        )}
+
+        {!isMobile && ownColours && (
+          <p className={QUIET} data-testid="look-own-colours">
+            {def.styleLabel ?? def.label} brings its own colours. Your themes rest while it’s on, and
+            still dress menus and dialogs.
+          </p>
+        )}
+
+        <SettingsCard>
+          <div
+            {...anchor('look.theme')}
+            className={cn('flex items-center justify-between gap-6 px-4 py-3', ANCHOR_RING)}
+          >
+            <div className="min-w-0">
+              <label htmlFor={switchId} className="text-foreground text-sm font-medium">
+                Follow device
+              </label>
+              <p id={followDesc} className="text-muted-foreground mt-[3px] max-w-[46ch] text-xs">
+                {following
+                  ? `Light or dark, as your device is set. It’s ${showing} now.`
+                  : `Off. dsul stays ${theme} until you tap ${otherMode}.`}
+              </p>
+            </div>
+            <Switch
+              id={switchId}
+              data-testid="look-follow-device"
+              aria-describedby={followDesc}
+              checked={following}
+              onCheckedChange={(on) => writeMode(on ? 'system' : showing)}
+            />
+          </div>
+        </SettingsCard>
+      </section>
 
       {!isMobile && (
         <LayoutBlock
@@ -766,10 +765,10 @@ function LayoutBlock({
       {...(hasStyles ? {} : anchor('look.layoutStyle'))}
       className={cn('flex flex-col gap-2.5 rounded-[10px]', ANCHOR_RING)}
     >
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <h3 className="text-foreground text-sm font-medium">Layout</h3>
-        <span className={QUIET}>Changes the layout only</span>
-      </div>
+      <SettingsSectionLabel className="mb-0">
+        Layout
+        <span className="font-normal">· changes the layout only</span>
+      </SettingsSectionLabel>
       <div
         role="group"
         aria-label="Layout"

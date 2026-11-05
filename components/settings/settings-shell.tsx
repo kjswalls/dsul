@@ -83,6 +83,18 @@ const PENDING_WAIT_MS = 3000;
  * pane's is the live mark (AIPaneMark), lit only while something answers chat
  * here; every other pane's is the static icon its manifest entry names.
  */
+/**
+ * Panes whose rows read better as a few named cards than one long one. A row
+ * not named here lands in a last, untitled card, so a new record never goes
+ * missing; a group (a root and its chips) goes where its root is named.
+ */
+const ROW_SECTIONS: Partial<Record<string, readonly { title: string; ids: readonly string[] }[]>> = {
+  look: [
+    { title: 'Planner', ids: ['look.typeface', 'look.buckets', 'look.showCompleted', 'look.atlasFar'] },
+    { title: 'App', ids: ['look.appIcon', 'look.animations'] },
+  ],
+};
+
 const iconFor = (p: SettingsPane): React.ElementType => (p.id === 'beacon' ? AIPaneMark : p.icon);
 
 function CountChip({ n }: { n: number }) {
@@ -886,7 +898,7 @@ export function SettingsShell({
                   onToggleGateway={toggleAdv}
                 />
               ) : (
-                rows.length > 0 && <SettingsCard>{groupPaneRows(rows).map(groupFor)}</SettingsCard>
+                rows.length > 0 && <PaneRowCards pane={pane} groups={groupPaneRows(rows)} render={groupFor} />
               )}
 
               {/* Notifications ends with the devices they reach, and which
@@ -929,5 +941,36 @@ export function SettingsShell({
           )}
       </div>
     </main>
+  );
+}
+
+/** A pane's rows as one card, or as ROW_SECTIONS' named cards in their order. */
+function PaneRowCards({
+  pane,
+  groups,
+  render,
+}: {
+  pane: string;
+  groups: PaneGroup[];
+  render: (group: PaneGroup) => React.ReactNode;
+}) {
+  const sections = ROW_SECTIONS[pane];
+  if (!sections) return <SettingsCard>{groups.map(render)}</SettingsCard>;
+  const named = new Set(sections.flatMap((s) => s.ids));
+  const rest = groups.filter((g) => !named.has(g.parent.id));
+  return (
+    <>
+      {sections.map((section) => {
+        const inIt = groups.filter((g) => section.ids.includes(g.parent.id));
+        if (inIt.length === 0) return null;
+        inIt.sort((a, b) => section.ids.indexOf(a.parent.id) - section.ids.indexOf(b.parent.id));
+        return (
+          <SettingsSection key={section.title} id={`rows-${pane}-${section.title.toLowerCase()}`} title={section.title}>
+            {inIt.map(render)}
+          </SettingsSection>
+        );
+      })}
+      {rest.length > 0 && <SettingsCard>{rest.map(render)}</SettingsCard>}
+    </>
   );
 }
