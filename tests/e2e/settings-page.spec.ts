@@ -138,8 +138,6 @@ test.describe('Settings page', () => {
     await gotoSettings(page, 'ai');
 
     await expect(page.getByTestId('mcp-status')).toHaveText('Not set up');
-    await expect(page.getByTestId('openclaw-status')).toHaveText('Paired');
-    await expect(page.getByTestId('openclaw-copy')).toHaveText('OpenClaw takes on tasks you hand it.');
     // Something is connected, so the explainer is the one sentence, not the tiles.
     await expect(page.getByTestId('ai-explainer')).toHaveAttribute('data-form', 'sentence');
     await expect(useAISwitch(page)).toBeChecked();
@@ -147,6 +145,12 @@ test.describe('Settings page', () => {
     // Ctrl+J does nothing for a pull-only account, so the sentence never offers it.
     // Asked only once the sentence is drawn from the gate's answer.
     await expect(page.getByTestId('ai-explainer-chord')).toHaveCount(0);
+
+    // OpenClaw itself lives on Connections.
+    await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('button', { name: 'Connections', exact: true }).click();
+    await expect(page).toHaveURL(/\/settings\/connections$/);
+    await expect(page.getByTestId('openclaw-status')).toHaveText('Paired');
+    await expect(page.getByTestId('openclaw-copy')).toHaveText('OpenClaw takes on tasks you hand it.');
   });
 
   test('the Use AI switch turns AI off for the account and back on', async ({ page }) => {
@@ -262,8 +266,9 @@ test.describe('Settings page', () => {
     expect(gate.unpairs()).toBe(1);
     expect(gate.patches).toEqual([]);
 
-    // And it stays unpaired once AI is back on.
+    // And it stays unpaired once AI is back on (OpenClaw shows on Connections).
     await useAISwitch(page).click();
+    await page.getByRole('navigation', { name: 'Settings sections' }).getByRole('button', { name: 'Connections', exact: true }).click();
     await expect(page.getByTestId('openclaw-status')).toHaveText('Not paired');
     await expect(page.getByTestId('openclaw-pair')).toBeVisible();
   });
