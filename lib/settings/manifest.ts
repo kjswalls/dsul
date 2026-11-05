@@ -11,6 +11,7 @@ import {
   Hammer,
   Bell,
   CircleUserRound,
+  Cable,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -136,6 +137,7 @@ export type RootPaneId =
   | 'rituals'
   | 'notifications'
   | 'beacon'
+  | 'connections'
   | 'keyboard'
   | 'extensions'
   | 'make'
@@ -221,6 +223,15 @@ export const PANES: SettingsPane[] = [
     // components/settings/ai-pane.tsx `AIPaneMark`, lit only while something answers).
     icon: AskMarkIcon,
     blurb: 'Optional help that knows your planner.',
+  },
+  {
+    // Agents and apps that reach the planner from outside it: OpenClaw (and
+    // its gateway rows, still beacon.* ids), MCP apps, agent keys. Drawn by
+    // ConnectionsPane (components/settings/connections-pane.tsx).
+    id: 'connections',
+    name: 'Connections',
+    icon: Cable,
+    blurb: 'Agents and apps that work with your planner.',
   },
   {
     id: 'keyboard',
@@ -1439,9 +1450,10 @@ export const SETTINGS: SettingRecord[] = [
 
   /* ── AI (pane id 'beacon') ────────────────────────────────────────────
      The pane is drawn by AIPane (components/settings/ai-pane.tsx), not as flat
-     rows: Use AI in dsul, Connection (ModelConnectionPanel), OpenClaw (holding
-     the gateway rows) and On this device (who answers, custom instructions),
-     each shown or hidden by state (lib/ai-pane-state.ts). Every record below
+     rows: Use AI in dsul, Connection (ModelConnectionPanel) and On this device
+     (who answers, custom instructions), each shown or hidden by state
+     (lib/ai-pane-state.ts). The two gateway rows keep their beacon.* ids but
+     live on Connections, in its OpenClaw section (connections-pane.tsx). Every record below
      stays here so search and `?focus=` reach it, and the pane gives each one
      exactly one anchor in every state (see AI_PANE_RECORD_IDS). The ids are
      permanent, so they kept their `beacon.*` names when the AI lost its own. */
@@ -1524,7 +1536,7 @@ export const SETTINGS: SettingRecord[] = [
   },
   {
     id: 'beacon.gatewayUrl',
-    pane: 'beacon',
+    pane: 'connections',
     label: 'Gateway URL',
     description:
       "Let dsul's server talk to your gateway, so OpenClaw answers in Ask on every device without pairing each browser. Conversations keep their memory between sessions.",
@@ -1544,7 +1556,7 @@ export const SETTINGS: SettingRecord[] = [
   },
   {
     id: 'beacon.gatewayToken',
-    pane: 'beacon',
+    pane: 'connections',
     label: 'Gateway token',
     description: 'Full operator access to your gateway. Kept server-side and never sent back.',
     control: 'text',

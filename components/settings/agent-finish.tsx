@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from 'react';
 import { Switch } from '@/components/ui/switch';
+import { SettingsSectionLabel } from './settings-card';
 
 /**
  * Settings → AI: may agents tick off the work handed to them
@@ -63,12 +64,10 @@ export function AgentFinishSection() {
       data-ai-section="agent-finish"
       data-testid="ai-agent-finish"
       aria-labelledby={`${id}-title`}
-      className="flex flex-col gap-3"
+      className="flex flex-col"
     >
-      <h3 id={`${id}-title`} className="text-foreground text-sm font-medium">
-        Handed-off work
-      </h3>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-6">
+      <SettingsSectionLabel id={`${id}-title`}>Handed-off work</SettingsSectionLabel>
+      <div className="bg-card border-border grid grid-cols-[minmax(0,1fr)_auto] items-center gap-6 rounded-[calc(var(--radius)*0.75)] border px-4 py-3">
         <div className="min-w-0">
           <label htmlFor={`${id}-switch`} className="text-foreground text-sm">
             Let agents mark it done
@@ -89,7 +88,7 @@ export function AgentFinishSection() {
         />
       </div>
       {error && (
-        <p role="alert" className="text-destructive text-xs">
+        <p role="alert" className="text-destructive mt-2 px-1 text-xs">
           {error}
         </p>
       )}

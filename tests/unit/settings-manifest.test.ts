@@ -463,9 +463,16 @@ describe('the model key never reaches a record', () => {
     // and no Advanced fold either (the gateway rows live in the OpenClaw section).
     expect(paneRows('beacon').rows.filter((r) => !AI_PANE_RECORD_IDS.has(r.id))).toEqual([]);
     expect(paneRows('beacon').advanced.filter((r) => !AI_PANE_RECORD_IDS.has(r.id))).toEqual([]);
-    // The pane anchors every beacon record, and only those.
-    const beacon = SETTINGS.filter((r) => r.pane === 'beacon').map((r) => r.id);
+    // The two panes anchor every beacon.* record, and only those: the gateway
+    // rows live on Connections and keep their ids.
+    const beacon = SETTINGS.filter((r) => r.pane === 'beacon' || r.pane === 'connections').map((r) => r.id);
     expect([...AI_PANE_RECORD_IDS].sort()).toEqual([...beacon].sort());
+    expect(SETTINGS.filter((r) => r.pane === 'connections').map((r) => r.id)).toEqual([
+      'beacon.gatewayUrl',
+      'beacon.gatewayToken',
+    ]);
+    expect(paneRows('connections').rows.filter((r) => !AI_PANE_RECORD_IDS.has(r.id))).toEqual([]);
+    expect(paneRows('connections').advanced.filter((r) => !AI_PANE_RECORD_IDS.has(r.id))).toEqual([]);
     expect(AI_PANE_RECORD_IDS.size).toBe(7);
     // "Set up" in search still means only the connection's two records.
     expect([...CONNECT_PANEL_RECORD_IDS].sort()).toEqual(['beacon.apiKey', 'beacon.model']);

@@ -1,8 +1,7 @@
 'use client';
 
 import { useCallback, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import Link from 'next/link';
-import { CalendarCheck, ChevronRight, ListTree, Power } from 'lucide-react';
+import { CalendarCheck, ListTree, Power } from 'lucide-react';
 
 import { AskMark, AskMarkUnlitIcon } from '@/components/ai/ask-mark';
 import {
@@ -21,7 +20,6 @@ import {
   USE_AI_COPY,
   type AIPaneLayout,
   type AliasId,
-  type PillTone,
 } from '@/lib/ai-pane-state';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useOpenClawBrowserStore } from '@/lib/openclaw-browser-store';
@@ -32,16 +30,11 @@ import { setUseAI } from '@/lib/no-ai';
 import { settingById, type SettingCtx, type SettingRecord } from '@/lib/settings/manifest';
 import { highlightRuns, type MatchRange } from '@/lib/settings/search';
 import { cn } from '@/lib/utils';
-import { AgentFinishSection } from './agent-finish';
-import { ConnectedAppsSection } from './connected-apps';
-import { AgentKeysSection } from './agent-keys';
-import { OpenClawConnect } from './openclaw-connect';
-import { OpenClawBrowserChat } from './openclaw-browser-chat';
 import { useDisconnect, useUnpair } from './disconnect';
+import { SettingsCard, SettingsSectionLabel } from './settings-card';
 import { ModelConnectionPanel } from './model-connection-panel';
 import { ScopeChip } from './scope-chip';
 import { PendingControl } from './setting-row';
-import { StatusPill } from './status-pill';
 
 /**
  * Settings → AI (pane id 'beacon', at /settings/ai): the pane body the frames
@@ -52,8 +45,10 @@ import { StatusPill } from './status-pill';
  *   Use AI in dsul    the account's "No AI, thanks" (UseAIRow), on every state
  *   AI is off         the card that says so, and what is still connected or paired
  *   Connection        ModelConnectionPanel, which draws nothing while AI is off
- *   OpenClaw          paired or not, with the gateway rows in its own fold
  *   On this device    who answers in chat and custom instructions (SettingRows)
+ *
+ * OpenClaw (with the gateway rows), connected apps, agent keys and handed-off
+ * work moved to Settings → Connections (connections-pane.tsx) on 2026-11-05.
  *
  * Which of them show, and which form each takes, is decided in one place
  * (lib/ai-pane-state.ts, `aiPaneLayout`), so a state is a row in a table test.
@@ -97,23 +92,11 @@ export function useAIPaneLayout(keepDevice = false): AIPaneLayout {
   );
 }
 
-/** The four ids the Connection section stands in for while their own homes are hidden, in nesting order. */
-const CONNECTION_SLOT_IDS: readonly AliasId[] = [
-  'beacon.provider',
-  'beacon.instructions',
-  'beacon.gatewayUrl',
-  'beacon.gatewayToken',
-];
+/** The two ids the Connection section stands in for while their own homes are hidden, in nesting order. */
+const CONNECTION_SLOT_IDS: readonly AliasId[] = ['beacon.provider', 'beacon.instructions'];
 
-/** Every id but beacon.useAi, which the AI-off card stands in for while AI is off. */
-const OFF_CARD_IDS: readonly AliasId[] = [
-  'beacon.apiKey',
-  'beacon.model',
-  'beacon.provider',
-  'beacon.instructions',
-  'beacon.gatewayUrl',
-  'beacon.gatewayToken',
-];
+/** Every id of this pane but beacon.useAi, which the AI-off card stands in for while AI is off. */
+const OFF_CARD_IDS: readonly AliasId[] = ['beacon.apiKey', 'beacon.model', 'beacon.provider', 'beacon.instructions'];
 
 /**
  * One div per id, nested in order, ALWAYS: the depth never changes, so what
@@ -151,15 +134,11 @@ export function AIPane({
   isMobile,
   highlightId,
   rowFor,
-  gatewayOpen,
-  onToggleGateway,
 }: {
   ctx: SettingCtx;
   isMobile: boolean;
   highlightId: string | null;
   rowFor: (record: SettingRecord) => ReactNode;
-  gatewayOpen: boolean;
-  onToggleGateway: () => void;
 }) {
   // On this device, once shown, stays for the visit: choosing a chat target
   // while nothing is connected (the one reason it shows then) must not take
@@ -170,12 +149,12 @@ export function AIPane({
   if (layout.showDevice && !keepDevice) setKeepDevice(true);
 
   return (
-    <div data-testid="ai-pane" className="mt-2 flex flex-col gap-7">
+    <div data-testid="ai-pane" className="flex flex-col gap-8">
       {layout.explainer !== 'none' && <Explainer form={layout.explainer} />}
 
-      <div className="border-border border-y">
+      <SettingsCard>
         <UseAIRow highlightId={highlightId} />
-      </div>
+      </SettingsCard>
 
       {layout.aiOff && <AIOffCard active={layout.offCardAliases} highlightId={highlightId} />}
 
@@ -187,17 +166,10 @@ export function AIPane({
         </AliasSlots>
       </div>
 
-      {layout.showOpenClaw && (
-        <OpenClawSection rowFor={rowFor} gatewayOpen={gatewayOpen} onToggleGateway={onToggleGateway} />
-      )}
-
       {layout.showDevice && <DeviceSection rowFor={rowFor} />}
 
-      {/* Shown with AI on or off: an app connected over MCP is not dsul's
-          own AI, and Disconnect has to be reachable either way. */}
-      <ConnectedAppsSection />
-      <AgentKeysSection />
-      <AgentFinishSection />
+      {/* OpenClaw, connected apps, agent keys and handed-off work live on
+          Connections now (components/settings/connections-pane.tsx). */}
     </div>
   );
 }
@@ -252,11 +224,9 @@ function Explainer({ form }: { form: 'tiles' | 'sentence' }) {
       data-testid="ai-explainer"
       data-form="tiles"
       aria-labelledby="ai-explainer-title"
-      className="flex flex-col gap-3"
+      className="flex flex-col"
     >
-      <h3 id="ai-explainer-title" className="text-foreground text-sm font-medium">
-        What AI does in dsul
-      </h3>
+      <SettingsSectionLabel id="ai-explainer-title">What AI does in dsul</SettingsSectionLabel>
       <ul className="grid grid-cols-1 gap-2 md:grid-cols-3">
         <Tile
           tile="ask"
@@ -290,7 +260,7 @@ function Explainer({ form }: { form: 'tiles' | 'sentence' }) {
           body="Turns a big task into small steps you can start."
         />
       </ul>
-      <p data-testid="ai-explainer-caption" className="text-muted-foreground text-xs">
+      <p data-testid="ai-explainer-caption" className="text-muted-foreground mt-2 px-1 text-xs">
         Nothing in your planner changes unless you say yes.
       </p>
     </section>
@@ -299,7 +269,7 @@ function Explainer({ form }: { form: 'tiles' | 'sentence' }) {
 
 function Tile({ tile, icon, title, body }: { tile: string; icon: ReactNode; title: string; body: ReactNode }) {
   return (
-    <li data-testid="ai-tile" data-tile={tile} className="border-border flex flex-col gap-1.5 rounded-[8px] border p-3">
+    <li data-testid="ai-tile" data-tile={tile} className="bg-card border-border flex flex-col gap-1.5 rounded-[calc(var(--radius)*0.75)] border p-3">
       <div className="flex items-center gap-2">
         {icon}
         <p className="text-foreground text-sm font-medium">{title}</p>
@@ -579,173 +549,10 @@ function AIOffCard({ active, highlightId }: { active: readonly AliasId[]; highli
   );
 }
 
-/* ── OpenClaw ───────────────────────────────────────────────────────────── */
-
-/** "3 minutes ago", for the Connect key's last use (written at most every ten minutes). */
-function heardAgo(iso: string, now = Date.now()): string {
-  const mins = Math.max(0, Math.round((now - Date.parse(iso)) / 60_000));
-  if (mins < 15) return 'it in the last few minutes';
-  if (mins < 60) return `it ${mins} minutes ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 48) return `it ${hours} hour${hours === 1 ? '' : 's'} ago`;
-  return `it on ${new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
-}
-
 function recordFor(id: string): SettingRecord {
   const record = settingById(id);
   if (!record) throw new Error(`No setting record ${id}`);
   return record;
-}
-
-/**
- * The person's own agent. Pairing is a device-code flow run from OpenClaw's
- * side, so the pane links to the docs rather than starting it; Unpair ends
- * it from here (the gateway rows are their own connection, and stay). The pill is
- * lime by the Working dot's rule: paired, something answers through it, and
- * chat answers on this device. The gateway rows live in a quiet fold here,
- * driven by the shell's own Advanced state, so `?focus=` opens it.
- */
-function OpenClawSection({
-  rowFor,
-  gatewayOpen,
-  onToggleGateway,
-}: {
-  rowFor: (record: SettingRecord) => ReactNode;
-  gatewayOpen: boolean;
-  onToggleGateway: () => void;
-}) {
-  const openclaw = useAIConnectionStore((s) => s.openclaw);
-  const browserChat = useOpenClawBrowserStore((s) => s.paired !== null);
-  const { canChat } = useAICapabilities();
-  const status = openClawStatus(openclaw, browserChat);
-  const sectionRef = useRef<HTMLElement>(null);
-  // Unpaired, the card and its button go (or keep only the gateway's line):
-  // focus lands on the section rather than on <body>.
-  const focusSection = useCallback(() => sectionRef.current?.focus({ preventScroll: true }), []);
-  const unpair = useUnpair({
-    onDone: (ok) => {
-      if (ok) focusSection();
-    },
-    fallbackFocus: focusSection,
-  });
-  const tone: PillTone = status.paired && canChat && status.answers ? 'lime' : 'grey';
-
-  // "Can answer": this device's Who answers in chat may pick the model, or Off.
-  // A pull-only agent is OpenClaw by name (openClawStatus), never a stale id.
-  const copy = status.agent
-    ? status.answers
-      ? `${status.name} can answer in Ask and take on tasks you hand it.`
-      : `${status.name} takes on tasks you hand it.`
-    : browserChat
-      ? 'OpenClaw answers in Ask on this browser.'
-      : 'OpenClaw can answer in Ask through your gateway.';
-  const connect = openclaw.connect;
-  // Held here: Connect flips the card from not paired to paired, and the
-  // commands must survive that (components/settings/openclaw-connect.tsx).
-  const [connectScript, setConnectScript] = useState<string | null>(null);
-  const refreshConnection = useCallback(() => void useAIConnectionStore.getState().refresh(), []);
-
-  return (
-    <section
-      ref={sectionRef}
-      tabIndex={-1}
-      data-ai-section="openclaw"
-      data-testid="ai-openclaw"
-      aria-labelledby="ai-openclaw-title"
-      className="flex flex-col gap-3 outline-none"
-    >
-      <div className="flex items-center justify-between gap-4">
-        <h3 id="ai-openclaw-title" className="text-foreground text-sm font-medium">
-          OpenClaw
-        </h3>
-        <StatusPill testId="openclaw-status" tone={tone}>
-          {status.paired ? 'Paired' : 'Not paired'}
-        </StatusPill>
-      </div>
-
-      {status.paired ? (
-        <div className="border-border flex flex-col gap-3 rounded-[8px] border p-4">
-          <p data-testid="openclaw-copy" className="text-muted-foreground text-xs">
-            {copy}
-          </p>
-          {connect?.connected && (
-            <p data-testid="openclaw-last-seen" className="text-muted-foreground text-xs">
-              {connect.lastSeenAt
-                ? `Last heard from ${heardAgo(connect.lastSeenAt)}.`
-                : 'Waiting to hear from it. Run the commands from Connect on the machine OpenClaw runs on.'}
-            </p>
-          )}
-          <OpenClawConnect
-            label={connect?.connected ? 'Connect again' : 'Connect'}
-            script={connectScript}
-            onScript={setConnectScript}
-            onConnected={refreshConnection}
-          />
-          {status.agent && (
-            <div>
-              <button
-                type="button"
-                className={DANGER_TEXT_ACTION}
-                data-testid="openclaw-unpair"
-                disabled={unpair.pending}
-                onClick={() => unpair.ask()}
-              >
-                {unpair.pending ? 'Unpairing…' : 'Unpair'}
-              </button>
-            </div>
-          )}
-          {unpair.error && (
-            <p role="alert" data-testid="openclaw-unpair-error" className="text-destructive text-xs">
-              {unpair.error}
-            </p>
-          )}
-        </div>
-      ) : (
-        <div className="border-border flex flex-wrap items-center justify-between gap-3 rounded-[8px] border p-4">
-          <p className="text-muted-foreground min-w-0 flex-1 basis-60 text-xs">
-            Run your own OpenClaw agent? Connect it, and it can take on tasks you hand it. Nothing to install, and
-            your gateway stays private.{' '}
-            <Link href="/docs/openclaw" data-testid="openclaw-pair" className="underline underline-offset-2">
-              How it works
-            </Link>
-          </p>
-          <OpenClawConnect
-            label="Connect"
-            script={connectScript}
-            onScript={setConnectScript}
-            onConnected={refreshConnection}
-          />
-        </div>
-      )}
-
-      <div className="border-border rounded-[8px] border p-4">
-        <OpenClawBrowserChat />
-      </div>
-
-      <div>
-        <button
-          type="button"
-          data-testid="openclaw-gateway-toggle"
-          aria-expanded={gatewayOpen}
-          onClick={onToggleGateway}
-          className={cn(
-            'text-muted-foreground hover:bg-accent -mx-3 flex h-8 w-[calc(100%+1.5rem)]',
-            'items-center gap-2 rounded-[5px] px-3 text-xs font-medium transition-colors',
-            'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
-          )}
-        >
-          <ChevronRight className={cn('size-3 transition-transform', gatewayOpen && 'rotate-90')} aria-hidden />
-          Advanced
-        </button>
-        {gatewayOpen && (
-          <div className="divide-border divide-y">
-            {rowFor(recordFor('beacon.gatewayUrl'))}
-            {rowFor(recordFor('beacon.gatewayToken'))}
-          </div>
-        )}
-      </div>
-    </section>
-  );
 }
 
 /* ── On this device ─────────────────────────────────────────────────────── */
@@ -757,21 +564,18 @@ function DeviceSection({ rowFor }: { rowFor: (record: SettingRecord) => ReactNod
       data-ai-section="device"
       data-testid="ai-device"
       aria-labelledby="ai-device-title"
-      className="flex flex-col gap-1"
+      className="flex flex-col"
     >
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <h3 id="ai-device-title" className="text-foreground text-sm font-medium">
-          On this device
-        </h3>
-        <ScopeChip scope="device" />
-      </div>
-      <p className="text-muted-foreground text-xs">
-        These two stay on this device, so your phone and the desktop app can each have their own.
-      </p>
-      <div className="border-border divide-border mt-2 divide-y border-t">
+      <SettingsSectionLabel id="ai-device-title" trailing={<ScopeChip scope="device" />}>
+        On this device
+      </SettingsSectionLabel>
+      <SettingsCard>
         {rowFor(recordFor('beacon.provider'))}
         {rowFor(recordFor('beacon.instructions'))}
-      </div>
+      </SettingsCard>
+      <p className="text-muted-foreground mt-2 px-1 text-xs">
+        These two stay on this device, so your phone and the desktop app can each have their own.
+      </p>
     </section>
   );
 }
