@@ -305,6 +305,11 @@ const form = () => aiUseRow().dataset.form;
 const askChord = (keys = DEFAULT_SHORTCUTS.find((b) => b.id === 'toggle_right_sidebar')!.keys) =>
   chordLabel(keys, false);
 
+/** Set up: the AI pane folds the connect card while nothing is connected. */
+function openSetup() {
+  fireEvent.click(screen.getByTestId('mcp-setup-open'));
+}
+
 /** A paste, as the browser delivers one: the box reads the clipboard's text itself. */
 function paste(input: HTMLElement, text: string) {
   fireEvent.paste(input, { clipboardData: { getData: () => text } });
@@ -640,6 +645,7 @@ describe('Use AI in dsul: writes and focus', () => {
     renderPane();
     await settle();
     server.status = { ...NOTHING, model: gemini };
+    openSetup();
     paste(screen.getByTestId('connect-key'), GEMINI_SENTINEL);
     await waitFor(() => expect(form()).toBe('on'));
     await settle();
@@ -695,6 +701,7 @@ describe('the Connection section never remounts', () => {
     // F18 wears the device aliases on the Connection slots; Working draws the rows.
     expect(document.querySelector('[data-setting-alias="beacon.provider"]')).not.toBeNull();
     server.status = { ...NOTHING, model: gemini };
+    openSetup();
     paste(screen.getByTestId('connect-key'), GEMINI_SENTINEL);
     expect(await screen.findByTestId('mcp-just-connected')).toBeInTheDocument();
     expect(screen.getByTestId('model-connection-panel')).toBe(panel);
@@ -735,6 +742,51 @@ describe('the Connection section never remounts', () => {
   ] as const)('sits under two alias slots: %s', async (_name, seed) => {
     await mount(seed as SeedAI | 'unknown' | 'error');
     expect(slotDepth()).toBe(2);
+  });
+});
+
+/* ── Setup, folded ──────────────────────────────────────────────────────── */
+
+describe('setup, folded while nothing is connected', () => {
+  it('is one short card with Set up, and the flow only once that is pressed', async () => {
+    await mount(NOTHING_CONNECTED);
+    expect(screen.getByTestId('mcp-setup')).toHaveTextContent('Connect a model');
+    expect(screen.queryByTestId('connect-key')).toBeNull();
+    expect(screen.queryByTestId('mcp-connect-fresh')).toBeNull();
+    openSetup();
+    expect(screen.getByTestId('connect-key')).toBeInTheDocument();
+    expect(screen.queryByTestId('mcp-setup')).toBeNull();
+  });
+
+  it.each([
+    ['a ?start= link', 'start=openrouter'],
+    ['a ?connect= notice', 'connect=denied'],
+    ['a ?focus= on the key', 'focus=beacon.apiKey'],
+    ['a ?focus= on the model', 'focus=beacon.model'],
+  ])('opens from the start for %s', async (_name, query) => {
+    nav.params = new URLSearchParams(query);
+    await mount(NOTHING_CONNECTED);
+    expect(screen.getByTestId('mcp-connect-fresh')).toBeInTheDocument();
+    expect(screen.queryByTestId('mcp-setup')).toBeNull();
+  });
+
+  it('opens when the shell rings the key, and hands focus to the key box’s anchor', async () => {
+    const view = await mount(NOTHING_CONNECTED);
+    view.rerender(
+      <>
+        <AIPane ctx={ctx} isMobile={false} highlightId="beacon.apiKey" rowFor={rowFor} />
+      </>
+    );
+    await settle();
+    const anchor = document.querySelector<HTMLElement>('[data-setting-alias="beacon.apiKey"]')!;
+    expect(anchor.contains(screen.getByTestId('connect-key'))).toBe(true);
+    expect(document.activeElement).toBe(anchor);
+  });
+
+  it('never folds a saved connection', async () => {
+    await mount(GEMINI_WORKING);
+    expect(screen.queryByTestId('mcp-setup')).toBeNull();
+    expect(screen.getByTestId('mcp-provider')).toBeInTheDocument();
   });
 });
 
@@ -1179,7 +1231,7 @@ describe('OpenClaw', () => {
   it('both section pills sit flush right in their header rows', async () => {
     await mount(GEMINI_WORKING);
     expect(pill().parentElement).toHaveClass('ml-auto');
-    expect(screen.getByTestId('mcp-status').parentElement).toHaveClass('justify-between');
+    expect(screen.getByTestId('mcp-status').parentElement).toHaveClass('ml-auto');
   });
 
   it('keeps the gateway rows in its own fold, which the shell drives', async () => {
@@ -1275,16 +1327,16 @@ describe('every record has exactly one anchor, in every state', () => {
     ['checking', 'unknown', null, { 'beacon.useAi': R, 'beacon.apiKey': holds('mcp-checking'), 'beacon.model': holds('mcp-checking'), ...ALL_SLOTS }],
     ['check failed', 'error', null, { 'beacon.useAi': R, 'beacon.apiKey': says('Couldn’t check your AI connection.'), 'beacon.model': says('Couldn’t check your AI connection.'), ...ALL_SLOTS }],
     ['unavailable', { ...NOTHING_CONNECTED, available: false }, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('mcp-unavailable'), 'beacon.model': holds('mcp-unavailable'), ...READY_SLOTS }],
-    ['F18', NOTHING_CONNECTED, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('connect-key'), 'beacon.model': holds('mcp-connect-fresh'), ...READY_SLOTS }],
-    ['F18 with chat Off here', { ...NOTHING_CONNECTED, choice: 'none' }, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('connect-key'), 'beacon.model': holds('mcp-connect-fresh'), ...ROWS }],
+    ['F18', NOTHING_CONNECTED, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('mcp-setup'), 'beacon.model': holds('mcp-setup'), ...READY_SLOTS }],
+    ['F18 with chat Off here', { ...NOTHING_CONNECTED, choice: 'none' }, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('mcp-setup'), 'beacon.model': holds('mcp-setup'), ...ROWS }],
     ['F19', GEMINI_WORKING, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('mcp-provider'), 'beacon.model': holds('model-picker'), ...ROWS }],
     ['no model picked', NO_MODEL_PICKED, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('mcp-provider'), 'beacon.model': holds('model-picker'), ...ROWS }],
     ['F20, a key', KEY_TURNED_DOWN, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('fix-key'), 'beacon.model': holds('fix-line'), ...ROWS }],
     ['F20, a sign-in (no key box)', KEY_TURNED_DOWN, oauthFailing, { 'beacon.useAi': R, 'beacon.apiKey': holds('fix-explain'), 'beacon.model': holds('fix-line'), ...ROWS }],
     ['F21', DAILY_LIMIT, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('mcp-provider'), 'beacon.model': holds('model-picker'), ...ROWS }],
     ['F22', AI_OFF_CONNECTED, null, { 'beacon.useAi': R, 'beacon.apiKey': OFF, 'beacon.model': OFF, 'beacon.provider': OFF, 'beacon.instructions': OFF, 'beacon.gatewayUrl': HID, 'beacon.gatewayToken': HID }],
-    ['OpenClaw only', OPENCLAW_CHAT, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('connect-key'), 'beacon.model': holds('mcp-connect-fresh'), ...ROWS }],
-    ['pull-only', OPENCLAW_PULL_ONLY, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('connect-key'), 'beacon.model': holds('mcp-connect-fresh'), ...ROWS }],
+    ['OpenClaw only', OPENCLAW_CHAT, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('mcp-setup'), 'beacon.model': holds('mcp-setup'), ...ROWS }],
+    ['pull-only', OPENCLAW_PULL_ONLY, null, { 'beacon.useAi': R, 'beacon.apiKey': holds('mcp-setup'), 'beacon.model': holds('mcp-setup'), ...ROWS }],
   ];
 
   it.each(table)('%s', async (_name, seed, model, cells) => {
