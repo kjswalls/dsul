@@ -331,6 +331,8 @@ export interface SettingCtx {
     deleteAccount: () => void;
     /** Sends a test notification to every device on the account, and says how it went. */
     sendTestPush: () => void;
+    /** Opens dsul.app (lib/marketing-site.ts MARKETING_URL) in a new tab. */
+    openSite: () => void;
   };
 }
 
@@ -1677,6 +1679,21 @@ export const SETTINGS: SettingRecord[] = [
     read: () => 'Write',
     write: (_v, ctx) => ctx.actions?.openBugReport(),
     defaultValue: 'Write',
+  },
+  {
+    // The marketing page (lib/marketing-site.ts). dsul.app shows it to
+    // everyone, signed in or not, and this row is the way there on a phone,
+    // where the help menu's "What's new" is not drawn. No "account" or "sign"
+    // in the keywords: those find Sign out and Delete account first.
+    id: 'dsul.site',
+    pane: 'dsul',
+    label: 'dsul.app',
+    description: 'The website, with what’s new.',
+    control: 'action',
+    keywords: ['website', 'web site', 'homepage', 'home page', 'changelog', 'what’s new', "what's new", 'whats new', 'news', 'updates', 'release notes', 'about'],
+    read: () => 'Open',
+    write: (_v, ctx) => ctx.actions?.openSite(),
+    defaultValue: 'Open',
   },
   {
     id: 'dsul.signOut',

@@ -3,6 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+/* the app's "you're signed in here" flag (lib/marketing-site.ts SIGNED_IN_HINT). read before
+   first paint, so "log in" never flashes before "open your planner", and again when the page
+   comes back from the back/forward cache, which skips this script. a hint, never auth. */
+(function () {
+  function check() { try { document.documentElement.toggleAttribute('data-in', /(?:^|;\s*)dsul_in=1(?:;|$)/.test(document.cookie)); } catch (e) {} }
+  check();
+  addEventListener('pageshow', function (e) { if (e.persisted) check(); });
+})();
+</script>
 <title>dsul: the planner that doesn't hold a grudge</title>
 <meta name="description" content="dsul (pronounced diesel) is a day planner where unfinished tasks wait their turn instead of going red. built for ADHD and neurodivergent brains, and anyone who's quit a planner. join the waitlist.">
 <link rel="canonical" href="https://dsul.app/">
@@ -55,6 +65,7 @@ a{color:var(--ink)}a:hover{color:oklch(1 0 0)}
 .ky-btn-light:hover{background:oklch(1 0 0);color:oklch(0.16 0.004 286)}
 .ky-nav a{color:var(--muted);text-decoration:none;font-size:14px}
 .ky-nav a:hover{color:var(--ink)}
+html:not([data-in]) .ky-if-in,html[data-in] .ky-if-out{display:none}
 .ky-card{border-radius:16px;background:linear-gradient(180deg,oklch(0.19 0.004 286),oklch(0.165 0.004 286));border:1px solid var(--line);box-shadow:inset 0 1px 0 oklch(1 0 0 / 5%)}
 .ky-wrap{padding-left:24px;padding-right:24px}
 .ky-sec{max-width:1120px;margin:0 auto;box-sizing:content-box;padding-bottom:136px}
@@ -163,7 +174,7 @@ a{color:var(--ink)}a:hover{color:oklch(1 0 0)}
         </nav>
       </div>
       <div style="display: flex; align-items: center; gap: 16px">
-        <nav class="ky-nav" aria-label="Account"><a href="https://do.dsul.app">log in</a></nav>
+        <nav class="ky-nav" aria-label="Account"><a href="https://do.dsul.app"><span class="ky-if-out">log in</span><span class="ky-if-in">open your planner</span></a></nav>
         <a class="ky-btn ky-btn-light" href="#join" style="min-height: 36px; font-size: 14px; padding: 0 14px">get early access</a>
       </div>
     </div>
@@ -556,7 +567,7 @@ doing today?</h2>
         <span>do stuff unlimited. pronounced diesel. vin sold separately.</span>
         <span>made by one person at <a href="https://sundaysoftworks.com" style="color: var(--ink-2)">sunday softworks</a>. the code is public (MIT). no model key of our own.</span>
       </div>
-      <nav class="ky-nav" aria-label="Footer" style="display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px 24px"><a href="#changelog">changelog</a><a href="https://github.com/kjswalls/dsul">the code</a><a href="https://do.dsul.app">already in? log in</a></nav>
+      <nav class="ky-nav" aria-label="Footer" style="display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px 24px"><a href="#changelog">changelog</a><a href="https://github.com/kjswalls/dsul">the code</a><a href="https://do.dsul.app"><span class="ky-if-out">already in? log in</span><span class="ky-if-in">open your planner</span></a></nav>
     </div>
   </footer>
 </div>

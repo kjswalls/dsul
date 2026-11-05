@@ -847,6 +847,24 @@ describe('settings search', () => {
     expect(deleteAccount).toHaveBeenCalledTimes(1);
   });
 
+  it('dsul.app sits in the dsul pane and opens the site through the page', () => {
+    const openSite = vi.fn();
+    const record = settingById('dsul.site')!;
+    expect(record.pane).toBe('dsul');
+    expect(record.control).toBe('action');
+    const actions = { openBugReport: vi.fn(), replayTour: vi.fn(), signOut: vi.fn(), openLedger: vi.fn(), deleteAccount: vi.fn(), sendTestPush: vi.fn() };
+    record.write('Open', { ...ctx, actions: { ...actions, openSite } });
+    expect(openSite).toHaveBeenCalledTimes(1);
+    expect(actions.signOut).not.toHaveBeenCalled();
+  });
+
+  it('"website", "changelog" and "what\'s new" find dsul.app first', () => {
+    for (const term of ['website', 'changelog', "what's new", 'dsul.app']) {
+      const hits = searchSettings(term, ctx).settings.map((h) => h.record.id);
+      expect(hits[0], term).toBe('dsul.site');
+    }
+  });
+
   it('splits and lowercases the query — scoreText only lowercases the text', () => {
     expect(queryTerms('  Week  Start ')).toEqual(['week', 'start']);
   });

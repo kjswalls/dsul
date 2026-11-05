@@ -579,6 +579,17 @@ describe('the session profile the chrome displays', () => {
     expect(useUIStore.getState().chatOnboardingActive).toBe(false);
   });
 
+  it("drops dsul.app's signed-in hint on SIGNED_OUT, so its page stops saying open your planner", async () => {
+    mountSession = A;
+    await mount();
+    document.cookie = 'dsul_in=1; Path=/';
+    expect(document.cookie).toContain('dsul_in=1');
+
+    emit('SIGNED_OUT', null);
+
+    expect(document.cookie).not.toContain('dsul_in');
+  });
+
   it('leaves for /login on a SIGNED_OUT nothing else navigated from (a revoked session on /)', async () => {
     mountSession = A;
     await mount();

@@ -42,6 +42,7 @@ import { adoptLocalState, clearUserScopedLocalState, localStateOwner } from '@/l
 import { clearPlannerSnapshot, warmPlannerSnapshot } from '@/lib/planner-snapshot';
 import { startPlannerSnapshotWriter } from '@/lib/planner-snapshot-writer';
 import { leaveForLoginIfNoSession, leaveForLoginIfSignedOutPage } from '@/lib/signed-out-redirect';
+import { clearSignedInHint } from '@/lib/marketing-site';
 import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
 import { runFirstRunSeed } from '@/lib/seed-containers';
 import { withoutReleasedCaptures } from '@/lib/held-captures';
@@ -732,6 +733,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // with it. Sign-out is not the only path this runs on (see
         // lib/local-state.ts), but it is the one the user asked for.
         clearUserScopedLocalState();
+        // dsul.app's "open your planner" flag (lib/marketing-site.ts). Here
+        // rather than in each Sign out button: a sign-out whose network call
+        // fails emits no SIGNED_OUT and keeps the session, so the flag stays.
+        clearSignedInHint();
         // Last, once everything above is dropped: a session that ended under
         // the page (a revoked refresh token) has no button pushing /login, and
         // on '/' the planner would otherwise sit on its loading skeleton for
