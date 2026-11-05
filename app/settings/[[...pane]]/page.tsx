@@ -191,7 +191,7 @@ function SettingsSkeleton({ userId }: { userId: string | null }) {
             <div className="bg-secondary h-7 w-32 rounded-md" />
             <div className="bg-secondary h-4 w-64 rounded-sm" />
           </div>
-          <div className="bg-card border-border divide-border divide-y overflow-hidden rounded-xl border">
+          <div className="bg-card border-border divide-border divide-y overflow-hidden rounded-[calc(var(--radius)*0.75)] border">
             {Array.from({ length: 4 }, (_, i) => (
               <div key={i} className="flex h-14 items-center justify-between gap-6 px-4">
                 <div className="bg-secondary h-3 w-40 rounded-sm" />

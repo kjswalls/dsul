@@ -16,13 +16,15 @@ import { cn } from '@/lib/utils';
  * row drawn anywhere else, the ⌘/ shortcuts overlay above all, is unchanged.
  */
 export const SETTINGS_CARD_CLASS = [
-  'bg-card border-border overflow-hidden rounded-xl border',
+  // The corner follows the theme's radius (12px on Paper, square on a square theme).
+  'bg-card border-border overflow-hidden rounded-[calc(var(--radius)*0.75)] border',
   // Hairlines between whatever the card holds: rows, chip groups, custom rows.
   '[&>*+*]:border-border [&>*+*]:border-t',
   // SettingRow is drawn for a bare list (-mx-3, rounded hover wash); in a card
-  // it sits flush, and its ring is drawn inside the card's own edge.
+  // it sits flush. Never an `after:` utility here: Tailwind's after: variant
+  // gives every row a pseudo-element, which a grid row places as a third item
+  // and grows by a gap. The row's own highlight ring is drawn inset instead.
   '[&_[data-setting-row]]:mx-0 [&_[data-setting-row]]:rounded-none [&_[data-setting-row]]:px-4 [&_[data-setting-row]]:py-3',
-  '[&_[data-setting-row]]:after:rounded-none [&_[data-setting-row]]:after:ring-inset',
   // A root's chips line up with its label.
   '[&_[data-setting-chips]]:px-4',
 ].join(' ');

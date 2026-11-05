@@ -85,7 +85,7 @@ export function SoundsConsole({ ctx }: { ctx: SettingCtx }) {
               <div
                 key={p.id}
                 className={cn(
-                  'bg-card relative flex min-w-0 items-start gap-2 rounded-xl border transition-colors',
+                  'bg-card relative flex min-w-0 items-start gap-2 rounded-[calc(var(--radius)*0.75)] border transition-colors',
                   picked
                     ? 'border-foreground shadow-[inset_0_0_0_1px_var(--foreground)]'
                     : 'border-border hover:bg-accent'

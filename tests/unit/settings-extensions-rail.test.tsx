@@ -129,15 +129,17 @@ describe('the Extensions pane is the store', () => {
     }
   });
 
-  it('keeps an extension’s own rows in the 600px column', () => {
-    renderShell(extensionPaneId(EXT_HABIT_HEATMAP));
-    expect(screen.getByTestId('settings-search').closest('.md\\:max-w-\\[600px\\]')).toBeTruthy();
-    expect(document.querySelectorAll('main .md\\:max-w-\\[600px\\]').length).toBeGreaterThan(1);
+  it('keeps an extension’s own rows in the 680px column, and lets the store run wider', () => {
+    const { unmount } = renderShell(extensionPaneId(EXT_HABIT_HEATMAP));
+    expect(document.querySelector('main .md\\:max-w-\\[680px\\]')).toBeTruthy();
+    unmount();
+    renderShell();
+    expect(document.querySelector('main .md\\:max-w-\\[680px\\]')).toBeNull();
   });
 
-  it('keeps the search box in the 600px column', () => {
+  it('puts the search box in the rail column, beside the map it searches', () => {
     renderShell();
-    expect(screen.getByTestId('settings-search').closest('.md\\:max-w-\\[600px\\]')).toBeTruthy();
+    expect(screen.getByTestId('settings-search').closest('aside')).toBeTruthy();
   });
 
   it('closes the sub-list while searching', () => {
