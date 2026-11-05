@@ -27,7 +27,6 @@ import { browseHref } from '@/components/extensions/extension-browse';
  */
 export function ExtensionHero({ slug }: { slug: string }) {
   const extension = extensionManifest(slug);
-  const stats = useExtensionAdoptionStore((s) => s.stats);
   const load = useExtensionAdoptionStore((s) => s.load);
   useEffect(() => load(), [load]);
   // Cards in Browse link here with ?from=browse. The crumb and the rail both go
@@ -37,10 +36,9 @@ export function ExtensionHero({ slug }: { slug: string }) {
   const backHref = browseHref(params?.get('shelf'));
 
   if (!extension) return null;
-  const adoption = adoptionLine(stats[slug]);
 
   return (
-    <section className="mb-4 flex flex-col gap-4" data-extension-hero={slug} aria-label={`About ${extension.name}`}>
+    <section className="flex flex-col gap-4" data-extension-hero={slug} aria-label={`About ${extension.name}`}>
       {fromBrowse && (
         <SettingsLink
           href={backHref}
@@ -56,7 +54,7 @@ export function ExtensionHero({ slug }: { slug: string }) {
           column of rows like every other settings pane, and a full-width
           16:10 box opened it on a large, mostly empty stage. */}
       <div className="grid gap-4 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:items-start">
-        <ExtensionPreview slug={slug} className="border-border rounded-[8px] border" />
+        <ExtensionPreview slug={slug} className="bg-card border-border rounded-[calc(var(--radius)*0.75)] border" />
         <div className="flex min-w-0 flex-col gap-2">
           <p className="text-foreground text-sm font-medium">{extension.tagline}</p>
           <ul className="text-muted-foreground flex list-disc flex-col gap-1 pl-4 text-xs leading-relaxed">
@@ -67,7 +65,24 @@ export function ExtensionHero({ slug }: { slug: string }) {
           <ExtensionChips extension={extension} />
         </div>
       </div>
+    </section>
+  );
+}
 
+/**
+ * What closes an extension's pane, under its rows: the maker's note, and the
+ * adoption figure with the phone's way back to the store.
+ */
+export function ExtensionHeroFooter({ slug }: { slug: string }) {
+  const extension = extensionManifest(slug);
+  const stats = useExtensionAdoptionStore((s) => s.stats);
+  const params = useSearchParams();
+  const fromBrowse = params?.get('from') === 'browse';
+  if (!extension) return null;
+  const adoption = adoptionLine(stats[slug]);
+
+  return (
+    <section className="flex flex-col gap-4 px-1" data-extension-footer={slug} aria-label={`From the maker of ${extension.name}`}>
       <blockquote className="border-border border-l-2 pl-3">
         <p className="text-foreground font-serif text-[13.5px] leading-relaxed">{extension.makerNote}</p>
         <footer className="text-muted-foreground mt-0.5 text-[11px]">From the maker</footer>

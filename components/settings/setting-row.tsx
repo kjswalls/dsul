@@ -377,6 +377,11 @@ export function SettingRow({
    * puts lime on a pane where nothing is lit. The reset button is unchanged.
    */
   quietMark,
+  /**
+   * The description is said by something on screen already (an extension's
+   * own switch, under its hero), so it is kept for screen readers only.
+   */
+  quietDescription,
 }: {
   record: SettingRecord;
   ctx: SettingCtx;
@@ -390,6 +395,7 @@ export function SettingRow({
   highlighted?: boolean;
   action?: React.ReactNode;
   quietMark?: boolean;
+  quietDescription?: boolean;
 }) {
   const uid = useId();
   const controlId = `set-${record.id}-${uid}`;
@@ -443,7 +449,7 @@ export function SettingRow({
         modified &&
           cn(
             quietMark ? 'before:bg-muted-foreground' : 'before:bg-primary',
-            'before:absolute before:top-1/2 before:left-0 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:content-[""]'
+            'before:absolute before:top-1/2 before:left-1 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:content-[""]'
           ),
         highlighted && 'after:ring-ring after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-2 after:ring-inset after:content-[""]'
       )}
@@ -479,7 +485,10 @@ export function SettingRow({
         </div>
 
         {record.description && (
-          <p id={descId} className="text-muted-foreground mt-[3px] max-w-[46ch] text-xs">
+          <p
+            id={descId}
+            className={cn('text-muted-foreground mt-[3px] max-w-[46ch] text-xs', quietDescription && 'sr-only')}
+          >
             {record.description}
           </p>
         )}
