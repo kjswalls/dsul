@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { config, proxy } from '@/proxy';
-import { MARKETING_HOST, MARKETING_PAGE, MARKETING_PREVIEW_PATH } from '@/lib/marketing-site';
+import { MARKETING_HOST, MARKETING_PAGE, MARKETING_PREVIEW_PATH, SIGNED_IN_HINT } from '@/lib/marketing-site';
 import { PLANNERS, WHY_MAX, EMAIL_MAX } from '@/lib/waitlist';
 import nextConfig from '../../next.config.mjs';
 
@@ -128,6 +128,21 @@ describe('the page (public/site/index.html)', () => {
 
   it('exists where the rewrite points', () => {
     expect(html).toMatch(/^<!doctype html>/i);
+  });
+
+  it('says "open your planner" to a browser the app has marked signed in, from its first paint', () => {
+    // The flag's name is the one the proxy writes (lib/marketing-site.ts).
+    const head = html.slice(0, html.indexOf('</head>'));
+    expect(head).toContain(`${SIGNED_IN_HINT}=1`);
+    expect(head.indexOf(`${SIGNED_IN_HINT}=1`)).toBeLessThan(head.indexOf('<style'));
+    expect(html).toMatch(/html:not\(\[data-in\]\) \.ky-if-in,html\[data-in\] \.ky-if-out\{display:none\}/);
+    // Both ways into the app carry both labels, and both still go to the app.
+    const links = [...html.matchAll(/<a href="https:\/\/do\.dsul\.app">(.*?)<\/a>/g)].map((m) => m[1]);
+    expect(links).toHaveLength(2);
+    for (const inner of links) {
+      expect(inner).toMatch(/<span class="ky-if-out">[^<]*log in<\/span>/);
+      expect(inner).toContain('<span class="ky-if-in">open your planner</span>');
+    }
   });
 
   it('fetches nothing of its own outside /site/ (the URL stays / after a rewrite)', () => {

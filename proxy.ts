@@ -1,7 +1,8 @@
 import { createServerClient } from '@supabase/ssr';
+import { isAuthRetryableFetchError } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
 import { canonicalRedirect } from '@/lib/canonical-host';
-import { marketingRewrite } from '@/lib/marketing-site';
+import { marketingRewrite, SIGNED_IN_HINT, signedInHintOptions } from '@/lib/marketing-site';
 import { isSignedOutPath, loginPathFor } from '@/lib/signed-out-redirect';
 
 export async function proxy(request: NextRequest) {
@@ -64,7 +65,7 @@ export async function proxy(request: NextRequest) {
     );
 
     // Refresh session if expired
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
 
     // Redirect unauthenticated users to /login, carrying where they were going
     // as ?redirect= (lib/signed-out-redirect.ts). This used to keep only the
@@ -74,24 +75,54 @@ export async function proxy(request: NextRequest) {
     // an auth code (electron/lib/policy.cjs carriesAuthCode).
     // Skip API routes — they use Bearer auth and return their own 401s.
     const isApiRoute = pathname === '/api' || pathname.startsWith('/api/');
+    // dsul.app's "log in" reads "open your planner" while this flag is set
+    // (lib/marketing-site.ts SIGNED_IN_HINT). A page request answers it; an API
+    // route never does. Cleared only when the session is really gone: a network
+    // failure says nothing about the session, and the next good request heals it.
+    const hint: SignedInHint = isApiRoute
+      ? 'keep'
+      : user
+        ? 'set'
+        : isAuthRetryableFetchError(userError)
+          ? 'keep'
+          : 'clear';
+
     if (!user && !isSignedOutPath(pathname) && !isApiRoute) {
       const login = loginPathFor(`${pathname}${request.nextUrl.search}`, request.nextUrl.origin);
-      return NextResponse.redirect(new URL(login, request.url));
+      return withSignedInHint(NextResponse.redirect(new URL(login, request.url)), request, hint);
     }
 
     // Redirect authenticated users away from /login
     if (user && pathname === '/login') {
       const url = request.nextUrl.clone();
       url.pathname = '/';
-      return NextResponse.redirect(url);
+      return withSignedInHint(NextResponse.redirect(url), request, hint);
     }
+
+    return withSignedInHint(supabaseResponse, request, hint);
   } catch (err) {
     console.error('[middleware] Supabase error:', err);
     // On error, allow the request through rather than blocking with a 404
     return NextResponse.next({ request });
   }
+}
 
-  return supabaseResponse;
+type SignedInHint = 'set' | 'clear' | 'keep';
+
+/**
+ * Writes or drops the signed-in hint on `res`, only when it would change: a
+ * signed-in browser that already carries it gets no Set-Cookie at all. Read on
+ * this host, a Domain=dsul.app cookie arrives here too, so the check sees one
+ * do.dsul.app wrote for the whole domain.
+ */
+function withSignedInHint(res: NextResponse, request: NextRequest, hint: SignedInHint): NextResponse {
+  const has = request.cookies.get(SIGNED_IN_HINT)?.value === '1';
+  const options = signedInHintOptions(new URL(request.url));
+  if (hint === 'set' && !has) res.cookies.set(SIGNED_IN_HINT, '1', options);
+  if (hint === 'clear' && request.cookies.has(SIGNED_IN_HINT)) {
+    res.cookies.set(SIGNED_IN_HINT, '', { ...options, maxAge: 0 });
+  }
+  return res;
 }
 
 // /manifest.json and /sw.js are left out with the icons, because the browser

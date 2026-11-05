@@ -37,6 +37,11 @@ app (no root layout, no SupabaseProvider, no service worker), reached by a rewri
 `proxy.ts` before the sign-in gate; every other apex path still redirects to do.dsul.app
 (`next.config.mjs`). `/welcome` shows the same page on any host, which is how a PR preview
 shows it. Its waitlist form posts to `/api/waitlist` (migration 088, service-role only).
+The page is the same for everyone and never redirects a signed-in visitor; its "log in"
+reads "open your planner" while `dsul_in=1` is set, a bare flag the proxy writes for the
+whole dsul.app domain once a session is live. It is a hint, never auth: nothing on a
+server may branch on it. The app links to the page by the absolute `https://dsul.app`,
+never `/welcome`, which in the desktop shell would load over the planner.
 Read [lib/marketing-site.ts](lib/marketing-site.ts) before touching any of the three.
 
 ## Setting up a new machine
