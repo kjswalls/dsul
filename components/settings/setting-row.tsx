@@ -423,6 +423,9 @@ export function SettingRow({
   return (
     <div
       data-setting-row={record.id}
+      // What a SettingsCard restyles. Not data-setting-row: a chip and the
+      // Look picker's anchors carry that too, and must keep their own shape.
+      data-setting-line=""
       data-highlight={highlighted || undefined}
       tabIndex={-1}
       className={cn(
@@ -442,7 +445,7 @@ export function SettingRow({
             quietMark ? 'before:bg-muted-foreground' : 'before:bg-primary',
             'before:absolute before:top-1/2 before:left-0 before:h-4 before:w-0.5 before:-translate-y-1/2 before:rounded-full before:content-[""]'
           ),
-        highlighted && 'after:ring-ring after:pointer-events-none after:absolute after:inset-0 after:rounded-[5px] after:ring-2 after:content-[""]'
+        highlighted && 'after:ring-ring after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-2 after:ring-inset after:content-[""]'
       )}
     >
       <div className="min-w-0">

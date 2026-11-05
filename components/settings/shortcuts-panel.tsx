@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { SettingRow } from './setting-row';
+import { SettingsCard, SettingsSectionLabel } from './settings-card';
 import { encodeKeys } from '@/lib/commands/keys';
 import { useKeyboardShortcutsStore, useShortcutBindings } from '@/lib/keyboard-shortcuts-store';
 import {
@@ -122,41 +123,55 @@ export function ShortcutsPanel({
       {/* One hint, said once, in both shells — the overlay's version of it used
           to live in the dialog, which is how the pane ended up never mentioning
           that a row is something you press. */}
-      <p className="text-muted-foreground pb-1 text-xs">
+      <p className={cn('text-muted-foreground pb-1 text-xs', !isOverlay && '-mt-4 px-1')}>
         Press a shortcut to record a new one. Escape cancels.
         {isMobile && ' These apply on a device with a keyboard.'}
       </p>
 
-      {SHORTCUT_SECTIONS.map((section) => (
-        <section key={section.heading} aria-labelledby={headingId(section.heading)}>
-          <p
-            id={headingId(section.heading)}
-            className="text-muted-foreground mt-4 mb-1 flex items-center gap-2 text-[10px] font-medium tracking-wider uppercase"
-          >
-            {section.heading}
-          </p>
-          <div className="divide-border divide-y">
-            {section.records.map((record) => (
-              <SettingRow
-                key={record.id}
-                record={record}
-                ctx={ctx}
-                // From the subscription, not from record.read(ctx): the manifest
-                // reads through getState(), which is not reactive, so a row fed
-                // that way would keep showing the old chord until something else
-                // re-rendered it.
-                value={encodeKeys(keysById.get(record.shortcutId) ?? [])}
-                highlighted={highlightId === record.id}
-                onWrite={(next) => record.write(next, ctx)}
-                onReset={() => resetOne(record)}
-              />
-            ))}
-          </div>
-        </section>
-      ))}
+      {SHORTCUT_SECTIONS.map((section) => {
+        const rows = section.records.map((record) => (
+          <SettingRow
+            key={record.id}
+            record={record}
+            ctx={ctx}
+            // From the subscription, not from record.read(ctx): the manifest
+            // reads through getState(), which is not reactive, so a row fed
+            // that way would keep showing the old chord until something else
+            // re-rendered it.
+            value={encodeKeys(keysById.get(record.shortcutId) ?? [])}
+            highlighted={highlightId === record.id}
+            onWrite={(next) => record.write(next, ctx)}
+            onReset={() => resetOne(record)}
+          />
+        ));
+        return (
+          <section key={section.heading} aria-labelledby={headingId(section.heading)}>
+            {isOverlay ? (
+              <>
+                <p
+                  id={headingId(section.heading)}
+                  className="text-muted-foreground mt-4 mb-1 flex items-center gap-2 text-[10px] font-medium tracking-wider uppercase"
+                >
+                  {section.heading}
+                </p>
+                <div className="divide-border divide-y">{rows}</div>
+              </>
+            ) : (
+              // The pane draws each group as a card like every other pane
+              // (settings-card.tsx); the overlay keeps its compact list.
+              <div className="mt-6">
+                <SettingsSectionLabel id={headingId(section.heading)} as="p">
+                  {section.heading}
+                </SettingsSectionLabel>
+                <SettingsCard>{rows}</SettingsCard>
+              </div>
+            )}
+          </section>
+        );
+      })}
 
       {!isOverlay && (
-        <div className="border-border mt-4 flex justify-end border-t pt-3">
+        <div className="mt-4 flex justify-end">
           <ResetAllShortcutsButton />
         </div>
       )}

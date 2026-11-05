@@ -729,8 +729,13 @@ export const SHORTCUT_RECORDS: ShortcutSettingRecord[] = DEFAULT_SHORTCUTS.map((
     // it works — and one sentence in the place people already read fixes it.
     // It is indexed too, which is what makes "week" find the column bindings.
     description:
-      [binding.description, binding.context, AI_ONLY_BINDINGS.get(binding.id)].filter(Boolean).join(' ') ||
-      undefined,
+      [binding.description, binding.context, AI_ONLY_BINDINGS.get(binding.id)]
+        .filter(Boolean)
+        // Each part is its own sentence. Most registry descriptions end bare
+        // ("Flips between the two"), and joined as-is they ran into the next
+        // one: "…picking one directly Desktop only."
+        .map((part) => (/[.!?)]$/.test(part!.trim()) ? part!.trim() : `${part!.trim()}.`))
+        .join(' ') || undefined,
     control: 'keys' as const,
     // NOT desktopOnly. The pane would be empty on every phone, and the rail
     // would still advertise it — a dead room, which the manifest test forbids.

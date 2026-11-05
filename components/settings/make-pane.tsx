@@ -1,5 +1,6 @@
 'use client';
 
+import { SETTINGS_CARD_CLASS, SettingsSectionLabel } from './settings-card';
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
@@ -186,7 +187,7 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
           />
         )
       ) : rows.length === 0 ? (
-        <div data-testid="make-empty" className="py-3">
+        <div data-testid="make-empty" className={`${SETTINGS_CARD_CLASS} px-4 py-4`}>
           <p className="text-foreground text-sm font-medium">Nothing made yet</p>
           <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
             Make is where your own recipes, mods, themes and Looks live. A recipe does something
@@ -200,11 +201,9 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
           const ofKind = rows.filter((r) => r.kind === kind);
           if (ofKind.length === 0) return null;
           return (
-            <section key={kind} data-make-section={kind}>
-              <h2 className="text-muted-foreground mt-4 mb-1 text-[10px] font-medium tracking-wider uppercase">
-                {SECTION[kind]}
-              </h2>
-              <div className="divide-border divide-y">
+            <section key={kind} data-make-section={kind} className="mb-6">
+              <SettingsSectionLabel>{SECTION[kind]}</SettingsSectionLabel>
+              <div className={SETTINGS_CARD_CLASS}>
                 {ofKind.map((row) => (
                   <MakeRow
                     key={row.id}
@@ -233,7 +232,7 @@ export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?
       )}
 
       {available && loaded && !failed && !editing && ctx.userId && (
-        <div className="mt-3 flex flex-wrap items-center gap-3">
+        <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button
             variant="outline"
             size="sm"
@@ -339,7 +338,7 @@ function MakeRow({
 
   return (
     <div data-make-row={row.id}>
-      <div className="flex items-center gap-3 py-3">
+      <div className="flex items-center gap-3 px-4 py-3">
         <span className="min-w-0 flex-1">
           <span className="text-foreground block truncate text-sm">{label}</span>
           <span id={stateId} className="text-muted-foreground block text-xs">

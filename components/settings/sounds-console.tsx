@@ -20,6 +20,7 @@ import {
   type SoundPackId,
 } from '@/lib/sounds/registry';
 import { DEFAULT_SOUND_VOLUME, setSoundVolume, useSoundVolume } from '@/lib/sounds/volume';
+import { SettingsCard, SettingsSectionLabel } from './settings-card';
 import { cn } from '@/lib/utils';
 
 /**
@@ -68,15 +69,15 @@ export function SoundsConsole({ ctx }: { ctx: SettingCtx }) {
   };
 
   return (
-    <section className="mt-6 flex flex-col gap-7" data-sounds-console aria-label="Sound packs">
+    <section className="flex flex-col gap-8" data-sounds-console aria-label="Sound packs">
       {!on && (
-        <p className="text-muted-foreground text-xs" data-testid="sounds-off-note">
+        <p className="text-muted-foreground -mt-4 px-1 text-xs" data-testid="sounds-off-note">
           Sounds are off, so nothing plays while you use dsul. You can still try every pack here.
         </p>
       )}
 
-      <div className="flex flex-col gap-2.5">
-        <h3 className="text-muted-foreground font-mono text-[11px] tracking-wide uppercase">Pack</h3>
+      <div className="flex flex-col">
+        <SettingsSectionLabel as="h3">Pack</SettingsSectionLabel>
         <div role="radiogroup" aria-label="Sound pack" className="grid gap-2 sm:grid-cols-2">
           {SOUND_PACKS.map((p) => {
             const picked = config.pack === p.id;
@@ -84,7 +85,7 @@ export function SoundsConsole({ ctx }: { ctx: SettingCtx }) {
               <div
                 key={p.id}
                 className={cn(
-                  'relative flex min-w-0 items-start gap-2 rounded-[10px] border transition-colors',
+                  'bg-card relative flex min-w-0 items-start gap-2 rounded-[calc(var(--radius)*0.75)] border transition-colors',
                   picked
                     ? 'border-foreground shadow-[inset_0_0_0_1px_var(--foreground)]'
                     : 'border-border hover:bg-accent'
@@ -124,9 +125,9 @@ export function SoundsConsole({ ctx }: { ctx: SettingCtx }) {
         </div>
       </div>
 
-      <div className="flex flex-col gap-2.5">
-        <h3 className="text-muted-foreground font-mono text-[11px] tracking-wide uppercase">Volume on this device</h3>
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col">
+        <SettingsSectionLabel as="h3">Volume on this device</SettingsSectionLabel>
+        <SettingsCard className="flex items-center gap-3 px-4 py-3">
           <button
             type="button"
             aria-label={volume === 0 ? 'Unmute' : 'Mute'}
@@ -151,17 +152,17 @@ export function SoundsConsole({ ctx }: { ctx: SettingCtx }) {
             className="max-w-[320px]"
           />
           <span className="text-muted-foreground w-[3ch] text-right font-mono text-xs tabular-nums">{volume}</span>
-        </div>
+        </SettingsCard>
       </div>
 
-      <div className="flex flex-col gap-1">
-        <h3 className="text-muted-foreground font-mono text-[11px] tracking-wide uppercase">Plays a sound when</h3>
-        <div className="divide-border divide-y">
+      <div className="flex flex-col">
+        <SettingsSectionLabel as="h3">Plays a sound when</SettingsSectionLabel>
+        <SettingsCard>
           {SOUND_GROUPS.map((g) => {
             const value = config.groups[g.id];
             const id = `sounds-group-${g.id}`;
             return (
-              <div key={g.id} className="flex items-start justify-between gap-6 py-3" data-testid={id}>
+              <div key={g.id} className="flex items-start justify-between gap-6 px-4 py-3" data-testid={id}>
                 <div className="flex min-w-0 flex-col gap-1.5">
                   <label htmlFor={id} className="text-foreground text-sm">
                     {g.label}
@@ -196,7 +197,7 @@ export function SoundsConsole({ ctx }: { ctx: SettingCtx }) {
               </div>
             );
           })}
-        </div>
+        </SettingsCard>
       </div>
     </section>
   );

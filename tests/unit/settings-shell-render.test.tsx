@@ -365,11 +365,6 @@ describe('the AI pane', () => {
     Array.from(
       document.querySelectorAll('[data-testid="ai-pane"] [class*="bg-primary"], [data-testid="ai-pane"] [data-slot="button-key"]')
     ).filter((el) => el.closest('[data-slot="switch"]') === null);
-  const eyebrowMark = () => {
-    const eyebrow = Array.from(document.querySelectorAll('main p')).find((p) => p.textContent === 'AI');
-    expect(eyebrow, 'no AI eyebrow').toBeTruthy();
-    return eyebrow!.querySelector('[data-ask-mark]');
-  };
   const railMark = () => {
     const rail = screen.getByRole('navigation', { name: 'Settings sections' });
     const button = Array.from(rail.querySelectorAll('button')).find((b) => b.textContent === 'AI');
@@ -419,11 +414,10 @@ describe('the AI pane', () => {
     await act(async () => {});
   });
 
-  it('the rail and the eyebrow wear the live mark: unlit while nothing answers, lit once something does', async () => {
+  it('the rail wears the live mark: unlit while nothing answers, lit once something does', async () => {
     given(NOTHING_CONNECTED);
     const first = renderShell('beacon');
     expect(railMark()).toHaveAttribute('data-lit', 'false');
-    expect(eyebrowMark()).toHaveAttribute('data-lit', 'false');
     await act(async () => {});
     first.unmount();
     cleanupAI?.();
@@ -432,7 +426,6 @@ describe('the AI pane', () => {
     const second = renderShell('beacon');
     expect(railMark()).not.toBeNull();
     expect(railMark()).not.toHaveAttribute('data-lit');
-    expect(eyebrowMark()).not.toHaveAttribute('data-lit');
     await act(async () => {});
     second.unmount();
 
@@ -701,14 +694,14 @@ describe('the hrefs the surface builds', () => {
 
   it("an extension's parent crumb is a real link to the index", () => {
     renderShell('extensions/beeminder');
-    const crumbs = screen.getAllByRole('navigation')[0];
-    expect(within(crumbs).getByRole('link', { name: 'Extensions' })).toHaveAttribute('href', '/settings/extensions');
+    // Above the page title: the rail's Extensions row is a button, so this is the one link.
+    expect(screen.getByRole('link', { name: 'Extensions' })).toHaveAttribute('href', '/settings/extensions');
   });
 
   it('a link between panes switches in place, and a modified click is left to the browser', () => {
     window.history.replaceState(null, '', '/settings/extensions/beeminder');
     renderShell('extensions/beeminder');
-    const crumb = within(screen.getAllByRole('navigation')[0]).getByRole('link', { name: 'Extensions' });
+    const crumb = screen.getByRole('link', { name: 'Extensions' });
 
     // What the link left for the browser, read at the top of the bubble and
     // then cancelled, since jsdom cannot follow a link to another document.

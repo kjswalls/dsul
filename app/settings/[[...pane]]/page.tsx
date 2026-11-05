@@ -158,47 +158,48 @@ function SettingsSkeleton({ userId }: { userId: string | null }) {
     <main
       // Mirrors SettingsShell's own container exactly, so the real surface
       // lands where the skeleton stood instead of jumping under the cursor.
-      className={`mx-auto flex ${SETTINGS_PAGE_WIDTH} flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]`}
+      className={`mx-auto flex ${SETTINGS_PAGE_WIDTH} flex-col gap-8 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))] md:flex-row md:gap-14`}
       data-testid="settings-page"
       data-settings-state="loading"
     >
-      <nav className="text-muted-foreground flex items-center gap-1.5 text-xs">
+      <div className="flex shrink-0 flex-col gap-3 md:w-[220px]">
         <Link
           href="/"
-          className="hover:text-foreground inline-flex items-center gap-1 transition-colors"
+          className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1 px-1 text-xs transition-colors"
         >
           <ChevronLeft className="size-3.5" aria-hidden />
           dsul
         </Link>
-        <span aria-hidden>/</span>
-        <span className="text-foreground font-medium">Settings</span>
-      </nav>
-
-      <h1 className="text-foreground text-2xl font-semibold tracking-tight">Settings</h1>
-
-      {/* `animate-pulse` and not a bespoke shimmer: globals.css already clamps
-          every animation to nothing under [data-reduce-motion], which
-          SupabaseProvider stamps from the (browser-persisted, so immediately
-          available) animations setting. A skeleton that sits perfectly still
-          reads as broken; one that ignores that setting reads as rude. */}
-      <div className="flex animate-pulse flex-col gap-8 md:flex-row md:gap-10" aria-hidden>
-        <div className="flex shrink-0 gap-1 md:w-[184px] md:flex-col">
-          {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="bg-secondary h-8 w-full min-w-[92px] rounded-sm" />
-          ))}
-        </div>
-        <div className="min-w-0 flex-1 md:max-w-[600px]">
+        {/* `animate-pulse` and not a bespoke shimmer: globals.css already clamps
+            every animation to nothing under [data-reduce-motion], which
+            SupabaseProvider stamps from the (browser-persisted, so immediately
+            available) animations setting. A skeleton that sits perfectly still
+            reads as broken; one that ignores that setting reads as rude. */}
+        <div className="flex animate-pulse flex-col gap-3" aria-hidden>
           <div className="bg-secondary h-9 w-full rounded-md" />
-          <div className="divide-border mt-6 divide-y">
-            {Array.from({ length: 5 }, (_, i) => (
-              <div key={i} className="flex h-14 items-center justify-between gap-6">
+          <div className="flex gap-1 md:flex-col md:gap-0.5">
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i} className="bg-secondary h-8 w-full min-w-[92px] rounded-md" />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-8 md:max-w-[680px]">
+        <div className="flex animate-pulse flex-col gap-8" aria-hidden>
+          <div className="flex flex-col gap-2 px-1">
+            <div className="bg-secondary h-7 w-32 rounded-md" />
+            <div className="bg-secondary h-4 w-64 rounded-sm" />
+          </div>
+          <div className="bg-card border-border divide-border divide-y overflow-hidden rounded-[calc(var(--radius)*0.75)] border">
+            {Array.from({ length: 4 }, (_, i) => (
+              <div key={i} className="flex h-14 items-center justify-between gap-6 px-4">
                 <div className="bg-secondary h-3 w-40 rounded-sm" />
                 <div className="bg-secondary h-7 w-24 rounded-sm" />
               </div>
             ))}
           </div>
         </div>
-      </div>
 
       {/* The old screen's whole point, kept and demoted: if this is still here
           after five seconds something is genuinely wrong, and a visitor with no
@@ -223,6 +224,7 @@ function SettingsSkeleton({ userId }: { userId: string | null }) {
           )}
         </div>
       )}
+      </div>
     </main>
   );
 }
