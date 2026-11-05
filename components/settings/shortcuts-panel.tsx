@@ -123,7 +123,7 @@ export function ShortcutsPanel({
       {/* One hint, said once, in both shells — the overlay's version of it used
           to live in the dialog, which is how the pane ended up never mentioning
           that a row is something you press. */}
-      <p className="text-muted-foreground pb-1 text-xs">
+      <p className={cn('text-muted-foreground pb-1 text-xs', !isOverlay && '-mt-4 px-1')}>
         Press a shortcut to record a new one. Escape cancels.
         {isMobile && ' These apply on a device with a keyboard.'}
       </p>

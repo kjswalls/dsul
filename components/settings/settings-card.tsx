@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
  * together" reads the same everywhere instead of each pane inventing a heading
  * style and a box of its own.
  *
- * The card restyles the SettingRows inside it (flush to the card's edges,
+ * The card restyles the SettingRows inside it (their `data-setting-line`) (flush to the card's edges,
  * square, a little more air) through child selectors (joined, never through
  * tailwind-merge, which has no idea these arbitrary variants are separate) rather than a prop, so a
  * row drawn anywhere else, the ⌘/ shortcuts overlay above all, is unchanged.
@@ -24,7 +24,7 @@ export const SETTINGS_CARD_CLASS = [
   // it sits flush. Never an `after:` utility here: Tailwind's after: variant
   // gives every row a pseudo-element, which a grid row places as a third item
   // and grows by a gap. The row's own highlight ring is drawn inset instead.
-  '[&_[data-setting-row]]:mx-0 [&_[data-setting-row]]:rounded-none [&_[data-setting-row]]:px-4 [&_[data-setting-row]]:py-3',
+  '[&_[data-setting-line]]:mx-0 [&_[data-setting-line]]:rounded-none [&_[data-setting-line]]:px-4 [&_[data-setting-line]]:py-3',
   // A root's chips line up with its label.
   '[&_[data-setting-chips]]:px-4',
 ].join(' ');

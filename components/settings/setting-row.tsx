@@ -423,6 +423,9 @@ export function SettingRow({
   return (
     <div
       data-setting-row={record.id}
+      // What a SettingsCard restyles. Not data-setting-row: a chip and the
+      // Look picker's anchors carry that too, and must keep their own shape.
+      data-setting-line=""
       data-highlight={highlighted || undefined}
       tabIndex={-1}
       className={cn(

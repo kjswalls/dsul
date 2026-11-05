@@ -388,6 +388,7 @@ export function UseAIRow({
       data-testid="ai-use-row"
       data-form={form}
       data-setting-row="beacon.useAi"
+      data-setting-line=""
       data-highlight={highlighted || undefined}
       tabIndex={-1}
       className={cn(
@@ -395,7 +396,7 @@ export function UseAIRow({
         'hover:bg-accent',
         'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
         highlighted &&
-          'after:ring-ring after:pointer-events-none after:absolute after:inset-0 after:rounded-[5px] after:ring-2 after:content-[""]'
+          'after:ring-ring after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-2 after:ring-inset after:content-[""]'
       )}
     >
       <div className="min-w-0">
