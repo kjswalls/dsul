@@ -28,6 +28,7 @@ import { KeyField, type KeyFieldHandle } from '@/components/ai/connect/key-field
 import { Button } from '@/components/ui/button';
 import { useDisconnect } from './disconnect';
 import { ModelPicker } from './model-picker';
+import { SettingsSectionLabel } from './settings-card';
 import { StatusPill } from './status-pill';
 import { useAIConnectionStore, useAICapabilities, type ApiFailure } from '@/lib/ai-connection-store';
 import { isPlausibleKey, mismatchedKey, type DetectedProvider } from '@/lib/ai-key-prefix';
@@ -150,13 +151,24 @@ function TextAction({
 
 /* ── The panel ──────────────────────────────────────────────────────────── */
 
+/** A deep link to either of these opens a folded setup, so it lands on the key box itself. */
+const SETUP_FOCUS_IDS: ReadonlySet<string> = new Set(['beacon.apiKey', 'beacon.model']);
+
 export function ModelConnectionPanel({
   isMobile = false,
   highlightId = null,
+  foldSetup = false,
 }: {
   isMobile?: boolean;
   /** The shell's deep-link ring, so `?focus=` lands visibly on an anchor here. */
   highlightId?: string | null;
+  /**
+   * Settings → AI folds the connect card while nothing is connected: one short
+   * card with Set up, and the whole flow only once that is pressed (Kirby's
+   * pick, 2026-11-05). A `?start=`, a `?connect=` notice or a `?focus=` on the
+   * key or the model opens it from the start.
+   */
+  foldSetup?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -183,6 +195,30 @@ export function ModelConnectionPanel({
     searchParams?.get('start') === 'openrouter' ? 'openrouter' : undefined
   );
   if (start && model) setStart(undefined);
+  // Read once too, for the same reason: the shell strips `?focus=` on arrival.
+  const [setupOpen, setSetupOpen] = useState(
+    () =>
+      !foldSetup ||
+      start !== undefined ||
+      readFlow(searchParams?.get('connect')) !== null ||
+      SETUP_FOCUS_IDS.has(searchParams?.get('focus') ?? '')
+  );
+  // A deep link that arrives later (a search hit's Set up, the shell ringing
+  // an anchor on the folded card) opens it too. The shell has focused the
+  // folded card's anchor by then, and that anchor goes with the fold, so focus
+  // follows to the same id's anchor in the open flow.
+  const sectionRef = useRef<HTMLElement>(null);
+  const [refocusId, setRefocusId] = useState<string | null>(null);
+  if (!setupOpen && highlightId !== null && SETUP_FOCUS_IDS.has(highlightId)) {
+    setSetupOpen(true);
+    setRefocusId(highlightId);
+  }
+  useEffect(() => {
+    if (refocusId === null) return;
+    sectionRef.current
+      ?.querySelector<HTMLElement>(`[data-setting-alias="${refocusId}"]`)
+      ?.focus({ preventScroll: true });
+  }, [refocusId]);
   const [justConnected, setJustConnected] = useState(false);
   const flowHandled = useRef(false);
   // What the band's last action was refused with: Check again's answer, or
@@ -278,6 +314,8 @@ export function ModelConnectionPanel({
     body = <CheckFailedCard highlightId={highlightId} />;
   } else if (kind === 'unavailable') {
     body = <UnavailableCard highlightId={highlightId} />;
+  } else if ((kind === 'connect' || !model) && !setupOpen) {
+    body = <SetupFolded highlightId={highlightId} onOpen={() => setSetupOpen(true)} />;
   } else if (kind === 'connect' || !model) {
     // The connect card's key box carries `beacon.apiKey` itself.
     body = (
@@ -311,20 +349,25 @@ export function ModelConnectionPanel({
 
   return (
     <section
+      ref={sectionRef}
       data-testid="model-connection-panel"
       aria-labelledby="mcp-title"
-      className="mt-2 mb-4 flex flex-col gap-3 focus:outline-none"
+      className="flex flex-col gap-3 focus:outline-none"
     >
-      <div className="flex items-center justify-between gap-3">
-        <h3 id="mcp-title" className="text-foreground text-sm font-medium">
-          Connection
-        </h3>
-        {pill && (
-          <StatusPill testId="mcp-status" tone={connectionPillTone(pill, canChat)}>
-            {connectionPillLabel(pill, pill === 'daily_limit' ? resetsAtOf(limitedUntil) : null)}
-          </StatusPill>
-        )}
-      </div>
+      <SettingsSectionLabel
+        id="mcp-title"
+        as="h3"
+        className="mb-0"
+        trailing={
+          pill && (
+            <StatusPill testId="mcp-status" tone={connectionPillTone(pill, canChat)}>
+              {connectionPillLabel(pill, pill === 'daily_limit' ? resetsAtOf(limitedUntil) : null)}
+            </StatusPill>
+          )
+        }
+      >
+        Connection
+      </SettingsSectionLabel>
       {showFlow && (
         <p
           role={flow === 'ok' ? 'status' : 'alert'}
@@ -356,9 +399,36 @@ export function ModelConnectionPanel({
 
 function Card({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn('border-border flex flex-col gap-4 rounded-[8px] border p-4', className)}>
+    <div
+      className={cn(
+        'bg-card border-border flex flex-col gap-4 rounded-[calc(var(--radius)*0.75)] border p-4',
+        className
+      )}
+    >
       {children}
     </div>
+  );
+}
+
+/**
+ * Nothing connected, setup folded: what it is and one button. It wears both
+ * anchors, as the not-yet-known cards do, until Set up swaps in the flow.
+ */
+function SetupFolded({ highlightId, onOpen }: { highlightId: string | null; onOpen: () => void }) {
+  return (
+    <AnchoredCard highlightId={highlightId}>
+      <div data-testid="mcp-setup" className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1 basis-60">
+          <p className="text-foreground text-sm">Connect a model</p>
+          <p className="text-muted-foreground text-xs">
+            A free key from Google, a sign-in with OpenRouter, or a key you already have.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" data-testid="mcp-setup-open" onClick={onOpen}>
+          Set up
+        </Button>
+      </div>
+    </AnchoredCard>
   );
 }
 

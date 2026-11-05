@@ -264,8 +264,9 @@ describe('mounting', () => {
     const pill = screen.getByTestId('mcp-status');
     expect(pill).toHaveTextContent('Not set up');
     expect(pill).toHaveAttribute('data-tone', 'grey');
-    expect(pill.parentElement).toBe(heading.parentElement);
-    expect(pill.parentElement!.className).toMatch(/justify-between/);
+    // The pill sits in the label's trailing slot, pushed to the row's right end.
+    expect(pill.parentElement!.parentElement).toBe(heading.parentElement);
+    expect(pill.parentElement!.className).toMatch(/ml-auto/);
   });
 });
 
@@ -681,7 +682,7 @@ describe('connected', () => {
     // The pill sits on the heading's row, not in the card.
     const pill = screen.getByTestId('mcp-status');
     expect(pill).toHaveTextContent('Working');
-    expect(pill.parentElement).toBe(screen.getByRole('heading', { name: 'Connection' }).parentElement);
+    expect(pill.parentElement!.parentElement).toBe(screen.getByRole('heading', { name: 'Connection' }).parentElement);
     // The catalog's name, not the raw id, even before the list loads.
     expect(screen.getByTestId('model-picker')).toHaveTextContent('GPT-4o mini');
     expect(screen.getByTestId('mcp-model-hint')).toHaveTextContent('Answers in Ask and drafts your plans.');

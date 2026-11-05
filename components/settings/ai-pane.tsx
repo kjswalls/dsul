@@ -162,7 +162,7 @@ export function AIPane({
           while AI is off, and its state outlives the trip. */}
       <div data-ai-section={layout.aiOff ? undefined : 'connection'} className={cn(layout.aiOff && 'hidden')}>
         <AliasSlots ids={CONNECTION_SLOT_IDS} active={layout.connectionAliases} highlightId={highlightId}>
-          <ModelConnectionPanel isMobile={isMobile} highlightId={highlightId} />
+          <ModelConnectionPanel isMobile={isMobile} highlightId={highlightId} foldSetup />
         </AliasSlots>
       </div>
 
