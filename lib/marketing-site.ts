@@ -79,8 +79,9 @@ export function marketingRewrite(url: URL): string | null {
  *   - proxy.ts sets it after getUser() finds a user on a page request that does
  *     not carry it yet, so everyone signed in today gets it on their next page
  *     load and every sign-in path is covered;
- *   - proxy.ts clears it when getUser() finds the session gone (never on a
- *     network failure, which proves nothing), on the way to /login;
+ *   - proxy.ts clears it when getUser() proves the session gone (none stored,
+ *     or a 4xx from Auth), on the way to /login; never on a network failure or
+ *     an error on Auth's side, which prove nothing (proxy.ts sessionIsGone);
  *   - SupabaseProvider clears it in the browser on SIGNED_OUT (clearSignedInHint),
  *     which covers every Sign out button, Delete account and another tab's sign-out.
  * API routes never touch it.

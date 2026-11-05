@@ -1,5 +1,5 @@
 import { createServerClient } from '@supabase/ssr';
-import { isAuthRetryableFetchError } from '@supabase/supabase-js';
+import { isAuthApiError, isAuthSessionMissingError } from '@supabase/supabase-js';
 import { NextResponse, type NextRequest } from 'next/server';
 import { canonicalRedirect } from '@/lib/canonical-host';
 import { marketingRewrite, SIGNED_IN_HINT, signedInHintOptions } from '@/lib/marketing-site';
@@ -77,15 +77,8 @@ export async function proxy(request: NextRequest) {
     const isApiRoute = pathname === '/api' || pathname.startsWith('/api/');
     // dsul.app's "log in" reads "open your planner" while this flag is set
     // (lib/marketing-site.ts SIGNED_IN_HINT). A page request answers it; an API
-    // route never does. Cleared only when the session is really gone: a network
-    // failure says nothing about the session, and the next good request heals it.
-    const hint: SignedInHint = isApiRoute
-      ? 'keep'
-      : user
-        ? 'set'
-        : isAuthRetryableFetchError(userError)
-          ? 'keep'
-          : 'clear';
+    // route never does. Cleared only when the session is really gone.
+    const hint: SignedInHint = isApiRoute ? 'keep' : user ? 'set' : sessionIsGone(userError) ? 'clear' : 'keep';
 
     if (!user && !isSignedOutPath(pathname) && !isApiRoute) {
       const login = loginPathFor(`${pathname}${request.nextUrl.search}`, request.nextUrl.origin);
@@ -108,6 +101,19 @@ export async function proxy(request: NextRequest) {
 }
 
 type SignedInHint = 'set' | 'clear' | 'keep';
+
+/**
+ * Whether getUser()'s error proves there is no session: none stored, or Auth
+ * refusing the one sent (a revoked refresh token, a deleted user, a bad JWT:
+ * a 4xx). Anything else says nothing about the session, so the hint stays and
+ * the next good request settles it: a network failure or a 502/503/504
+ * (AuthRetryableFetchError), a 500 or a 429 (AuthApiError), and an HTML error
+ * page from the edge (AuthUnknownError, its JSON parse having failed).
+ */
+function sessionIsGone(error: unknown): boolean {
+  if (isAuthSessionMissingError(error)) return true;
+  return isAuthApiError(error) && error.status >= 400 && error.status < 500 && error.status !== 429;
+}
 
 /**
  * Writes or drops the signed-in hint on `res`, only when it would change: a

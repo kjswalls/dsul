@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
@@ -11,6 +12,17 @@ import nextConfig from '../../next.config.mjs';
 // dsul.app's root is the marketing page; every other apex path still goes to
 // the app. Three files agree on that (lib/marketing-site.ts says which), and
 // each is read here through Next's own matchers rather than re-derived.
+
+// jsdom ships no types and the repo has no @types/jsdom: the slice the page's
+// tests use, so a browser at dsul.app/ can load it with a cookie in the jar.
+type BrowserWindow = Window & typeof globalThis & { eval(js: string): unknown };
+const { JSDOM, CookieJar } = createRequire(import.meta.url)('jsdom') as {
+  JSDOM: new (
+    html: string,
+    opts: { url: string; cookieJar: InstanceType<typeof CookieJar>; runScripts: 'outside-only' }
+  ) => { window: BrowserWindow };
+  CookieJar: new () => { setCookieSync(cookie: string, url: string): void };
+};
 
 async function nextTesting() {
   // The helpers reach for the AsyncLocalStorage a Next server puts on
@@ -130,19 +142,63 @@ describe('the page (public/site/index.html)', () => {
     expect(html).toMatch(/^<!doctype html>/i);
   });
 
-  it('says "open your planner" to a browser the app has marked signed in, from its first paint', () => {
-    // The flag's name is the one the proxy writes (lib/marketing-site.ts).
+  /**
+   * The page as a browser at dsul.app/ loads it, with `cookie` already in the
+   * jar, running only the head's own script (the one that reads the hint).
+   * Which label each link into the app shows is then the stylesheet's call, so
+   * the attribute the script writes and the one the CSS reads must agree.
+   */
+  function load(cookie?: string) {
+    const jar = new CookieJar();
+    if (cookie) jar.setCookieSync(cookie, 'https://dsul.app/');
     const head = html.slice(0, html.indexOf('</head>'));
-    expect(head).toContain(`${SIGNED_IN_HINT}=1`);
-    expect(head.indexOf(`${SIGNED_IN_HINT}=1`)).toBeLessThan(head.indexOf('<style'));
-    expect(html).toMatch(/html:not\(\[data-in\]\) \.ky-if-in,html\[data-in\] \.ky-if-out\{display:none\}/);
+    const scripts = [...head.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+    const dom = new JSDOM(html.replace(/<script[\s\S]*?<\/script>/g, ''), {
+      url: 'https://dsul.app/',
+      cookieJar: jar,
+      runScripts: 'outside-only',
+    });
+    for (const js of scripts) dom.window.eval(js);
+    const labels = () =>
+      [...dom.window.document.querySelectorAll('a[href="https://do.dsul.app"]')].map((a) =>
+        [...a.querySelectorAll('span')]
+          .filter((s) => dom.window.getComputedStyle(s).display !== 'none')
+          .map((s) => s.textContent)
+      );
+    return { dom, jar, labels };
+  }
+
+  it('reads the hint before anything paints', () => {
+    const head = html.slice(0, html.indexOf('</head>'));
+    // The regex the script tests the cookie with names the flag the proxy writes.
+    const re = head.match(/\/\(\?:\^\|;\\s\*\)([a-z_]+)=1\(\?:;\|\$\)\/\.test\(document\.cookie\)/);
+    expect(re?.[1]).toBe(SIGNED_IN_HINT);
+    expect(head.indexOf(re![0])).toBeLessThan(head.indexOf('<style'));
+  });
+
+  it('says "open your planner" to a browser the app has marked signed in, and "log in" to anyone else', () => {
     // Both ways into the app carry both labels, and both still go to the app.
-    const links = [...html.matchAll(/<a href="https:\/\/do\.dsul\.app">(.*?)<\/a>/g)].map((m) => m[1]);
-    expect(links).toHaveLength(2);
-    for (const inner of links) {
-      expect(inner).toMatch(/<span class="ky-if-out">[^<]*log in<\/span>/);
-      expect(inner).toContain('<span class="ky-if-in">open your planner</span>');
+    expect(load().labels()).toEqual([['log in'], ['already in? log in']]);
+    expect(load(`${SIGNED_IN_HINT}=1; Domain=dsul.app; Path=/`).labels()).toEqual([
+      ['open your planner'],
+      ['open your planner'],
+    ]);
+    // Only the flag itself, exactly "1", counts.
+    for (const other of ['x' + SIGNED_IN_HINT + '=1', `${SIGNED_IN_HINT}=10`, `${SIGNED_IN_HINT}=`]) {
+      expect(load(other).labels(), other).toEqual([['log in'], ['already in? log in']]);
     }
+  });
+
+  it('checks again when the page comes back from the back/forward cache', () => {
+    const { dom, jar, labels } = load(`${SIGNED_IN_HINT}=1; Domain=dsul.app; Path=/`);
+    // Signed out in the app in this tab, then Back to the page.
+    jar.setCookieSync(`${SIGNED_IN_HINT}=; Domain=dsul.app; Path=/; Max-Age=0`, 'https://dsul.app/');
+    dom.window.dispatchEvent(new dom.window.PageTransitionEvent('pageshow', { persisted: true }));
+    expect(labels()).toEqual([['log in'], ['already in? log in']]);
+    // And signed back in.
+    jar.setCookieSync(`${SIGNED_IN_HINT}=1; Domain=dsul.app; Path=/`, 'https://dsul.app/');
+    dom.window.dispatchEvent(new dom.window.PageTransitionEvent('pageshow', { persisted: true }));
+    expect(labels()).toEqual([['open your planner'], ['open your planner']]);
   });
 
   it('fetches nothing of its own outside /site/ (the URL stays / after a rewrite)', () => {

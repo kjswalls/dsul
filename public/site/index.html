@@ -4,9 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script>
-/* dsul_in=1 is the app's "you're signed in here" flag (lib/marketing-site.ts SIGNED_IN_HINT).
-   read before first paint, so "log in" never flashes before "open your planner". a hint, never auth. */
-try { if (/(?:^|;\s*)dsul_in=1(?:;|$)/.test(document.cookie)) document.documentElement.setAttribute('data-in', ''); } catch (e) {}
+/* the app's "you're signed in here" flag (lib/marketing-site.ts SIGNED_IN_HINT). read before
+   first paint, so "log in" never flashes before "open your planner", and again when the page
+   comes back from the back/forward cache, which skips this script. a hint, never auth. */
+(function () {
+  function check() { try { document.documentElement.toggleAttribute('data-in', /(?:^|;\s*)dsul_in=1(?:;|$)/.test(document.cookie)); } catch (e) {} }
+  check();
+  addEventListener('pageshow', function (e) { if (e.persisted) check(); });
+})();
 </script>
 <title>dsul: the planner that doesn't hold a grudge</title>
 <meta name="description" content="dsul (pronounced diesel) is a day planner where unfinished tasks wait their turn instead of going red. built for ADHD and neurodivergent brains, and anyone who's quit a planner. join the waitlist.">

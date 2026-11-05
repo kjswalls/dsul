@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { AuthRetryableFetchError, AuthSessionMissingError } from '@supabase/supabase-js';
+import {
+  AuthApiError,
+  AuthRetryableFetchError,
+  AuthSessionMissingError,
+  AuthUnknownError,
+} from '@supabase/supabase-js';
 import {
   MARKETING_HOST,
   SIGNED_IN_HINT,
@@ -143,8 +148,28 @@ describe('the proxy drops it once the session is gone', () => {
     expect(hintHeader(await run('https://do.dsul.app/login', 'dsul_in=1'))).toMatch(/^dsul_in=;.*Max-Age=0/i);
   });
 
+  // A revoked refresh token, a deleted user, a bad JWT: Auth refused the session.
+  it.each([
+    ['a revoked refresh token (400)', 400, 'refresh_token_not_found'],
+    ['a deleted user (403)', 403, 'user_not_found'],
+  ])('on %s', async (_label, status, code) => {
+    auth.answer = { data: { user: null }, error: new AuthApiError('refused', status, code) };
+    expect(hintHeader(await run('https://do.dsul.app/', 'dsul_in=1'))).toMatch(/^dsul_in=;.*Max-Age=0/i);
+  });
+
   it('but not on a network failure, which says nothing about the session', async () => {
     auth.answer = OFFLINE;
+    expect(hintHeader(await run('https://do.dsul.app/', 'dsul_in=1'))).toBeNull();
+  });
+
+  // auth-js marks only a thrown fetch and a 502/503/504 retryable; these come
+  // back as other errors and prove nothing about the session either.
+  it.each([
+    ['a 500 from Auth', new AuthApiError('Database error', 500, 'unexpected_failure')],
+    ['a rate limit (429)', new AuthApiError('Too many requests', 429, 'over_request_rate_limit')],
+    ['an HTML error page from the edge', new AuthUnknownError('Unexpected token <', new SyntaxError('Unexpected token <'))],
+  ])('nor on %s', async (_label, error) => {
+    auth.answer = { data: { user: null }, error };
     expect(hintHeader(await run('https://do.dsul.app/', 'dsul_in=1'))).toBeNull();
   });
 
