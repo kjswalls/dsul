@@ -1,5 +1,6 @@
 'use client';
 
+import { SETTINGS_CARD_CLASS, SettingsSectionLabel } from './settings-card';
 import { useCallback, useEffect, useState } from 'react';
 import { formatDistanceToNowStrict } from 'date-fns';
 import { Switch } from '@/components/ui/switch';
@@ -99,29 +100,30 @@ export function DevicesList() {
   if (!rows || (rows.length === 0 && !failed)) return null;
 
   return (
-    <section className="mt-8" aria-labelledby="devices-heading" data-testid="devices-list">
-      <h3 id="devices-heading" className="text-sm font-medium">
+    <section aria-labelledby="devices-heading" data-testid="devices-list">
+      <SettingsSectionLabel id="devices-heading" as="h3" className="mb-0.5">
         Devices
-      </h3>
-      <p className="text-muted-foreground mt-1 text-xs">
+      </SettingsSectionLabel>
+      <p className="text-muted-foreground mb-2 px-1 text-xs">
         Where reminders can reach you. Turn a kind off for one device and the others still get it.
       </p>
       {rows.some(claimsAtDesk) && (
-        <p className="text-muted-foreground mt-1 text-xs" data-testid="claims-locally-help">
+        <p className="text-muted-foreground mb-2 px-1 text-xs" data-testid="claims-locally-help">
           {CLAIMS_LOCALLY_COPY.help}
         </p>
       )}
       {failed && (
-        <p role="status" className="text-muted-foreground mt-2 text-xs">
+        <p role="status" className="text-muted-foreground mb-2 px-1 text-xs">
           Couldn’t load or save your devices. Try again later.
         </p>
       )}
-      <ul className="divide-border mt-2 divide-y">
+      {rows.length > 0 && (
+      <ul className={SETTINGS_CARD_CLASS}>
         {rows.map((row) => {
           const covered = coveredByIphoneApp(row, rows);
           const seen = ago(row.last_seen_at);
           return (
-            <li key={row.id} className="py-3" data-device-id={row.device_id}>
+            <li key={row.id} className="px-4 py-3" data-device-id={row.device_id}>
               <div className="flex items-baseline justify-between gap-3">
                 <span className="text-sm">
                   {deviceName(row)}
@@ -164,6 +166,7 @@ export function DevicesList() {
           );
         })}
       </ul>
+      )}
     </section>
   );
 }

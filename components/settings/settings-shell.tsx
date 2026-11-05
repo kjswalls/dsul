@@ -44,6 +44,7 @@ import { ShortcutsPanel } from './shortcuts-panel';
 import { AIPane, AIPaneMark, UseAIRow } from './ai-pane';
 import { MakePane } from './make-pane';
 import { SoundsConsole } from './sounds-console';
+import { SettingsCard, SettingsSection } from './settings-card';
 import { SETTINGS_PAGE_WIDTH } from './page-width';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { revealChat } from '@/lib/open-chat';
@@ -75,33 +76,6 @@ const ADV_KEY = 'dsul-settings-advanced';
  *  nearest drawn row — a load that never finishes must not strand it. */
 const PENDING_WAIT_MS = 3000;
 
-function Eyebrow({
-  children,
-  icon: Icon,
-  // A group header in the results carries the whole "which pane does this live
-  // in" story, so it has to be a real heading — otherwise pressing H finds
-  // nothing between <h1>Settings</h1> and the end of the page.
-  as: Tag = 'p',
-  id,
-}: {
-  children: React.ReactNode;
-  icon?: React.ElementType;
-  as?: 'p' | 'h2';
-  id?: string;
-}) {
-  return (
-    <Tag
-      id={id}
-      className={cn(
-        'text-muted-foreground mt-6 mb-1 flex items-center gap-2 text-[10px] font-medium tracking-wider uppercase'
-      )}
-    >
-      {Icon && <Icon className="size-3" aria-hidden />}
-      {children}
-    </Tag>
-  );
-}
-
 /**
  * A pane's glyph in the rail, its eyebrow and its search group header. The AI
  * pane's is the live mark (AIPaneMark), lit only while something answers chat
@@ -132,7 +106,7 @@ function DestinationRow({
       type="button"
       onClick={() => onOpen(record)}
       className={cn(
-        'hover:bg-accent -mx-3 flex w-[calc(100%+1.5rem)] items-center gap-2.5 rounded-[5px] px-3 py-2.5',
+        'hover:bg-accent flex w-full items-center gap-2.5 px-4 py-3',
         'text-left transition-colors',
         'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
       )}
@@ -506,7 +480,7 @@ export function SettingsShell({
       <div key={group.parent.id} data-setting-group={group.parent.id}>
         {rowFor(group.parent)}
         {shown.length > 0 && (
-          <div className="flex flex-wrap gap-2 pb-3">
+          <div data-setting-chips className="flex flex-wrap gap-2 pb-3">
             {shown.map((chip) => (
               <SettingChip
                 key={chip.kind === 'merged' ? chip.toggle.id : chip.record.id}
@@ -551,113 +525,42 @@ export function SettingsShell({
   return (
     <main
       className={cn(
-        'mx-auto flex flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]',
+        'mx-auto flex flex-col gap-8 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))] md:flex-row md:gap-14',
         // One width for every pane, so the rail stays put as you move between
-        // them. It used to be 880px, widening to 1320px for the store alone,
-        // and the whole rail jumped sideways on the way in and out. Rows still
-        // keep their 600px column (below): a label and its control 1000px apart
-        // read as two unrelated things.
+        // them. Cards keep their own 680px column (below): a label and its
+        // control 1000px apart read as two unrelated things.
         SETTINGS_PAGE_WIDTH
       )}
     >
-      {/* Three crumbs inside an extension, two everywhere else. The rail's
-          Extensions row does navigate back up, but from inside a sub-pane it
-          renders as the CURRENT row — a lit row does not read as a way out. So
-          the parent crumb is the way back that looks like one, and it has to be
-          a real link rather than the plain label the last crumb is. */}
-      <nav className="text-muted-foreground flex items-center gap-1.5 text-xs">
+      {/* The rail column: the way back, search, then the map. Search lives
+          here and not over the pane because it is not scoped to the pane — a
+          query crosses every pane — so it belongs with the map, not with one
+          page of it. On a phone the column stacks: back, search, chip strip.
+          Sticky, so the map stays put while a long pane scrolls under it.
+          `self-start` is required: a flex child stretches to the row's height
+          by default, and a box as tall as its container has nothing to stick
+          within. The pane scrolls the DOCUMENT (no inner overflow box, which
+          is what closed #92). The Extensions sub-list can make the column
+          taller than a short window, so it scrolls itself once it would; the
+          4px of padding keeps focus rings out of that clip. In the desktop app
+          it sticks below its top band instead (env() is undefined elsewhere). */}
+      <aside
+        className={cn(
+          'flex min-w-0 shrink-0 flex-col gap-3',
+          'md:-mx-1 md:-my-1 md:w-[220px] md:self-start md:p-1',
+          'md:sticky md:top-[max(1.75rem,calc(env(titlebar-area-height,0px)_-_4px))] md:max-h-[calc(100dvh-3.5rem)] md:overflow-x-hidden md:overflow-y-auto'
+        )}
+      >
         <Link
           href="/"
-          className="hover:text-foreground inline-flex items-center gap-1 transition-colors"
+          className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1 px-1 text-xs transition-colors"
         >
           <ChevronLeft className="size-3.5" aria-hidden />
           dsul
         </Link>
-        {parentPane && (
-          <>
-            <span aria-hidden>/</span>
-            <SettingsLink href={paneHref(parentPane.id)} className="hover:text-foreground transition-colors">
-              {parentPane.name}
-            </SettingsLink>
-          </>
-        )}
-        <span aria-hidden>/</span>
-        <span className="text-foreground font-medium">{activePane.name}</span>
-      </nav>
 
-      <h1 className="text-foreground text-2xl font-semibold tracking-tight">Settings</h1>
-
-      <div className="flex flex-col gap-8 md:flex-row md:gap-10">
-        {/* Rail. On mobile it becomes a chip strip that bleeds to the edge. */}
-        <nav
-          aria-label="Settings sections"
-          className={cn(
-            '-mx-6 flex shrink-0 gap-1 overflow-x-auto px-6',
-            // Sticky, so the map stays put while a long pane scrolls under it.
-            // `self-start` is required: a flex child stretches to the row's
-            // height by default, and a box as tall as its container has nothing
-            // to stick within — the classic silent no-op. The pane scrolls the
-            // DOCUMENT (no inner overflow box, which is what closed #92), so
-            // this sticks against the viewport with nothing else to configure.
-            // The Extensions sub-list can make the rail taller than a short
-            // window, and a sticky box taller than the viewport hides its own
-            // bottom until the page ends — so it scrolls itself once it would.
-            // The 4px of padding keeps focus rings out of that clip, and the
-            // matching negative margins (and top-7) keep every row exactly
-            // where it sat before. In the desktop app the rows stick below its
-            // top band instead (env() is undefined everywhere else, so top-7).
-            'md:-mx-1 md:-my-1 md:w-[192px] md:flex-col md:self-start md:p-1',
-            'md:sticky md:top-[max(1.75rem,calc(env(titlebar-area-height,0px)_-_4px))] md:max-h-[calc(100dvh-3.5rem)] md:overflow-x-hidden md:overflow-y-auto'
-          )}
-        >
-          {PANES.map((p) => {
-            // paneMatchCount, not counts[p.id]: a hit inside an extension's own
-            // pane belongs to the Extensions rail row, which has no key of its
-            // own in `counts` and would otherwise dim at zero while holding the
-            // only route to the result.
-            const count = searching ? paneMatchCount(results, p.id) : null;
-            const active = !searching && p.id === railPane;
-            const Icon = iconFor(p);
-            // Inside Extensions the lit row is the sub-list's — Browse or the
-            // extension you're on — so on a desktop the parent reads as open,
-            // not lit. The phone's chip strip has no sub-list and keeps it lit.
-            const open = !searching && p.id === 'extensions' && railPane === 'extensions';
-            return (
-              <Fragment key={p.id}>
-              <button
-                type="button"
-                aria-current={(active && (isMobile || !open)) || undefined}
-                onClick={() => {
-                  setRawQuery('');
-                  setQuery('');
-                  showSettings(paneHref(p.id));
-                }}
-                className={cn(
-                  'flex h-8 shrink-0 items-center gap-2.5 rounded-sm px-2 text-sm transition-colors md:w-full',
-                  'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-                  active
-                    ? 'bg-secondary text-foreground font-medium'
-                    : 'text-secondary-foreground hover:bg-accent',
-                  open && 'md:hover:bg-accent md:bg-transparent',
-                  searching && count === 0 && 'text-muted-foreground/50'
-                )}
-              >
-                <Icon className="size-3.5 shrink-0" aria-hidden />
-                <span className="whitespace-nowrap">{p.name}</span>
-                {count !== null && <CountChip n={count} />}
-              </button>
-              {open && (
-                <div className="border-border mt-0.5 mb-1.5 ml-[15px] hidden border-l pl-1.5 md:block">
-                  <ExtensionRailList ctx={ctx} pane={pane} variant="rail" />
-                </div>
-              )}
-              </Fragment>
-            );
-          })}
-        </nav>
-
-        <div className={cn('min-w-0 flex-1', !storeShowing && 'md:max-w-[600px]')}>
-          <div className="relative md:max-w-[600px]">
+        <div>
+          <div className="relative">
             <Search
               className="text-muted-foreground pointer-events-none absolute top-2.5 left-3 size-3.5"
               aria-hidden
@@ -690,7 +593,7 @@ export function SettingsShell({
               data-testid="settings-search"
               className={cn(
                 'field bg-secondary text-foreground placeholder:text-muted-foreground h-9 w-full',
-                'border pr-20 pl-9 text-sm outline-none'
+                'border pr-14 pl-9 text-sm outline-none'
               )}
             />
             <button
@@ -698,12 +601,13 @@ export function SettingsShell({
               aria-pressed={includeAdvanced}
               onClick={() => setIncludeAdvanced((v) => !v)}
               title="Include advanced settings in results"
+              aria-label="Include advanced settings in results"
               className={cn(
-                'absolute top-1.5 right-1.5 flex h-6 items-center gap-1 rounded-sm px-2 text-[10px]',
+                'absolute top-1.5 right-1.5 flex h-6 items-center gap-1 rounded-sm px-1.5 text-[10px]',
                 'font-medium tracking-wide uppercase transition-colors',
                 'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
                 includeAdvanced
-                  ? 'bg-secondary text-foreground'
+                  ? 'bg-background text-foreground'
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >
@@ -717,7 +621,10 @@ export function SettingsShell({
             aria-live="polite"
             aria-atomic="true"
             data-testid="settings-status"
-            className="text-muted-foreground font-num mt-2 min-h-[13px] text-[10px]"
+            className={cn(
+              'text-muted-foreground font-num px-1 text-[11px]',
+              status ? 'mt-1.5 min-h-[13px]' : 'sr-only'
+            )}
           >
             {status}
           </p>
@@ -730,11 +637,93 @@ export function SettingsShell({
           >
             {notice}
           </p>
+        </div>
+
+        {/* Rail. On mobile it becomes a chip strip that bleeds to the edge. */}
+        <nav
+          aria-label="Settings sections"
+          className="-mx-6 flex shrink-0 gap-1 overflow-x-auto px-6 md:mx-0 md:flex-col md:gap-0.5 md:overflow-visible md:px-0"
+        >
+          {PANES.map((p) => {
+            // paneMatchCount, not counts[p.id]: a hit inside an extension's own
+            // pane belongs to the Extensions rail row, which has no key of its
+            // own in `counts` and would otherwise dim at zero while holding the
+            // only route to the result.
+            const count = searching ? paneMatchCount(results, p.id) : null;
+            const active = !searching && p.id === railPane;
+            const Icon = iconFor(p);
+            // Inside Extensions the lit row is the sub-list's — Browse or the
+            // extension you're on — so on a desktop the parent reads as open,
+            // not lit. The phone's chip strip has no sub-list and keeps it lit.
+            const open = !searching && p.id === 'extensions' && railPane === 'extensions';
+            return (
+              <Fragment key={p.id}>
+              <button
+                type="button"
+                aria-current={(active && (isMobile || !open)) || undefined}
+                onClick={() => {
+                  setRawQuery('');
+                  setQuery('');
+                  showSettings(paneHref(p.id));
+                }}
+                className={cn(
+                  'flex h-8 shrink-0 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors md:w-full',
+                  'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+                  active
+                    ? 'bg-secondary text-foreground font-medium'
+                    : 'text-secondary-foreground hover:bg-accent',
+                  open && 'md:hover:bg-accent md:bg-transparent',
+                  searching && count === 0 && 'text-muted-foreground/50'
+                )}
+              >
+                <Icon className="size-3.5 shrink-0" aria-hidden />
+                <span className="whitespace-nowrap">{p.name}</span>
+                {count !== null && <CountChip n={count} />}
+              </button>
+              {open && (
+                <div className="border-border mt-0.5 mb-1.5 ml-[17px] hidden border-l pl-1.5 md:block">
+                  <ExtensionRailList ctx={ctx} pane={pane} variant="rail" />
+                </div>
+              )}
+              </Fragment>
+            );
+          })}
+        </nav>
+      </aside>
+
+      <div
+        className={cn('flex min-w-0 flex-1 flex-col gap-8', !storeShowing && 'md:max-w-[680px]')}
+      >
+        {/* The page is named for the pane you are on. Inside an extension the
+            parent is a real link above the title: the rail's Extensions row
+            does navigate back up, but from inside a sub-pane it renders as the
+            CURRENT row, and a lit row does not read as a way out. */}
+        <header className="flex flex-col gap-1.5 px-1">
+          {!searching && parentPane && (
+            <SettingsLink
+              href={paneHref(parentPane.id)}
+              className="text-muted-foreground hover:text-foreground inline-flex w-fit items-center gap-1 text-xs transition-colors"
+            >
+              {parentPane.name}
+              <ChevronRight className="size-3" aria-hidden />
+            </SettingsLink>
+          )}
+          <h1 className="text-foreground text-2xl font-semibold tracking-tight">
+            {searching ? 'Search results' : activePane.name}
+          </h1>
+          {/* An extension pane's blurb IS its catalog description, and the
+              toggle directly below carries that same sentence — printing it
+              twice reads as a bug. The header keeps the name; the row keeps
+              the sentence. */}
+          {!searching && !activePane.parent && (
+            <p className="text-muted-foreground text-sm">{activePane.blurb}</p>
+          )}
+        </header>
 
           {searching ? (
             <>
               {results.didYouMean && results.settings.length > 0 && (
-                <Eyebrow>Did you mean</Eyebrow>
+                <p className="text-muted-foreground -mt-4 px-1 text-xs">Did you mean…</p>
               )}
 
               {/* ALL_PANES, not PANES. Every extension field lives in a
@@ -753,59 +742,54 @@ export function SettingsShell({
                   ? `${paneById(p.parent)?.name ?? p.parent} · ${p.name}`
                   : p.name;
                 return (
-                  <section key={p.id} aria-labelledby={`results-${p.id}`}>
-                    <Eyebrow as="h2" id={`results-${p.id}`} icon={iconFor(p)}>
-                      {groupName}
-                    </Eyebrow>
-                    <div className="divide-border divide-y">
-                      {hits.map((hit) =>
-                        // Use AI in dsul is drawn by the pane's own row here
-                        // too: "No AI, thanks" while nothing is connected
-                        // (never a lit switch), and no modified bar or reset.
-                        hit.record.id === 'beacon.useAi' ? (
-                          <div key={hit.record.id}>
-                            <UseAIRow
-                              highlightId={null}
-                              search={{ paneName: groupName, ranges: hit.ranges, matchedValue: hit.matchedValue }}
-                            />
-                          </div>
-                        ) : (
-                          rowFor(hit.record, {
-                            paneName: groupName,
-                            ranges: hit.ranges,
-                            matchedValue: hit.matchedValue,
-                            action: setUpAction(hit.record),
-                          })
-                        )
-                      )}
-                    </div>
-                  </section>
+                  <SettingsSection
+                    key={p.id}
+                    id={`results-${p.id}`}
+                    title={groupName}
+                    icon={iconFor(p)}
+                  >
+                    {hits.map((hit) =>
+                      // Use AI in dsul is drawn by the pane's own row here
+                      // too: "No AI, thanks" while nothing is connected
+                      // (never a lit switch), and no modified bar or reset.
+                      hit.record.id === 'beacon.useAi' ? (
+                        <div key={hit.record.id}>
+                          <UseAIRow
+                            highlightId={null}
+                            search={{ paneName: groupName, ranges: hit.ranges, matchedValue: hit.matchedValue }}
+                          />
+                        </div>
+                      ) : (
+                        rowFor(hit.record, {
+                          paneName: groupName,
+                          ranges: hit.ranges,
+                          matchedValue: hit.matchedValue,
+                          action: setUpAction(hit.record),
+                        })
+                      )
+                    )}
+                  </SettingsSection>
                 );
               })}
 
               {results.destinations.length > 0 && (
-                <section aria-labelledby="results-elsewhere">
-                  <Eyebrow as="h2" id="results-elsewhere">
-                    Elsewhere in dsul
-                  </Eyebrow>
-                  <div className="divide-border divide-y">
-                    {results.destinations.map((hit) => (
-                      <DestinationRow
-                        key={hit.record.id}
-                        record={hit.record}
-                        ranges={hit.ranges}
-                        onOpen={onOpenDestination}
-                      />
-                    ))}
-                  </div>
-                </section>
+                <SettingsSection id="results-elsewhere" title="Elsewhere in dsul">
+                  {results.destinations.map((hit) => (
+                    <DestinationRow
+                      key={hit.record.id}
+                      record={hit.record}
+                      ranges={hit.ranges}
+                      onOpen={onOpenDestination}
+                    />
+                  ))}
+                </SettingsSection>
               )}
 
               {/* A different component from "this pane is empty" — conflating
                   the two is the classic bug. These are the three things a
                   settings query usually really is. */}
               {results.total === 0 && results.destinations.length === 0 && (
-                <div className="py-8">
+                <div className="px-1">
                   <p className="text-foreground text-sm">
                     No settings match “{query.trim()}”.
                   </p>
@@ -833,19 +817,6 @@ export function SettingsShell({
             </>
           ) : (
             <>
-              <Eyebrow icon={iconFor(activePane)}>{activePane.name}</Eyebrow>
-              {/* An extension pane's blurb IS its catalog description, and the
-                  toggle directly below carries that same sentence as its own
-                  description — printing it twice, one line apart, reads as a
-                  bug. The header keeps the name; the row keeps the sentence. */}
-              {!activePane.parent && (
-                <p className="text-muted-foreground -mt-0.5 mb-2 text-xs">{activePane.blurb}</p>
-              )}
-
-              {/* The one pane whose body is a catalog rather than rows. It has
-                  no records of its own by design — every extension switch moved
-                  into the extension's own pane, so a row here would be a second
-                  copy of a control that already has a permanent home. */}
               {/* An extension's pane opens with what the store shows about it —
                   preview, what changes, the maker's note — above its own rows,
                   which are unchanged and still hold the one switch. */}
@@ -860,36 +831,33 @@ export function SettingsShell({
                   (make.allOff) is drawn below by the flat rows. */}
               {pane === 'make' && <MakePane ctx={ctx} isMobile={isMobile} />}
 
+              {/* The one pane whose body is a catalog rather than rows. It has
+                  no records of its own by design — every extension switch moved
+                  into the extension's own pane, so a row here would be a second
+                  copy of a control that already has a permanent home. */}
               {pane === 'extensions' && (
-                <>
+                <div>
                   {/* A phone has no rail to nest the list in, so your
                       extensions and their switches come first here. */}
                   <div className="mb-6 md:hidden">
                     <ExtensionRailList ctx={ctx} pane={pane} variant="pane" />
                   </div>
                   {/* The store is the one pane body wider than a column of
-                      rows: it takes the whole column the page gives it,
-                      while the search box above keeps the usual 600px. */}
+                      cards: it takes the whole column the page gives it. */}
                   <ExtensionBrowse ctx={ctx} />
-                </>
+                </div>
               )}
 
-              {/* The Keyboard pane's rows ARE the shortcut records, and they
-                  are grouped rather than flat — nineteen bindings in one
-                  undivided list is a wall. The panel is the shared component
-                  the ⌘/ overlay also renders (components/settings/
-                  shortcuts-panel.tsx), so the two shells cannot group or order
-                  the same set differently. It renders every row this pane
-                  holds, which is why the flat list below is the ELSE arm and
-                  not a sibling — a test pins that the two sets are the same.
-                  Search results still go through rowFor like every other
-                  record, so a hit here is drawn by the generic path. */}
-              {/* The AI pane is a body of its own too (components/settings/
-                  ai-pane.tsx): What AI does, Use AI in dsul, Connection,
-                  OpenClaw and On this device, each shown by state. It draws
-                  every record this pane holds (AI_PANE_RECORD_IDS), the
-                  device rows and the gateway rows through rowFor, so they are
-                  the same SettingRows search draws. */}
+              {/* The Keyboard pane's rows ARE the shortcut records, grouped —
+                  the panel is the shared component the ⌘/ overlay also renders
+                  (components/settings/shortcuts-panel.tsx), so the two shells
+                  cannot group or order the same set differently. It renders
+                  every row this pane holds, which is why the flat list below is
+                  the ELSE arm and not a sibling — a test pins that the two sets
+                  are the same. Search results still go through rowFor.
+                  The AI pane is a body of its own too (components/settings/
+                  ai-pane.tsx); it draws every record this pane holds
+                  (AI_PANE_RECORD_IDS) through rowFor. */}
               {pane === 'keyboard' ? (
                 <ShortcutsPanel
                   variant="pane"
@@ -907,7 +875,7 @@ export function SettingsShell({
                   onToggleGateway={toggleAdv}
                 />
               ) : (
-                <div className="divide-border divide-y">{groupPaneRows(rows).map(groupFor)}</div>
+                rows.length > 0 && <SettingsCard>{groupPaneRows(rows).map(groupFor)}</SettingsCard>
               )}
 
               {/* Rituals ends with the devices those rituals reach, and which
@@ -919,36 +887,31 @@ export function SettingsShell({
               {extensionSlugFromPane(pane) === EXT_SOUNDS && <SoundsConsole ctx={ctx} />}
 
               {advanced.length > 0 && (
-                <>
+                <div className="flex flex-col">
                   <button
                     type="button"
                     aria-expanded={advOpen}
                     onClick={toggleAdv}
                     className={cn(
-                      'text-muted-foreground hover:bg-accent -mx-3 mt-2 flex h-8 w-[calc(100%+1.5rem)]',
-                      'items-center gap-2 rounded-[5px] px-3 text-xs font-medium transition-colors',
+                      'text-muted-foreground hover:text-foreground mb-2 flex h-7 w-fit items-center gap-1.5',
+                      'rounded-md px-1 text-[13px] font-medium transition-colors',
                       'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
                     )}
                   >
                     <ChevronRight
-                      className={cn('size-3 transition-transform', advOpen && 'rotate-90')}
+                      className={cn('size-3.5 transition-transform', advOpen && 'rotate-90')}
                       aria-hidden
                     />
                     Advanced
-                    <CountChip n={advanced.length} />
+                    <span className="font-num text-[11px] opacity-80">{advanced.length}</span>
                   </button>
                   {/* A reveal, not a nav level: everything inside is a normal
                       row at normal depth. */}
-                  {advOpen && (
-                    <div className="divide-border divide-y">
-                      {advanced.map((record) => rowFor(record))}
-                    </div>
-                  )}
-                </>
+                  {advOpen && <SettingsCard>{advanced.map((record) => rowFor(record))}</SettingsCard>}
+                </div>
               )}
             </>
           )}
-        </div>
       </div>
     </main>
   );
