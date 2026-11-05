@@ -383,7 +383,8 @@ describe('the column', () => {
     renderFix();
     const links = screen.getAllByRole('link', { name: /Open Google AI Studio/ });
     expect(links).toHaveLength(1);
-    expect(links[0].className).toMatch(/border-input/);
+    expect(links[0].className).toMatch(/\bkey\b/);
+    expect(links[0].className).not.toMatch(/\bkey-main\b/);
     expect(recheck().className).toMatch(/\btext-sm\b/);
   });
 

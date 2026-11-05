@@ -1424,7 +1424,8 @@ describe('a daily limit', () => {
     );
     const studio = screen.getByRole('link', { name: 'Open Google AI Studio' });
     expect(studio).toHaveAttribute('href', 'https://aistudio.google.com/apikey');
-    expect(studio.className).toMatch(/border-input/);
+    expect(studio.className).toMatch(/\bkey\b/);
+    expect(studio.className).not.toMatch(/\bkey-main\b/);
     const limit = screen.getByTestId('mcp-limit');
     expect(limit).toContainElement(screen.getByTestId('mcp-switch'));
     expect(limit).toContainElement(screen.getByTestId('mcp-disconnect'));

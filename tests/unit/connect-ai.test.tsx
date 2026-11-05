@@ -1680,8 +1680,8 @@ describe('nothing lime in the column', () => {
   it('while the pane keeps its main action’s fill (the check would see one)', async () => {
     renderConnect('pane');
     await paste(box(), UNKNOWN);
-    expect(screen.getByTestId('connect-submit').className).toMatch(/bg-foreground/);
-    expect(screen.getByTestId('connect-openrouter-signin').className).toMatch(/bg-foreground/);
+    expect(screen.getByTestId('connect-submit').className).toMatch(/\bkey-main\b/);
+    expect(screen.getByTestId('connect-openrouter-signin').className).toMatch(/\bkey-main\b/);
   });
 });
 

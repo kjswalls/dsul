@@ -3617,6 +3617,30 @@ function ItemDialogInner({
       />
     ) : null;
 
+  // The capture modal's deck (Kirby's pick in the keycap round, 2026-11-05):
+  // on the desktop modal the body holds only words (type, title, notes), and a
+  // recessed strip along the dialog's foot holds the chip field and the
+  // submit key, the way keys sit in a keyboard's well. It replaced the lone
+  // hairline footer, which left the modal a flat slab with a gap at the
+  // bottom. The panel autosaves and has no footer; the phone drawer keeps its
+  // full-width button under the body.
+  const deck = !autosaves && presentation === 'modal' && !isMobile;
+  const clearingField = () =>
+    activeDraft
+      ? renderChips(
+          activeTypeName,
+          activeDraft,
+          // The streak is one more property (StreakChip), with its week and Reset.
+          streaksOn && editConfig?.counters.streak && editItem?.type === 'habit' ? (
+            <StreakChip habit={editItem} today={paneToday} onReset={() => setShowResetConfirm(true)} />
+          ) : undefined,
+          // Notes leads the seed while the docked panel hides the empty field.
+          hideEmptyNotes && !showNotes && editItem && activeConfig.fields.includes('notes')
+            ? [{ key: 'notes', label: 'Notes', icon: AlignLeft, onSelect: () => setNotesSummonedFor(editItem.id) }]
+            : []
+        )
+      : null;
+
   return (
     <EscapeLadder value={registerEscape}>
       <SurfaceRoot panel={isPanel} open={open} onOpenChange={onOpenChange} isMobile={isMobile}>
@@ -3872,18 +3896,7 @@ function ItemDialogInner({
                 </div>
               )}
 
-              {renderChips(
-                activeTypeName,
-                activeDraft,
-                // The streak is one more property (StreakChip), with its week and Reset.
-                streaksOn && editConfig?.counters.streak && editItem?.type === 'habit' ? (
-                  <StreakChip habit={editItem} today={paneToday} onReset={() => setShowResetConfirm(true)} />
-                ) : undefined,
-                // Notes leads the seed while the docked panel hides the empty field.
-                hideEmptyNotes && !showNotes && editItem && activeConfig.fields.includes('notes')
-                  ? [{ key: 'notes', label: 'Notes', icon: AlignLeft, onSelect: () => setNotesSummonedFor(editItem.id) }]
-                  : []
-              )}
+              {!deck && clearingField()}
 
               {/* The sections the modal never had room for — Phase 1 of the
                   growth plan. Live data (subtasks/agent state read the store),
@@ -3910,7 +3923,14 @@ function ItemDialogInner({
                 // Reached only when `autosaves` is false, so there is no
                 // saving-indicator arm here: this surface commits on submit and
                 // the button is the whole promise.
-                <div className="flex items-center justify-end gap-3 border-t pt-3">
+                <div
+                  data-item-deck={deck || undefined}
+                  className={cn(
+                    'flex items-center gap-3',
+                    deck ? '-mx-6 -mb-6 justify-between px-4 py-3' : 'justify-end border-t pt-3'
+                  )}
+                >
+                  {deck && <div className="min-w-0 flex-1">{clearingField()}</div>}
                   <Button
                     onClick={handleSubmit}
                     data-testid="item-dialog-submit"
