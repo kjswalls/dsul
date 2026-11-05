@@ -7,9 +7,10 @@ import {
   Contrast,
   MoonStar,
   Command,
-  Zap,
   Blocks,
   Hammer,
+  Bell,
+  CircleUserRound,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -133,6 +134,7 @@ export type RootPaneId =
   | 'day'
   | 'look'
   | 'rituals'
+  | 'notifications'
   | 'beacon'
   | 'keyboard'
   | 'extensions'
@@ -198,7 +200,17 @@ export const PANES: SettingsPane[] = [
     id: 'rituals',
     name: 'Rituals',
     icon: MoonStar,
-    blurb: 'The moments dsul opens by itself.',
+    blurb: 'What happens to a day once it is over.',
+  },
+  {
+    // Everything that reaches out of the app: the reminders, the push switch
+    // and the devices they land on. They lived in Rituals until 2026-11-05;
+    // their record ids keep the `rituals.` prefix because ids are permanent
+    // (a ?focus= link to one self-routes here, see the settings route).
+    id: 'notifications',
+    name: 'Notifications',
+    icon: Bell,
+    blurb: 'How dsul reaches you when it is not open.',
   },
   {
     // The id stays 'beacon': it is the /settings/beacon route and the pane of
@@ -234,10 +246,12 @@ export const PANES: SettingsPane[] = [
     blurb: 'Your own recipes, mods, themes and Looks.',
   },
   {
+    // The id stays 'dsul' (the dsul.* record ids, /settings/dsul links); the
+    // page is linked as /settings/account and named for what it holds.
     id: 'dsul',
-    name: 'dsul',
-    icon: Zap,
-    blurb: 'The account, the tour, and how to reach us.',
+    name: 'Account',
+    icon: CircleUserRound,
+    blurb: 'Your account, the tour, and how to reach us.',
   },
 ];
 
@@ -504,7 +518,8 @@ const extPending = () => ext().available && !ext().configsLoaded;
 /**
  * The master switch a delivery channel or stake adapter actually rides on.
  *
- * Both live in Rituals, and `dependsOn` cannot express this — the settings
+ * Each lives in its own pane (Settle the day in Rituals, Habit reminders in
+ * Notifications), and `dependsOn` cannot express this — the settings
  * manifest requires a parent and child to share a pane. Without saying it
  * somewhere, an extension can be switched on and fully credentialed while the
  * switch that governs it is off, which makes the toggle and its four config
@@ -512,10 +527,10 @@ const extPending = () => ext().available && !ext().configsLoaded;
  * mechanism: the row stays visible, with the reason inline, rather than
  * vanishing or lying.
  */
-const masterSwitchFor = (slug: string): { label: string; on: () => boolean } =>
+const masterSwitchFor = (slug: string): { label: string; where: string; on: () => boolean } =>
   STAKE_SLUGS.has(slug)
-    ? { label: 'Settle the day', on: () => reminders().stakesEnabled }
-    : { label: 'Habit reminders', on: () => reminders().remindersEnabled };
+    ? { label: 'Settle the day', where: 'Rituals', on: () => reminders().stakesEnabled }
+    : { label: 'Habit reminders', where: 'Notifications', on: () => reminders().remindersEnabled };
 
 const STAKE_SLUGS = new Set(STAKE_SETTINGS.map((spec) => spec.slug));
 
@@ -570,7 +585,7 @@ function channelRecords(): SettingRecord[] {
     const pane = extensionPaneId(spec.slug);
     const master = masterSwitchFor(spec.slug);
     const gated = () =>
-      extUnavailable() ?? (master.on() ? null : `needs ${master.label}, in Rituals`);
+      extUnavailable() ?? (master.on() ? null : `needs ${master.label}, in ${master.where}`);
 
     records.push({
       id: toggleId,
@@ -632,7 +647,7 @@ function channelRecords(): SettingRecord[] {
             ? 'Needs a database update that has not landed here yet.'
             : master.on()
               ? null
-              : `needs ${master.label}, in Rituals`,
+              : `needs ${master.label}, in ${master.where}`,
         // Write-only: there is nothing to read back, by design.
         read: () => '',
         write: (v) => channelSecrets().setSecret(spec.slug, field.key, String(v).trim()),
@@ -1291,7 +1306,7 @@ export const SETTINGS: SettingRecord[] = [
   },
   {
     id: 'rituals.reminders',
-    pane: 'rituals',
+    pane: 'notifications',
     label: 'Habit reminders',
     description:
       'A nudge at the time you set on each habit. Set the time on the habit itself. This is the switch that lets any of them through.',
@@ -1304,7 +1319,7 @@ export const SETTINGS: SettingRecord[] = [
   },
   {
     id: 'rituals.lastCall',
-    pane: 'rituals',
+    pane: 'notifications',
     label: 'Last call',
     // Names the mechanism honestly. It is not a second copy of the reminder —
     // a repeat of the same prompt is what people stop reading — it is a
@@ -1320,7 +1335,7 @@ export const SETTINGS: SettingRecord[] = [
   },
   {
     id: 'rituals.lastCallTime',
-    pane: 'rituals',
+    pane: 'notifications',
     label: 'Last call at',
     description: 'Late enough that the day has had its chance; early enough to still act on it.',
     control: 'time',
@@ -1378,7 +1393,7 @@ export const SETTINGS: SettingRecord[] = [
   },
   {
     id: 'rituals.push',
-    pane: 'rituals',
+    pane: 'notifications',
     label: 'Push notifications',
     description: 'Let dsul reach this device when a ritual fires.',
     control: 'switch',
@@ -1410,7 +1425,7 @@ export const SETTINGS: SettingRecord[] = [
   },
   {
     id: 'rituals.pushTest',
-    pane: 'rituals',
+    pane: 'notifications',
     label: 'Send a test',
     description: 'Sends one notification to every device that has push on, so you can see a reminder will get through.',
     control: 'action',
@@ -2244,10 +2259,10 @@ export function isPaneId(value: string): value is PaneId {
  * ALL_PANES: an alias is a second way to the same pane, not a pane, so the
  * rail, search and every pane lookup still see one AI pane.
  */
-export const PANE_ALIASES: Readonly<Record<string, RootPaneId>> = Object.freeze({ ai: 'beacon' });
+export const PANE_ALIASES: Readonly<Record<string, RootPaneId>> = Object.freeze({ ai: 'beacon', account: 'dsul' });
 
 /** The other direction: the path a pane is linked by. Only the panes with an alias are here. */
-export const PANE_PATHS: Readonly<Partial<Record<PaneId, string>>> = Object.freeze({ beacon: 'ai' });
+export const PANE_PATHS: Readonly<Partial<Record<PaneId, string>>> = Object.freeze({ beacon: 'ai', dsul: 'account' });
 
 /**
  * The pane a `/settings/<path>` names: its id, or the pane its alias stands

@@ -878,9 +878,9 @@ export function SettingsShell({
                 rows.length > 0 && <SettingsCard>{groupPaneRows(rows).map(groupFor)}</SettingsCard>
               )}
 
-              {/* Rituals ends with the devices those rituals reach, and which
+              {/* Notifications ends with the devices they reach, and which
                   reminders each one takes (lib/devices, migration 065). */}
-              {pane === 'rituals' && <DevicesList />}
+              {pane === 'notifications' && <DevicesList />}
 
               {/* Sounds ends with its console: the packs, the volume and the
                   switches, each one playable (components/settings/sounds-console.tsx). */}
