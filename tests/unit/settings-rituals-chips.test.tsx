@@ -138,9 +138,15 @@ describe('dependents follow their ancestors', () => {
     render(<Harness pane="rituals" />);
     expect(row('rituals.autoAge')).not.toBeNull();
     expect(alias('rituals.autoAgeDays')).toBe(row('rituals.autoAge'));
-    expect(alias('rituals.lastCallTime')).toBe(row('rituals.lastCall'));
     expect(row('rituals.stakesTime')).not.toBeNull();
     expect(row('rituals.ledger')).not.toBeNull();
+    expect(document.querySelector('.border-l, .ml-3, .pl-4')).toBeNull();
+  });
+
+  it('draws the last call chip in Notifications, where reminders live', () => {
+    act(() => useReminderStore.setState({ remindersEnabled: true }));
+    render(<Harness pane="notifications" />);
+    expect(alias('rituals.lastCallTime')).toBe(row('rituals.lastCall'));
     expect(document.querySelector('.border-l, .ml-3, .pl-4')).toBeNull();
   });
 
@@ -241,7 +247,7 @@ describe('a merged chip', () => {
   it('the time half lives in the picker as a labelled time list', async () => {
     act(() => useReminderStore.setState({ remindersEnabled: true, lastCallEnabled: true }));
     const time = spyWrite('rituals.lastCallTime');
-    render(<Harness pane="rituals" />);
+    render(<Harness pane="notifications" />);
 
     const trigger = screen.getByTestId('setting-rituals.lastCall');
     expect(trigger).toHaveAccessibleName('Last call: 8:30 pm');
@@ -293,14 +299,14 @@ describe('single chips', () => {
 describe('deep links to a dependent', () => {
   it('rings the merged chip for its value half', async () => {
     act(() => useReminderStore.setState({ remindersEnabled: true, lastCallEnabled: true }));
-    render(<Harness pane="rituals" focusId="rituals.lastCallTime" />);
+    render(<Harness pane="notifications" focusId="rituals.lastCallTime" />);
     const chip = row('rituals.lastCall')!;
     await waitFor(() => expect(chip.dataset.highlight).toBe('true'));
     expect(document.activeElement).toBe(chip);
   });
 
   it('rings the nearest shown ancestor when the dependent is hidden', async () => {
-    render(<Harness pane="rituals" focusId="rituals.lastCallTime" />);
+    render(<Harness pane="notifications" focusId="rituals.lastCallTime" />);
     expect(alias('rituals.lastCallTime')).toBeNull();
     const parent = row('rituals.reminders')!;
     await waitFor(() => expect(parent.dataset.highlight).toBe('true'));

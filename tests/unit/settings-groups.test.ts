@@ -44,10 +44,7 @@ describe('Rituals', () => {
   it('starts a group at every root, in manifest order', () => {
     expect(groups.map((g) => g.parent.id)).toEqual([
       'rituals.morningCheck',
-      'rituals.reminders',
       'rituals.stakes',
-      'rituals.push',
-      'rituals.pushTest',
     ]);
   });
 
@@ -60,20 +57,11 @@ describe('Rituals', () => {
       'rituals.autoAge+rituals.autoAgeDays',
     ]);
 
-    const reminders = groupOf(groups, 'rituals.reminders')!;
-    expect(reminders.mode).toBe('chips');
-    expect(ids((reminders as Extract<PaneGroup, { mode: 'chips' }>).chips)).toEqual([
-      'rituals.lastCall+rituals.lastCallTime',
-    ]);
   });
 
   it('draws a lone time and an action as single chips', () => {
     const stakes = groupOf(groups, 'rituals.stakes') as Extract<PaneGroup, { mode: 'chips' }>;
     expect(ids(stakes.chips)).toEqual(['rituals.stakesTime', 'rituals.ledger']);
-  });
-
-  it('leaves a root with no dependents a plain row', () => {
-    expect(groupOf(groups, 'rituals.push')!.mode).toBe('row');
   });
 
   it('places every pane row exactly once', () => {
@@ -82,6 +70,30 @@ describe('Rituals', () => {
       ...(g.mode === 'row' ? [] : g.descendants.map((d) => d.id)),
     ]);
     expect(placed.sort()).toEqual(paneRows('rituals').rows.map((r) => r.id).sort());
+  });
+});
+
+describe('Notifications', () => {
+  const groups = groupPaneRows(paneRows('notifications').rows);
+
+  it('holds the reminder and push roots, in manifest order', () => {
+    expect(groups.map((g) => g.parent.id)).toEqual([
+      'rituals.reminders',
+      'rituals.push',
+      'rituals.pushTest',
+    ]);
+  });
+
+  it('merges last call into one chip under reminders', () => {
+    const reminders = groupOf(groups, 'rituals.reminders')!;
+    expect(reminders.mode).toBe('chips');
+    expect(ids((reminders as Extract<PaneGroup, { mode: 'chips' }>).chips)).toEqual([
+      'rituals.lastCall+rituals.lastCallTime',
+    ]);
+  });
+
+  it('leaves a root with no dependents a plain row', () => {
+    expect(groupOf(groups, 'rituals.push')!.mode).toBe('row');
   });
 });
 
