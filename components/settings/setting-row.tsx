@@ -400,6 +400,10 @@ export function SettingRow({
   const uid = useId();
   const controlId = `set-${record.id}-${uid}`;
   const descId = record.description ? `${controlId}-desc` : undefined;
+  const moreId = record.description && record.more ? `${controlId}-more` : undefined;
+  // Both, so a screen reader hears the whole explanation whether or not More is open.
+  const describedBy = [descId, moreId].filter(Boolean).join(' ') || undefined;
+  const [moreOpen, setMoreOpen] = useState(false);
 
   // A store that cannot answer yet outranks every other reason a row might be
   // disabled: until it answers, "unavailable", "inactive" and the value itself
@@ -485,11 +489,32 @@ export function SettingRow({
         </div>
 
         {record.description && (
+          <p className={cn('text-muted-foreground mt-[3px] max-w-[46ch] text-xs', quietDescription && 'sr-only')}>
+            <span id={descId}>{record.description}</span>
+            {moreId && !quietDescription && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  data-testid="setting-more"
+                  aria-expanded={moreOpen}
+                  aria-controls={moreId}
+                  onClick={() => setMoreOpen((open) => !open)}
+                  className="hover:text-foreground focus-visible:ring-ring rounded-[2px] underline underline-offset-2 focus-visible:ring-2 focus-visible:outline-none"
+                >
+                  {moreOpen ? 'Less' : 'More'}
+                </button>
+              </>
+            )}
+          </p>
+        )}
+        {moreId && (
           <p
-            id={descId}
-            className={cn('text-muted-foreground mt-[3px] max-w-[46ch] text-xs', quietDescription && 'sr-only')}
+            id={moreId}
+            hidden={!moreOpen || quietDescription}
+            className="text-muted-foreground mt-1 max-w-[46ch] text-xs"
           >
-            {record.description}
+            {record.more}
           </p>
         )}
 
@@ -551,7 +576,7 @@ export function SettingRow({
             value={value}
             disabled={disabled}
             controlId={controlId}
-            describedBy={descId}
+            describedBy={describedBy}
             onWrite={onWrite}
           />
         )}
