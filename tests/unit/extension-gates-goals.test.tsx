@@ -245,7 +245,7 @@ describe('Goals switched off — the behaviour stops', () => {
 
     // The neighbouring values are still there, so this is the Goal row missing
     // rather than the submenu failing to open.
-    expect(await screen.findByRole('menuitemradio', { name: /Project/ })).toBeInTheDocument();
+    expect(await screen.findByRole('menuitemradio', { name: /^Project/ })).toBeInTheDocument();
     expect(screen.queryByRole('menuitemradio', { name: /Goal/ })).toBeNull();
   });
 

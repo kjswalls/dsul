@@ -289,7 +289,8 @@ describe('grouping options carry live examples of what they would produce', () =
 
     // seed() has three projects — Work, Home, Health — so the row shows the
     // first two and an ellipsis, not the whole list.
-    expect(await screen.findByRole('menuitemradio', { name: /Project/ })).toHaveTextContent(
+    // Anchored: on Day × List the unset row reads "Type · Habits, Tasks, Projects".
+    expect(await screen.findByRole('menuitemradio', { name: /^Project/ })).toHaveTextContent(
       'Work, Home…'
     );
   });
@@ -1109,7 +1110,8 @@ describe('the touch shell', () => {
     await screen.findByTestId('display-section-grouping');
 
     fireEvent.click(screen.getByTestId('display-section-grouping'));
-    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: /^None/ }));
+    // seed() is Day × List, whose unset grouping reads Type (canvasNoneGrouping).
+    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: /^Type/ }));
 
     fireEvent.click(screen.getByTestId('display-back'));
     // Back lands on the row you came from, not the top of the list.
@@ -1302,5 +1304,30 @@ describe('the pointer shell is still the pointer shell', () => {
     expect(
       within(menu).getByRole('menuitem', { name: /Grouping/ }).getAttribute('data-slot')
     ).toBe('dropdown-menu-sub-trigger');
+  });
+});
+
+describe("Day × List names its default grouping, which is not 'none' on screen", () => {
+  it('reads Type over the Habits / Tasks / Projects sections, and stays unset', async () => {
+    render(<DisplayMenu surface="canvas" />);
+    openMenu();
+
+    const row = await screen.findByRole('menuitem', { name: /Grouping/ });
+    expect(row).toHaveTextContent('Type');
+    expect(row).not.toHaveTextContent('None');
+
+    fireEvent.click(row);
+    const type = await screen.findByRole('menuitemradio', { name: /Type/ });
+    expect(type).toHaveTextContent('Habits, Tasks, Projects');
+    expect(type).toHaveAttribute('aria-checked', 'true');
+    expect(view().canvasGroupBy).toBe('none');
+  });
+
+  it('keeps None on a view whose ungrouped list is flat', async () => {
+    seed({ scope: 'week', layout: 'list' });
+    render(<DisplayMenu surface="canvas" />);
+    openMenu();
+
+    expect(await screen.findByRole('menuitem', { name: /Grouping/ })).toHaveTextContent('None');
   });
 });
