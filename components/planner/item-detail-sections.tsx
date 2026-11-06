@@ -765,6 +765,7 @@ export function ItemDetailSections({
   // Clearing folds Activity into a footer disclosure (ClearingFooter), so the
   // body stack omits it to avoid rendering the same feed twice.
   withActivity = true,
+  activityChanges = true,
   offerSetup = false,
   conversationElsewhere = false,
   agentStatusElsewhere = false,
@@ -784,6 +785,8 @@ export function ItemDetailSections({
    *  transcript only (the box is the host's), 'inline' brings its own box. */
   conversation?: 'pinned' | 'transcript' | 'inline' | 'none';
   withActivity?: boolean;
+  /** False leaves the changes out of the activity (they are in ⋯ › History); files and notes stay. */
+  activityChanges?: boolean;
 }) {
   const config = getItemTypeConfig(itemTypeName(item));
   // Extension gate + capability gate: the heatmap is opt-in (Settings →
@@ -813,7 +816,7 @@ export function ItemDetailSections({
       {xEffectOn && config.counters.streak && <XEffectSection item={item} />}
       {heatmapOn && config.counters.streak && <HeatmapSection item={item} />}
       {/* Where the conversation is on screen, the timeline is drawn inside it, as one stream. */}
-      {withActivity && !(canChat && (conversation !== 'none' || conversationElsewhere)) && <ItemTimeline item={item} />}
+      {withActivity && !(canChat && (conversation !== 'none' || conversationElsewhere)) && <ItemTimeline item={item} changes={activityChanges} />}
       {/* Keyed by item: the panel retargets in place, and a message count
           carried over from the last item would read as new messages here and
           scroll the rail body to the bottom of a different conversation. */}

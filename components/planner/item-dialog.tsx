@@ -24,6 +24,8 @@ import {
   Play as PlayIcon,
   AlignLeft,
   ArrowLeftToLine,
+  ChevronDown,
+  History as HistoryIcon,
   Maximize2,
   Minus,
   MoreHorizontal,
@@ -77,8 +79,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { RailTooltip } from '@/components/primitives/pills';
+import { ItemHistory } from '@/components/planner/item-history';
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { PrepStatus } from '@/components/ai/ai-work-badge';
@@ -153,7 +161,6 @@ import {
   nextDayLabel,
   nextDayTarget,
 } from '@/lib/row-moves';
-import { RowControl, RowControlDivider, RowControlGroup } from '@/components/primitives/row-control';
 import {
   CONTAINER_KINDS,
   classifyKindForItemType,
@@ -280,9 +287,6 @@ export function InlineCreate({
     </div>
   );
 }
-
-/** How many of an item's verbs the header's control bar shows as icons; the rest go under ⋯. */
-const BAR_SLOTS = 3;
 
 // ── The two shapes of the surface ────────────────────────────────────────────
 // SurfaceRoot / SurfaceContent / SurfaceA11yHeader live in ./surface, shared
@@ -3094,11 +3098,10 @@ function ItemDialogInner({
     else toggleHabitStatus(paneHabit.id, 'pending', Math.max(0, next), new Date());
   };
 
-  // The control bar (the item conversations design, round 3): the verbs this
-  // item can take right now, in the order they are reached for, the first
-  // BAR_SLOTS of them as icons and the rest under ⋯, with Delete always last
-  // there in red. Eligibility is what makes the bar differ by type: a one-off
-  // task on the grid offers its put-it-off pair, a habit Skip today.
+  // The "not now" verbs this item can take right now, in the order they are
+  // reached for, all behind the Reschedule button (below). Eligibility is what
+  // makes the menu differ by type: a one-off task on the grid offers its
+  // put-it-off pair, a habit Skip today.
   type PaneAction = { id: string; icon: LucideIcon; label: string; detail?: string };
   const paneActions: PaneAction[] = [];
   if (mode === 'edit' && editItem) {
@@ -3160,42 +3163,69 @@ function ItemDialogInner({
         return;
     }
   };
-  const barActions = paneActions.slice(0, BAR_SLOTS);
-  const moreActions = paneActions.slice(BAR_SLOTS);
-
-  const rowControls =
-    mode === 'edit' && editItem ? (
-      <RowControlGroup data-testid="item-dialog-row-controls" className="mr-1">
-        {paneTarget > 0 && occursToday && (
-          <>
-            <RowControl
-              icon={Minus}
-              label="Decrease count"
-              testId="item-dialog-stepper-dec"
-              disabled={paneCount <= 0}
-              onClick={() => stepCount(paneCount - 1)}
-            />
-            <RowControl
-              icon={Plus}
-              label="Increase count"
-              testId="item-dialog-stepper-inc"
-              disabled={paneCount >= paneTarget}
-              onClick={() => stepCount(paneCount + 1)}
-            />
-            {barActions.length > 0 && <RowControlDivider />}
-          </>
-        )}
-        {barActions.map((a) => (
-          <RowControl
-            key={a.id}
-            icon={a.icon}
-            label={a.label}
-            detail={a.detail}
-            testId={a.id}
-            onClick={() => runPaneAction(a.id)}
-          />
-        ))}
-      </RowControlGroup>
+  // The Reschedule button (the item panel beta round, Kirby's pick C2,
+  // 2026-11-05): every "not now" verb behind one small boxed key in the top
+  // row, in the same place on every item, where the bar used to show the
+  // first three of them as icons that changed from item to item. A one-off
+  // task on the grid also gets "Pick a day…", the date chip's calendar. The
+  // count steps live on the tick (a tap counts one) and "Take one off" in ⋯.
+  const canPickDay = canPaneNextDay && !!paneDay;
+  const pickDay = (date: Date | undefined) => {
+    if (!editItem || !date) return;
+    flushNow();
+    moveTaskToDate(editItem.id, format(date, 'yyyy-MM-dd'));
+    // The modal commits its whole draft on Save (the carry above's reason).
+    if (!autosaves) setEditDraft((dr) => dr && { ...dr, startDate: date });
+  };
+  const rescheduleMenu =
+    mode === 'edit' && editItem && (paneActions.length > 0 || canPickDay) ? (
+      <DropdownMenu>
+        <RailTooltip label="Reschedule">
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              data-testid="item-dialog-reschedule"
+              aria-label="Reschedule"
+              className="mr-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[7px] border border-border bg-surface-2 pr-1 pl-1.5 text-foreground shadow-sm transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:bg-accent"
+            >
+              <CalendarClock className="size-3.5" aria-hidden />
+              <ChevronDown className="size-3 text-muted-foreground" aria-hidden />
+            </button>
+          </DropdownMenuTrigger>
+        </RailTooltip>
+        <DropdownMenuContent align="end" className="w-56" data-testid="item-dialog-reschedule-menu">
+          {paneActions.map((a, i) => {
+            const row = (
+              <DropdownMenuItem key={a.id} data-testid={a.id} onSelect={() => runPaneAction(a.id)}>
+                <a.icon className="size-3.5" />
+                <span className="flex-1">{a.label}</span>
+                {a.detail && <span className="text-xs text-muted-foreground">{a.detail}</span>}
+              </DropdownMenuItem>
+            );
+            // "Pick a day…" sits with the put-it-off pair, right under the first.
+            return i === 0 && canPickDay ? (
+              <Fragment key={a.id}>
+                {row}
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger data-testid="item-dialog-pick-day">
+                    <CalendarIcon className="size-3.5" />
+                    Pick a day…
+                  </DropdownMenuSubTrigger>
+                  <DropdownMenuSubContent className="p-0">
+                    <Calendar
+                      mode="single"
+                      selected={paneDay ? parseISO(paneDay) : undefined}
+                      onSelect={pickDay}
+                    />
+                  </DropdownMenuSubContent>
+                </DropdownMenuSub>
+              </Fragment>
+            ) : (
+              row
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
     ) : null;
 
   // In the rail (AI on, docked), "Open as page" and ⋯ ride the rail's header
@@ -3244,10 +3274,21 @@ function ItemDialogInner({
         run: () => ITEM_VERBS.leaveProjectBlock.run(editItem, menuCtx),
       });
   }
-  // Everything the bar has no room for, then Delete, last and in red. Reset
-  // streak is not here: it lives with the streak (StreakChip).
+  // A counted habit's tick counts one at a time; taking one back is here.
+  if (editItem && paneTarget > 0 && occursToday && paneCount > 0)
+    menuVerbs.unshift({ id: 'stepper-dec', icon: Minus, label: 'Take one off', run: () => stepCount(paneCount - 1) });
+  // History (the item panel beta round, Kirby's pick H6): what changed on the
+  // item, in a popover hung from ⋯ rather than drawn in the panel. The menu
+  // closes first, and keeps its focus return out of the popover's way.
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const historyOpen = !!editItem && historyFor === editItem.id;
+  const pickedHistory = useRef(false);
+  // Everything that is not a "not now" verb, then Delete, last and in red.
+  // Reset streak is not here: it lives with the streak (StreakChip).
   const moreMenu = mode === 'edit' && editItem && (
+        <Popover open={historyOpen} onOpenChange={(o) => setHistoryFor(o ? editItem.id : null)}>
         <DropdownMenu>
+          <PopoverAnchor asChild>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
@@ -3259,13 +3300,27 @@ function ItemDialogInner({
               <span className="sr-only">More actions</span>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            {moreActions.map((a) => (
-              <DropdownMenuItem key={a.id} data-testid={a.id} onSelect={() => runPaneAction(a.id)}>
-                <a.icon className="size-3.5" />
-                {a.label}
-              </DropdownMenuItem>
-            ))}
+          </PopoverAnchor>
+          <DropdownMenuContent
+            align="end"
+            className="w-52"
+            onCloseAutoFocus={(e) => {
+              if (pickedHistory.current) {
+                pickedHistory.current = false;
+                e.preventDefault();
+                setHistoryFor(editItem.id);
+              }
+            }}
+          >
+            <DropdownMenuItem
+              data-testid="item-dialog-history"
+              onSelect={() => {
+                pickedHistory.current = true;
+              }}
+            >
+              <HistoryIcon className="size-3.5" />
+              History
+            </DropdownMenuItem>
             {menuVerbs.map((v) => (
               <DropdownMenuItem key={v.id} data-testid={`item-dialog-${v.id}`} onSelect={v.run}>
                 <v.icon className="size-3.5" />
@@ -3294,11 +3349,26 @@ function ItemDialogInner({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <PopoverContent
+          align="end"
+          sideOffset={8}
+          className="w-[324px] overflow-hidden rounded-[14px] p-0"
+          data-sub-input
+          // Focus lands on the list, not its ✕: a ring on the close button
+          // would be the first thing the popover shows.
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            (e.currentTarget as HTMLElement | null)?.querySelector<HTMLElement>('[data-item-history]')?.focus();
+          }}
+        >
+          <ItemHistory item={editItem} onClose={() => setHistoryFor(null)} />
+        </PopoverContent>
+        </Popover>
   );
 
   const headerActions = (
     <div className="ml-auto flex items-center gap-0.5">
-      {rowControls}
+      {rescheduleMenu}
       {withDetailSections && mode === 'edit' && editItem && !attachInMenu && <AttachFileButton itemId={editItem.id} />}
       {attachInMenu && attachPicker.input}
       {!actionsInRail && openPageButton}
@@ -3727,9 +3797,16 @@ function ItemDialogInner({
               // No crumb title: the item's name is the heading right under
               // this row, and folded, the strip names it (the panel tidy,
               // round 3). So the back control reads "‹ Ask" on its own.
+              // One top row (the item panel beta, 2026-11-06): the type chip
+              // leads after an icon-only ‹, and Reschedule, ⋯, open as page
+              // and ✕ end it, so the body carries no second header row.
+              lead={actionsInRail ? typeSwitch : undefined}
               actions={
                 actionsInRail && editItem ? (
                   <>
+                    {rescheduleMenu}
+                    {attachInMenu && attachPicker.input}
+                    {rescheduleMenu && <span className="mx-1 h-4 w-px bg-border" aria-hidden />}
                     {moreMenu}
                     {openPageButton}
                   </>
@@ -3804,6 +3881,7 @@ function ItemDialogInner({
                     decision, not a control. "Done" rides here where there is
                     nothing to submit, standing in for the close-X; every other
                     surface keeps its submit button in the footer. */}
+                {!actionsInRail && (
                 <div
                   className={cn(
                     'flex items-center gap-2',
@@ -3822,6 +3900,7 @@ function ItemDialogInner({
                   {/* Under the rail's header, Back and ✕ are the exits. */}
                   {autosaves && !inline && !railChrome && doneButton}
                 </div>
+                )}
                 {/* Zone 1 — the title. Priority and the mode label are not here:
                     priority rides the chip field below with every other
                     property, and the mode label is gone (the type control, the
@@ -3910,6 +3989,9 @@ function ItemDialogInner({
                   conversationElsewhere={foldable}
                   agentStatusElsewhere
                   asksElsewhere={foldable}
+                  // The desktop panel's changes live in ⋯ › History (the item
+                  // panel beta, 2026-11-06), never in the panel itself.
+                  activityChanges={!(presentation === 'panel' && !isMobile)}
                   offerSetup
                 />
               )}

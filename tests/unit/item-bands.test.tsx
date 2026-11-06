@@ -878,30 +878,40 @@ describe('a property summoned from the seed opens its own picker', () => {
 
 describe('the edit pane: type switch and row controls', () => {
   const today = new Date().toISOString().slice(0, 10);
-  const controls = () =>
-    Array.from(
-      screen.getByTestId('item-dialog-row-controls').querySelectorAll('button[data-testid]')
+  const controls = () => {
+    fireEvent.pointerDown(screen.getByTestId('item-dialog-reschedule'), { button: 0, ctrlKey: false, pointerType: 'mouse' });
+    const ids = Array.from(
+      screen.getByTestId('item-dialog-reschedule-menu').querySelectorAll('[role="menuitem"][data-testid]')
     ).map((b) => b.getAttribute('data-testid'));
+    fireEvent.keyDown(screen.getByTestId('item-dialog-reschedule-menu'), { key: 'Escape' });
+    return ids;
+  };
 
   const more = () => {
     fireEvent.pointerDown(screen.getByTestId('item-dialog-more'), { button: 0, ctrlKey: false, pointerType: 'mouse' });
     return Array.from(document.querySelectorAll('[role="menuitem"][data-testid]')).map((b) => b.getAttribute('data-testid'));
   };
 
-  it('gives a habit the bar: Skip today, Pause and Pause until, with Copy ▸ and Delete under ⋯', () => {
+  it('gives a habit Reschedule: Skip today, Pause and Pause until, with History, Copy ▸ and Delete under ⋯', () => {
     seed({ items: [habitItem({ project: 'Onboarding' })] });
     panel(habitItem({ project: 'Onboarding' }));
     expect(controls()).toEqual(['item-dialog-skip', 'item-dialog-pause', 'item-dialog-pause-until']);
-    expect(more()).toEqual(['item-menu-copy', 'item-dialog-delete']);
+    expect(more()).toEqual(['item-dialog-history', 'item-menu-copy', 'item-dialog-delete']);
   });
 
-  it('gives a one-off task on the grid the put-it-off pair instead of Skip', () => {
+  it('gives a one-off task on the grid Tomorrow and Pick a day instead of Skip', () => {
     const t = task({ isScheduled: true, startDate: today, timeBucket: 'morning' });
     seed({ items: [t] });
     panel(t);
-    // Three in the bar; the rest under ⋯, Delete last.
-    expect(controls()).toEqual(['item-dialog-tomorrow', 'item-dialog-unschedule', 'item-dialog-pause']);
-    expect(more()).toEqual(['item-dialog-pause-until', 'item-menu-copy', 'item-dialog-delete']);
+    // Every way to put it off under Reschedule, Pick a day after Tomorrow.
+    expect(controls()).toEqual([
+      'item-dialog-tomorrow',
+      'item-dialog-pick-day',
+      'item-dialog-unschedule',
+      'item-dialog-pause',
+      'item-dialog-pause-until',
+    ]);
+    expect(more()).toEqual(['item-dialog-history', 'item-menu-copy', 'item-dialog-delete']);
   });
 
   it('offers Unskip under ⋯ for a habit skipped today, from the right-click menu’s verb', () => {

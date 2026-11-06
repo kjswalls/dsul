@@ -4,6 +4,7 @@ import { useMemo, useRef, type ReactNode, type SyntheticEvent } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { RelayField } from '@/components/primitives/relay-field';
+import { RailTooltip } from '@/components/primitives/pills';
 import { usePlannerStore } from '@/lib/planner-store';
 import { resolveConversationId, useConversationsStore, type ConversationsState } from '@/lib/conversations-store';
 import { deriveTitle } from '@/lib/conversation-types';
@@ -122,6 +123,7 @@ export function RailHeader({
   title,
   heading,
   actions,
+  lead,
   home = false,
   onClose,
   closeTestId = 'rail-close',
@@ -130,6 +132,13 @@ export function RailHeader({
   title?: string;
   heading?: ReactNode;
   actions?: ReactNode;
+  /**
+   * Controls that ride the row right after Back, the actions then pushed to
+   * the far end (the item panel's one top row: its type chip and Reschedule
+   * button, 2026-11-06). Back then shrinks to its chevron, its words in the
+   * label and the tooltip, so the row keeps room for them.
+   */
+  lead?: ReactNode;
   /** Ask home: the mark (the Ask key's own, components/ai/ask-mark.tsx), and the relay ground. */
   home?: boolean;
   onClose: () => void;
@@ -180,7 +189,22 @@ export function RailHeader({
         />
       )}
       <div data-rail-header-row="" className={cn('flex h-8 items-center gap-2', railHeaderRowOffset(slots))}>
-        {back && (
+        {back && lead && (
+          <RailTooltip label={`Back to ${back.label}`} side="bottom">
+            <button
+              type="button"
+              onClick={back.onBack}
+              data-testid="rail-back"
+              data-rail-back=""
+              aria-label={`Back to ${back.label}`}
+              className="-ml-1.5 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ChevronLeft className="size-4" aria-hidden />
+              <span className="sr-only">{back.label}</span>
+            </button>
+          </RailTooltip>
+        )}
+        {back && !lead && (
           <button
             type="button"
             onClick={back.onBack}
@@ -197,6 +221,7 @@ export function RailHeader({
             <span className="truncate">{back.label}</span>
           </button>
         )}
+        {lead && <div className="flex min-w-0 items-center gap-1">{lead}</div>}
         {back && titled && <ChevronRight className="-mx-1.5 size-3.5 shrink-0 text-muted-foreground/60" aria-hidden />}
         {titled && (
           <h2

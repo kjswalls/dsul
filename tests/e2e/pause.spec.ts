@@ -83,6 +83,7 @@ test.describe('pausing', () => {
 
       // Pause through the UI the user actually has.
       await itemCardIn(timeline(page), habitId).click();
+      await page.getByTestId('item-dialog-reschedule').click();
       await page.getByTestId('item-dialog-pause').click();
 
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(0);
@@ -115,6 +116,7 @@ test.describe('pausing', () => {
     try {
       await reloadApp(page);
       await itemCardIn(timeline(page), habitId).click();
+      await page.getByTestId('item-dialog-reschedule').click();
       await page.getByTestId('item-dialog-pause').click();
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(0);
 
@@ -153,6 +155,7 @@ test.describe('pausing', () => {
     try {
       await reloadApp(page);
       await itemCardIn(timeline(page), habitId).click();
+      await page.getByTestId('item-dialog-reschedule').click();
       await page.getByTestId('item-dialog-pause').click();
 
       // Still there: it is history now, not an open loop.
