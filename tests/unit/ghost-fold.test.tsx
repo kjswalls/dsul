@@ -424,8 +424,9 @@ describe('the pile rule is judged at first sight', () => {
     render(<GhostFold dateStr={TODAY} />);
     expect(screen.getByTestId('ghost-fold')).toHaveAttribute('data-ghost-fold', 'open');
     expect(bulk().className).not.toContain('opacity-0');
-    expect(screen.getByTestId('ghost-keep-all')).toHaveAttribute('data-slot', 'button');
-    expect(screen.getByTestId('ghost-send-all').className).toContain('key-xs');
+    // Quiet words with a dot between, never keys.
+    expect(screen.getByTestId('ghost-keep-all')).not.toHaveAttribute('data-slot', 'button');
+    expect(screen.getByTestId('ghost-bulk-dot')).toHaveTextContent('·');
   });
 });
 
