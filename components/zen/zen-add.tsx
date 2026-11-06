@@ -143,7 +143,7 @@ function ZenComposer({
           onKeyDown={onKeyDown}
           onBlur={onBlur}
           placeholder="What else?"
-          className="w-full bg-transparent p-0 font-serif text-[22px] font-semibold leading-[1.25] text-foreground caret-[var(--success-text)] outline-none placeholder:text-muted-foreground"
+          className="-mx-1 w-[calc(100%+0.5rem)] bg-transparent px-1 py-0 font-serif text-[22px] font-semibold leading-[1.25] text-foreground caret-[var(--success-text)] outline-none placeholder:text-muted-foreground"
         />
       </label>
       <div data-item-deck="" className="flex items-center gap-2.5 py-2.5 pr-3 pl-5">
