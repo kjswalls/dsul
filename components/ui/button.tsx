@@ -33,9 +33,6 @@ const buttonVariants = cva(
         // itself toward the edge (globals.css) so it sits like a keycap.
         default: 'h-[30px] px-3 has-[>svg]:px-2.5',
         sm: 'h-7 gap-1.5 px-2.5 has-[>svg]:px-2',
-        // A key small enough to sit in a heading row (the From earlier fold's
-        // Keep all / Send all to sidebar): 22px on a 2px skirt (.key-xs).
-        xs: 'key-xs h-[22px] gap-1 rounded-[5px] px-2 text-xs has-[>svg]:px-1.5',
         lg: 'h-9 px-4 has-[>svg]:px-3',
         icon: 'size-9',
         'icon-sm': 'size-8',

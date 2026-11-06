@@ -1853,29 +1853,6 @@ body {
     var(--key-ring),
     var(--shadow-key-rest);
 }
-/* The heading-sized key (Button size="xs"): a 2px skirt, which a press sinks
-   all the way into. */
-.key-xs {
-  box-shadow:
-    inset 0 0 0 1px var(--key-rim),
-    0 2px 0 var(--key-skirt),
-    var(--key-ring),
-    var(--shadow-key-rest);
-}
-.key-xs:active {
-  box-shadow:
-    inset 0 0 0 1px var(--key-rim),
-    0 0 0 var(--key-skirt),
-    var(--key-ring),
-    var(--shadow-key-pressed);
-}
-.key-xs[aria-disabled='true']:active {
-  box-shadow:
-    inset 0 0 0 1px var(--key-rim),
-    0 2px 0 var(--key-skirt),
-    var(--key-ring),
-    var(--shadow-key-rest);
-}
 @media (prefers-reduced-motion: reduce) {
   .key {
     transition: none;

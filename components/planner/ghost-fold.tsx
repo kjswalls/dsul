@@ -204,7 +204,7 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
       aria-label="Left over from earlier"
       className="mb-5"
     >
-      <div className="flex min-h-8 items-center rounded-[5px] pr-1.5 hover:bg-accent">
+      <div className="flex items-center rounded-[5px] pr-2 hover:bg-accent">
         {/* GroupSection's canvas heading: the same size, ink and chevron. */}
         <button
           type="button"
@@ -219,21 +219,26 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
           </span>
           <ChevronDown className={cn('h-3 w-3 shrink-0 text-muted-foreground transition-transform', !open && '-rotate-90')} />
         </button>
-        {/* Always on screen, open or folded, on every pointer (Kirby,
-            2026-11-05: option B, two small neutral keys). They are the way
-            through a folded pile without opening it, and an open one should
-            not hide the verbs that settle all of it behind a hover. Neither
-            is what Enter does, so no lime skirt. */}
-        <span data-testid="ghost-bulk" className="flex items-center gap-2">
+        {/* Always on screen, open or folded, on every pointer: they are the
+            way through a folded pile without opening it, and an open one
+            should not hide the verbs that settle all of it behind a hover.
+            Quiet words with a dot between (Kirby, 2026-11-06: option E; the
+            keys of #663 were too heavy for a heading). */}
+        <span data-testid="ghost-bulk" className="flex items-center gap-1.5 text-xs text-muted-foreground">
           {keepable.length > 0 && (
-            <Button variant="outline" size="xs" data-testid="ghost-keep-all" onClick={keepAll}>
+            <button type="button" data-testid="ghost-keep-all" className={BULK_VERB} onClick={keepAll}>
               Keep all
-            </Button>
+            </button>
+          )}
+          {keepable.length > 0 && sendable.length > 0 && (
+            <span aria-hidden data-testid="ghost-bulk-dot" className="text-muted-foreground/50">
+              ·
+            </span>
           )}
           {sendable.length > 0 && (
-            <Button variant="outline" size="xs" data-testid="ghost-send-all" onClick={sendAll}>
+            <button type="button" data-testid="ghost-send-all" className={BULK_VERB} onClick={sendAll}>
               Send all to sidebar
-            </Button>
+            </button>
           )}
         </span>
       </div>
@@ -284,6 +289,11 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
     </section>
   );
 }
+
+// A bulk verb in the fold's heading: muted words that ink and underline on
+// hover or keyboard focus.
+const BULK_VERB =
+  'rounded-[3px] decoration-foreground/35 underline-offset-[3px] outline-none hover:text-foreground hover:underline focus-visible:text-foreground focus-visible:underline';
 
 interface GhostRowProps {
   item: TaskItem;
