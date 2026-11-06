@@ -412,18 +412,20 @@ describe('the pile rule is judged at first sight', () => {
   it('six shrinking to five stays closed, with the bulk verbs still on screen', async () => {
     await load(Array.from({ length: 6 }, (_, i) => task(`p${i}`, `2026-07-0${i + 1}`)));
     render(<GhostFold dateStr={TODAY} />);
-    expect(bulk().className).toContain('opacity-100');
+    expect(bulk().className).not.toContain('opacity-0');
     act(() => store().moveTaskToDate('p0', TODAY));
     expect(screen.getByTestId('ghost-fold-count')).toHaveTextContent('5');
     expect(screen.getByTestId('ghost-fold')).toHaveAttribute('data-ghost-fold', 'closed');
     expect(rows()).toHaveLength(0);
-    expect(bulk().className).toContain('opacity-100');
     expect(bulk().className).not.toContain('opacity-0');
   });
 
-  it('an open fold keeps them behind hover', () => {
+  it('an open fold keeps them on screen too, with no hover', () => {
     render(<GhostFold dateStr={TODAY} />);
-    expect(bulk().className).toContain('opacity-0');
+    expect(screen.getByTestId('ghost-fold')).toHaveAttribute('data-ghost-fold', 'open');
+    expect(bulk().className).not.toContain('opacity-0');
+    expect(screen.getByTestId('ghost-keep-all')).toHaveAttribute('data-slot', 'button');
+    expect(screen.getByTestId('ghost-send-all').className).toContain('key-xs');
   });
 });
 
