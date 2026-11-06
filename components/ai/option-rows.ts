@@ -9,7 +9,9 @@ import { cn } from '@/lib/utils';
  */
 
 /**
- * A choice: a wash on hover, the accent when picked. `live` false greys it out.
+ * A choice: a wash on hover, a firmer wash when picked, and the picked row's
+ * letter stands up as a slim key on a lime skirt (.picked-key in globals.css),
+ * never a lime row. `live` false greys it out.
  *
  * No colour transition: the wash follows the pointer at once, as a menu's
  * rows do. A 150ms fade left two rows half-lit while the pointer crossed
@@ -18,7 +20,7 @@ import { cn } from '@/lib/utils';
 export function optionRowClass(on: boolean, live = true): string {
   return cn(
     'flex w-full items-start gap-2 rounded-[8px] px-1.5 py-1.5 text-left text-sm',
-    on ? 'bg-primary text-primary-foreground' : live ? 'text-foreground hover:bg-secondary' : 'text-muted-foreground'
+    on ? 'bg-secondary text-foreground' : live ? 'text-foreground hover:bg-secondary' : 'text-muted-foreground'
   );
 }
 
@@ -26,7 +28,7 @@ export function optionRowClass(on: boolean, live = true): string {
 export function optionKeyClass(on: boolean): string {
   return cn(
     'mt-px grid size-4.5 shrink-0 place-items-center rounded border text-2xs font-medium',
-    on ? 'border-primary-foreground/30' : 'border-border text-muted-foreground'
+    on ? 'picked-key border-transparent' : 'border-border text-muted-foreground'
   );
 }
 

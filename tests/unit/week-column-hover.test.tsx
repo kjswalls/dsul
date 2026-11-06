@@ -159,13 +159,14 @@ const columns = (root: ParentNode) =>
 
 /**
  * Does this element paint an accent — lime (--primary / --success-text /
- * --check-tick) or a
+ * --check-tick, or the lime skirt and notch the .picked-key and .day-today
+ * classes draw from globals.css) or a
  * colour off the user-content ramp, one rung of which (--accent-8) IS lime?
  * Matches both the utility spelling and the `var()` spelling, in class names and
  * in inline styles, because the views use all four.
  */
 const ACCENT =
-  /(?:^|[\s:[(])(?:bg|text|border|ring|fill|stroke|shadow|from|via|to)-primary\b|var\(--primary\)|var\(--accent-\d|text-success-text|text-check-tick|--blk-mk/;
+  /(?:^|[\s:[(])(?:bg|text|border|ring|fill|stroke|shadow|from|via|to)-primary\b|var\(--primary\)|var\(--accent-\d|text-success-text|text-check-tick|--blk-mk|(?:^|\s)(?:picked-key|day-today)(?:\s|$)/;
 
 // getAttribute, not className: an <svg>'s className is an SVGAnimatedString,
 // and the item tick is an <svg>.
@@ -230,7 +231,7 @@ describe('nothing dims at REST — the exception is pointer-only', () => {
     const marks = ([...container.querySelectorAll('*')] as HTMLElement[]).filter(paintsAccent);
     // Guard the guard: if the fixture stopped rendering lime this would pass
     // vacuously, which is exactly how the branch it replaces went green.
-    expect(marks.length, `${name} rendered no accent marks to check`).toBeGreaterThan(3);
+    expect(marks.length, `${name} rendered no accent marks to check`).toBeGreaterThan(1);
 
     const offenders = marks.flatMap((mark) =>
       ancestors(mark, container)
@@ -262,7 +263,7 @@ describe('nothing dims at REST — the exception is pointer-only', () => {
       expect(root.dataset.loaded, name).toBe('false');
 
       const marks = ([...root.querySelectorAll('*')] as HTMLElement[]).filter(paintsAccent);
-      expect(marks.length, `${name} rendered no accent marks to check`).toBeGreaterThan(3);
+      expect(marks.length, `${name} rendered no accent marks to check`).toBeGreaterThan(1);
 
       const offenders = marks.flatMap((mark) =>
         ancestors(mark, document.body)

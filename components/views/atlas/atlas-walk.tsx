@@ -36,6 +36,7 @@ import type { AtlasCard } from '@/lib/atlas-model';
 import type { AtlasLayout } from '@/lib/view-store';
 import { atlasWheel } from '@/components/views/atlas/atlas-surface';
 import { cn } from '@/lib/utils';
+import { ButtonKey, buttonVariants } from '@/components/ui/button';
 
 /** Screen pixels of room between a card's edge and the cut-out's (and room above for its hover bar). */
 const HOLE_PAD = 10;
@@ -465,9 +466,7 @@ function WalkOn({
                 className={WALK_MAIN}
               >
                 {ATLAS_COPY.walkDone}
-                <kbd aria-hidden className="rounded-[5px] border border-background/30 px-1 font-mono text-[10px] font-semibold">
-                  {ATLAS_COPY.escKey}
-                </kbd>
+                <ButtonKey>{ATLAS_COPY.escKey}</ButtonKey>
               </button>
             ) : (
               <>
@@ -489,13 +488,8 @@ function WalkOn({
                   className={WALK_MAIN}
                 >
                   {ATLAS_COPY.walkNext}
-                  {/* Lime at full strength, on its own element: nothing above it is faded. */}
-                  <kbd
-                    aria-hidden
-                    className="rounded-[5px] bg-primary px-1 font-mono text-[10px] font-semibold text-[var(--lime-ink)]"
-                  >
-                    {ATLAS_COPY.walkEnterKey}
-                  </kbd>
+                  {/* The key is neutral: the main key's lime is its skirt. */}
+                  <ButtonKey>{ATLAS_COPY.walkEnterKey}</ButtonKey>
                 </button>
               </>
             )}
@@ -509,10 +503,10 @@ function WalkOn({
   );
 }
 
-const WALK_BUTTON =
-  'inline-flex items-center gap-1.5 rounded-[9px] bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring';
-const WALK_MAIN =
-  'inline-flex items-center gap-1.5 rounded-[9px] bg-foreground px-3 py-1.5 text-xs font-medium text-background hover:bg-foreground/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring';
+// The app's keycap buttons (components/ui/button.tsx): Next and the last
+// Done stand on the lime skirt, the rest are plain keys.
+const WALK_BUTTON = buttonVariants({ variant: 'outline', size: 'sm' });
+const WALK_MAIN = buttonVariants({ size: 'sm' });
 
 /**
  * The veil with its cut-out: one SVG path over the board, the whole board

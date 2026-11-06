@@ -13,6 +13,7 @@ import { handOffItem } from '@/lib/agent-handoff';
 import { useDoStuffStore } from '@/lib/do-stuff';
 import type { Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
+import { buttonVariants } from '@/components/ui/button';
 
 /**
  * The steps the AI drafted for an item, as rows in its Subtasks (Kirby's pick
@@ -320,7 +321,7 @@ export function DraftedSteps({ item }: { item: Item }) {
             onClick={keepAll}
             data-testid="drafted-steps-keep-all"
             aria-keyshortcuts="Meta+Enter"
-            className="rounded-full bg-primary px-2.5 py-0.5 text-[11.5px] font-semibold text-primary-foreground hover:brightness-105"
+            className={buttonVariants({ size: 'sm' })}
           >
             Keep all
           </button>

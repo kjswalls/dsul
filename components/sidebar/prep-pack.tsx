@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Pencil, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { TimeField } from '@/components/ui/time-picker';
 import { Switch } from '@/components/ui/switch';
@@ -553,7 +553,7 @@ export function QuestionBody({
           type="submit"
           disabled={!ready}
           data-testid="prep-pack-submit"
-          className="inline-flex h-7 items-center rounded-full bg-primary px-3 text-xs font-medium text-primary-foreground disabled:bg-secondary disabled:text-muted-foreground"
+          className={buttonVariants({ size: 'sm' })}
         >
           {numbered ? 'Get it ready' : 'Submit'}
         </button>
