@@ -101,7 +101,7 @@ import { openModPanel } from '../mods/ui/open-panel';
 import { railModeNow, useRailStore } from '../rail-store';
 import { useUndoStripStore } from '../undo-strip-store';
 import { goToDate, stepScope } from '../nav-commands';
-import { openHoveredSlot } from '../slot-add';
+import { openHoveredSlot, openZenAdd } from '../slot-add';
 import { resolveCategoryIcon } from '../category-icons';
 import { getCustomTypeDefs, getItemTypeConfig } from '../item-registry';
 import { selectGhostRows } from '../ghost-rows';
@@ -298,9 +298,12 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['task'],
     shortcut: { id: 'new_task', keys: ['n'] },
     run: () => openAddDialog('task'),
-    // Over a grid slot or an add row, the key adds right there.
+    // Over a grid slot or an add row, the key adds right there. In Zen it
+    // raises the room's own composer, which adds to today
+    // (components/zen/zen-add.tsx); the palette row still opens the dialog.
     runFromShortcut: () => {
-      if (!openHoveredSlot()) openAddDialog('task');
+      if (view().zenOpen) openZenAdd();
+      else if (!openHoveredSlot()) openAddDialog('task');
     },
   },
   {

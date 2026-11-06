@@ -155,3 +155,27 @@ describe('n over a slot', () => {
     spy.mockRestore();
   });
 });
+
+describe('n in Zen', () => {
+  it("opens the room's composer on today, in Anytime, never the add dialog", async () => {
+    const { STATIC_COMMANDS } = await import('@/lib/commands/registry');
+    const { useSlotComposer, zenAddTarget } = await import('@/lib/slot-add');
+    const { useViewStore } = await import('@/lib/view-store');
+    const { usePlannerStore } = await import('@/lib/planner-store');
+    const { toDateStr } = await import('@/lib/recurrence');
+    const ui = await import('@/lib/ui-store');
+    const create = STATIC_COMMANDS.find((c) => c.id === 'create.task')!;
+    const spy = vi.spyOn(ui, 'openAddDialog').mockImplementation(() => {});
+    usePlannerStore.setState({ userTimezone: 'UTC', selectedDate: new Date('2027-03-09T12:00:00Z') } as never);
+    useViewStore.setState({ zenOpen: true });
+
+    create.runFromShortcut!({} as never);
+    expect(useSlotComposer.getState().target).toEqual(zenAddTarget(toDateStr(new Date(), 'UTC')));
+    expect(useSlotComposer.getState().target).toMatchObject({ kind: 'row', bucket: 'anytime' });
+    expect(spy).not.toHaveBeenCalled();
+
+    useSlotComposer.getState().close();
+    useViewStore.setState({ zenOpen: false });
+    spy.mockRestore();
+  });
+});

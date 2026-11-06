@@ -55,6 +55,7 @@ import { ZenRoom } from '@/components/zen/zen-room';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { toDateStr } from '@/lib/recurrence';
+import { openZenAdd, useSlotComposer } from '@/lib/slot-add';
 import type { Item } from '@/lib/planner-types';
 
 const TZ = 'UTC';
@@ -137,6 +138,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  useSlotComposer.getState().close();
   useViewStore.setState({ zenOpen: false, zenMoving: false });
   vi.clearAllMocks();
   vi.useRealTimers();
@@ -379,5 +381,64 @@ describe('the Zen room', () => {
     expect(
       screen.getByRole('button', { name: 'Fold the day away' })
     ).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  describe('adding from the room', () => {
+    const added = () => usePlannerStore.getState().items.find((i) => i.title === 'Pick up the dry cleaning');
+
+    it('shows only the key at rest', () => {
+      render(<ZenRoom />);
+      expect(screen.getByTestId('zen-add-key')).toHaveTextContent('add to today');
+      expect(screen.queryByTestId('zen-add')).not.toBeInTheDocument();
+    });
+
+    it('adds to TODAY in Anytime, not the day the app is parked on, and stays for the next', () => {
+      render(<ZenRoom />);
+      fireEvent.click(screen.getByTestId('zen-add-key'));
+      const input = screen.getByTestId('zen-add-input');
+      expect(input).toHaveFocus();
+      fireEvent.change(input, { target: { value: 'Pick up the dry cleaning' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      const item = added() as unknown as { startDate: string; timeBucket: string; type: string };
+      expect(item.type).toBe('task');
+      expect(item.startDate).toBe(TODAY);
+      expect(item.startDate).not.toBe(ELSEWHERE_STR);
+      expect(item.timeBucket).toBe('anytime');
+      // It lands in the room, and the composer waits for another.
+      expect(screen.getAllByText('Pick up the dry cleaning').length).toBeGreaterThan(0);
+      expect(screen.getByTestId('zen-add-input')).toHaveValue('');
+    });
+
+    it('puts the composer away on Escape without leaving the room', () => {
+      render(<ZenRoom />);
+      act(() => openZenAdd());
+      const input = screen.getByTestId('zen-add-input');
+      fireEvent.change(input, { target: { value: 'Pick up the dry cleaning' } });
+      fireEvent.keyDown(input, { key: 'Escape' });
+      expect(screen.queryByTestId('zen-add')).not.toBeInTheDocument();
+      expect(useViewStore.getState().zenOpen).toBe(true);
+      expect(added()).toBeUndefined();
+    });
+
+    it('turns the exit hint into "put it away" while open, and does that', () => {
+      render(<ZenRoom />);
+      act(() => openZenAdd());
+      fireEvent.change(screen.getByTestId('zen-add-input'), { target: { value: 'Pick up the dry cleaning' } });
+      fireEvent.click(screen.getByRole('button', { name: /put it away/i }));
+      expect(screen.queryByTestId('zen-add')).not.toBeInTheDocument();
+      expect(useViewStore.getState().zenOpen).toBe(true);
+      expect(added()).toBeUndefined();
+    });
+
+    it('adds a typed title when you click away, then goes', () => {
+      render(<ZenRoom />);
+      act(() => openZenAdd());
+      const input = screen.getByTestId('zen-add-input');
+      fireEvent.change(input, { target: { value: 'Pick up the dry cleaning' } });
+      fireEvent.blur(input);
+      expect(added()).toBeDefined();
+      expect(screen.queryByTestId('zen-add')).not.toBeInTheDocument();
+    });
   });
 });
