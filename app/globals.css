@@ -1895,8 +1895,8 @@ body {
              rim (a half-lime rim read as the lit rim, which is AI's alone);
              a 1.5px skirt
 
-   Today is the lime notch under the number, in --day-today, so lime in a
-   calendar means "today" and nothing else. Unlayered, like .key: these
+   Today is its number lit in lime (.day-today), on the picked key too, so
+   lime in a calendar means "today" and nothing else. Unlayered, like .key: these
    box-shadows must beat the focus ring utilities, so the ring is redrawn. */
 .picked-key {
   --picked-key-face: var(--surface-2);
@@ -1929,26 +1929,20 @@ body {
 .picked-key:focus-visible {
   --picked-key-ring: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
 }
+/* Today's number, lit (Kirby's "H1", 2026-11-06). Bright lime reads as text
+   only on a dark surface; on white it takes the accent's own hue a step
+   deeper, so a theme that recolours the accent recolours this too. The retro
+   skins choose their own --day-today, and keep it. */
 .day-today {
-  position: relative;
   color: var(--day-today);
-  font-weight: 600;
+  color: oklch(from var(--primary) calc(l - 0.26) c h);
+  font-weight: 700;
 }
-.day-today::after {
-  content: '';
-  position: absolute;
-  bottom: 4px;
-  left: 50%;
-  width: 10px;
-  height: 2px;
-  margin-left: -5px;
-  border-radius: 1px;
-  background: var(--primary);
-  pointer-events: none;
+.dark .day-today {
+  color: var(--primary);
 }
-/* On a picked key the number goes back to ink; the notch stays. */
-.day-today.picked-key {
-  color: var(--foreground);
+[data-layout-skin='retro'] .day-today {
+  color: var(--day-today);
 }
 
 /* Timeline day navigation slide animations */

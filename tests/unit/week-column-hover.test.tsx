@@ -159,7 +159,7 @@ const columns = (root: ParentNode) =>
 
 /**
  * Does this element paint an accent — lime (--primary / --success-text /
- * --check-tick, or the lime skirt and notch the .picked-key and .day-today
+ * --check-tick, or the lime skirt and lit number the .picked-key and .day-today
  * classes draw from globals.css) or a
  * colour off the user-content ramp, one rung of which (--accent-8) IS lime?
  * Matches both the utility spelling and the `var()` spelling, in class names and
