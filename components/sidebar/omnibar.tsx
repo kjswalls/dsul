@@ -747,7 +747,7 @@ export function Omnibar({
           <span
             aria-hidden
             data-testid="omnibar-enter-pill"
-            className="hidden items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] leading-none font-medium text-primary-foreground group-data-[selected=true]:inline-flex"
+            className="hidden items-center gap-1 rounded-[5px] border border-border bg-secondary px-1.5 py-0.5 text-[11px] leading-none font-medium text-foreground group-data-[selected=true]:inline-flex"
           >
             <CornerDownLeft className="size-3" />
             {verb}

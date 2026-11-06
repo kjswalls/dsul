@@ -247,7 +247,7 @@ export function AgentKeysSection() {
                   className={cn(
                     'rounded-full border px-3 py-1 text-xs transition-colors',
                     scope === c.scope
-                      ? 'border-transparent bg-primary text-primary-foreground'
+                      ? 'picked-key border-transparent'
                       : 'border-border text-muted-foreground hover:text-foreground'
                   )}
                 >

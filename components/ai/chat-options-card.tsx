@@ -7,6 +7,7 @@ import { optionKeyClass, optionRowClass } from '@/components/ai/option-rows';
 import { sendFrom } from '@/lib/open-chat';
 import type { ComposerBinding } from '@/lib/rail-store';
 import { composeAnswers, type OptionQuestion, type QuestionState } from '@/lib/chat-options';
+import { buttonVariants } from '@/components/ui/button';
 
 /**
  * A reply's question with choices, drawn as buttons (lib/chat-options.ts, the
@@ -210,7 +211,7 @@ export function ChatOptionsCard({
             data-testid="chat-options-send"
             disabled={!anyPicked || sending}
             onClick={() => void send(picked)}
-            className="inline-flex h-7 items-center gap-1 rounded-full bg-primary px-3 text-xs font-medium text-primary-foreground disabled:bg-secondary disabled:text-muted-foreground"
+            className={buttonVariants({ size: 'sm' })}
           >
             Send
           </button>

@@ -270,8 +270,9 @@ function WeekColumn({
         data-testid="week-column-header"
         className={cn(
           'group/dayhdr relative flex h-[60px] w-full flex-col items-center justify-center gap-0.5 rounded-[10px] border shadow-soft-sm transition-colors',
-          // Ink role on the lime fill — see week-schedule's day header.
-          selected ? 'border-primary-foreground bg-primary' : 'border-surface-3 bg-surface-2'
+          // The picked day stands up as a slim keycap on a lime skirt
+          // (.picked-key in globals.css), never a lime face.
+          selected ? 'picked-key border-transparent' : 'border-surface-3 bg-surface-2'
         )}
         title={`Select ${format(date, 'EEEE, MMMM d')}`}
       >
@@ -300,7 +301,7 @@ function WeekColumn({
             // `/70` was the other half of the resting recede, which is gone —
             // nothing in this view is muted at rest, and now nothing is muted
             // on hover either.
-            selected ? 'text-primary-foreground' : 'text-muted-foreground'
+            selected ? 'text-foreground' : 'text-muted-foreground'
           )}
         >
           {format(date, 'EEEE')}
@@ -308,13 +309,11 @@ function WeekColumn({
         <span
           className={cn(
             'relative text-sm',
-            selected
-              ? 'font-semibold text-primary-foreground'
-              : today
-                ? // `today` stays full-strength lime even on an unselected
-                  // column — it is the same mark the current-bucket rule is.
-                  'font-bold text-success-text'
-                : 'font-semibold text-foreground'
+            today
+              ? // `today` stays full-strength lime, picked or not, on any
+                // column — it is the same mark the current-bucket rule is.
+                'font-bold text-success-text'
+              : 'font-semibold text-foreground'
           )}
         >
           {format(date, 'MMMM d')}

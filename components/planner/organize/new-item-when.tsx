@@ -196,7 +196,7 @@ export function NewItemWhenChip({
                             'h-7 flex-1 rounded-md text-[11px] font-medium',
                             'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
                             (when.days ?? []).includes(index)
-                              ? 'bg-primary text-primary-foreground'
+                              ? 'picked-key'
                               : 'bg-secondary text-secondary-foreground hover-wash'
                           )}
                         >
@@ -216,7 +216,7 @@ export function NewItemWhenChip({
                           className={cn(
                             'font-num h-6 rounded-sm text-[11px]',
                             'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-                            when.monthDay === day ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover-wash'
+                            when.monthDay === day ? 'picked-key' : 'text-muted-foreground hover-wash'
                           )}
                         >
                           {day}

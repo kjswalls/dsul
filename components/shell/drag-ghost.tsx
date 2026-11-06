@@ -244,7 +244,7 @@ export function DragGhost() {
             {groupCount > 1 && <span aria-hidden className="drag-ghost-stack" />}
             <div className="drag-ghost-face relative h-full w-full">{body}</div>
             {groupCount > 1 && (
-              <span className="absolute -right-2 -top-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-xs font-medium text-primary-foreground shadow-soft-sm">
+              <span className="absolute -right-2 -top-2 z-10 flex h-5 min-w-5 items-center justify-center rounded-full bg-foreground px-1 text-xs font-medium text-background shadow-soft-sm">
                 {groupCount}
               </span>
             )}

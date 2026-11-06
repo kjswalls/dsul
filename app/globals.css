@@ -1859,6 +1859,75 @@ body {
   }
 }
 
+/* ─── The picked day, and today (Kirby's "Slim key", 2026-11-06; mocks at
+   /mnt/project-files/selected-day/) ─────────────────────────────────────────
+   A picked choice in a grid of plain cells (the date picker, the week view's
+   day headers, the repeat pickers) is a slim keycap standing up out of it, the
+   same material as the buttons: a bevelled face, a lime skirt under it, the
+   key's cast. Never a lime face: the skirt is its only lime.
+
+     light   the face is the popover's own white, so a faint hairline keeps
+             its edge crisp; a 2px skirt
+     dark    the face is a step lighter than the surface it stands on, no
+             rim (a half-lime rim read as the lit rim, which is AI's alone);
+             a 1.5px skirt
+
+   Today is the lime notch under the number, in --day-today, so lime in a
+   calendar means "today" and nothing else. Unlayered, like .key: these
+   box-shadows must beat the focus ring utilities, so the ring is redrawn. */
+.picked-key {
+  --picked-key-face: var(--surface-2);
+  --picked-key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 8%);
+  --picked-key-skirt: 2px;
+  --picked-key-ring: 0 0 0 0 transparent;
+  background-color: var(--picked-key-face);
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklab, var(--foreground) var(--key-bevel-top), transparent),
+    color-mix(in oklab, var(--foreground) var(--key-bevel-bottom), transparent)
+  );
+  box-shadow:
+    inset 0 0 0 1px var(--picked-key-rim),
+    0 var(--picked-key-skirt) 0 var(--primary),
+    var(--picked-key-ring),
+    var(--shadow-key-rest);
+  translate: 0 -1px;
+  color: var(--foreground);
+  font-weight: 600;
+}
+.dark .picked-key {
+  --picked-key-face: color-mix(in oklab, var(--surface-2), var(--foreground) 9%);
+  --picked-key-rim: transparent;
+  --picked-key-skirt: 1.5px;
+}
+.picked-key:hover {
+  background-color: var(--picked-key-face);
+}
+.picked-key:focus-visible {
+  --picked-key-ring: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+}
+.day-today {
+  position: relative;
+  color: var(--day-today);
+  font-weight: 600;
+}
+.day-today::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  width: 10px;
+  height: 2px;
+  margin-left: -5px;
+  border-radius: 1px;
+  background: var(--primary);
+  pointer-events: none;
+}
+/* On a picked key the number goes back to ink; the notch stays. */
+.day-today.picked-key {
+  color: var(--foreground);
+}
+
 /* Timeline day navigation slide animations */
 /* Day/week navigation. Deliberately transform-ONLY: these animate the container
    that wraps every bucket, and the current-bucket signal inside it is a lime

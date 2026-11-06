@@ -332,7 +332,7 @@ export function LookPicker({
                   // covers the colours it is pointing at.
                   <span
                     aria-hidden
-                    className="bg-primary text-primary-foreground absolute -top-[7px] left-1/2 max-w-[calc(100%-8px)] -translate-x-1/2 truncate rounded-[4px] px-1 font-mono text-[9px] leading-[14px]"
+                    className="bg-foreground text-background absolute -top-[7px] left-1/2 max-w-[calc(100%-8px)] -translate-x-1/2 truncate rounded-[4px] px-1 font-mono text-[9px] leading-[14px]"
                   >
                     for {mark}
                   </span>

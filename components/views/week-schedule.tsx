@@ -351,25 +351,21 @@ function WeekScheduleColumn({
           style={{ height: HEADER_H }}
           className={cn(
             'flex flex-col items-center justify-center gap-0.5 rounded-[10px] border shadow-soft-sm transition-colors',
-            // On the lime fill the label takes the INK role (-foreground), not the
-            // lime-as-text one: -text tracks the fill, so it was lime on lime.
-            selected ? 'border-primary-foreground bg-primary' : 'border-surface-3 bg-surface-2'
+            // The picked day stands up as a slim keycap on a lime skirt
+            // (.picked-key in globals.css), never a lime face.
+            selected ? 'picked-key border-transparent' : 'border-surface-3 bg-surface-2'
           )}
           title={`Select ${format(col.date, 'EEEE, MMMM d')}`}
         >
           <span
-            className={cn('text-xs font-medium uppercase', selected ? 'text-primary-foreground' : 'text-muted-foreground')}
+            className={cn('text-xs font-medium uppercase', selected ? 'text-foreground' : 'text-muted-foreground')}
           >
             {format(col.date, 'EEE')}
           </span>
           <span
             className={cn(
               'text-sm',
-              selected
-                ? 'font-semibold text-primary-foreground'
-                : today
-                  ? 'font-bold text-success-text'
-                  : 'font-semibold text-foreground'
+              today ? 'font-bold text-success-text' : 'font-semibold text-foreground'
             )}
           >
             {format(col.date, 'MMM d')}
