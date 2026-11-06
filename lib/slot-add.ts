@@ -9,6 +9,7 @@ import { useSelectionStore } from './selection-store';
 import type { ItemTypeDef, Priority } from '@dsul/types';
 import { fieldApplies } from './filters';
 import type { TimeBucket } from './planner-types';
+import { toDateStr } from './recurrence';
 
 /**
  * Adding from the planner canvas: a slot on a schedule grid, an Anytime strip,
@@ -95,6 +96,21 @@ export type SlotTarget =
  */
 export const gridScope = (view: 'day' | 'week', dateStr: string) => `grid:${view}:${dateStr}`;
 export const rowScope = (where: string, dateStr: string) => `row:${where}:${dateStr}`;
+
+/**
+ * Zen's composer (components/zen/zen-add.tsx): a row target for TODAY, never
+ * `selectedDate`, because the room is always today (zen-room.tsx, rule 2). It
+ * lands in Anytime, the one bucket that needs no time to mean something.
+ */
+export function zenAddTarget(dateStr: string): Extract<SlotTarget, { kind: 'row' }> {
+  return { kind: 'row', scope: rowScope('zen', dateStr), dateStr, bucket: 'anytime' };
+}
+
+/** `n` in Zen: open the room's composer on today. */
+export function openZenAdd() {
+  const tz = usePlannerStore.getState().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  useSlotComposer.getState().open(zenAddTarget(toDateStr(new Date(), tz)));
+}
 
 /** The types a composer offers: the built-ins, then the user's own. */
 export function addableTypes(itemTypes: ItemTypeDef[]): Array<{ name: string; label: string }> {

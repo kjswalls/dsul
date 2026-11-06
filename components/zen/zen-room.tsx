@@ -30,6 +30,7 @@ import { usePlannerPreviewing, usePlannerVisible } from '@/lib/planner-ready';
 import { cn } from '@/lib/utils';
 import { ItemTick, animateItemCheck } from '@/components/primitives/item-check';
 import { PlannerSyncLine } from '@/components/shell/planner-sync-line';
+import { ZenAdd } from '@/components/zen/zen-add';
 
 /**
  * Zen — the room.
@@ -487,16 +488,8 @@ export function ZenSurface() {
         )}
       </main>
 
-      <button
-        type="button"
-        onClick={() => setZenOpen(false)}
-        className="relative z-10 mt-6 flex items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-secondary-foreground"
-      >
-        <span className="rounded-[5px] border border-border bg-surface-3 px-1.5 py-1 font-num text-[10.5px] leading-none text-secondary-foreground">
-          esc
-        </span>
-        back to the planner
-      </button>
+      {/* The exit, and beside it the one way in to adding (components/zen/zen-add.tsx). */}
+      <ZenAdd todayStr={todayStr} previewing={previewing} onLeave={() => setZenOpen(false)} />
     </div>
   );
 }
