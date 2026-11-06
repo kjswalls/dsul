@@ -2414,7 +2414,7 @@ function ItemDialogInner({
                               'size-9 rounded-md text-xs font-medium transition-all',
                               'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
                               d.repeatDays.includes(index)
-                                ? 'bg-primary text-primary-foreground translate-y-px shadow-[var(--shadow-key-pressed)]'
+                                ? 'picked-key'
                                 : 'bg-secondary text-secondary-foreground shadow-[var(--shadow-key-rest)] hover-wash'
                             )}
                           >
@@ -2442,7 +2442,7 @@ function ItemDialogInner({
                               'h-7 rounded-sm text-xs font-medium tabular-nums transition-colors',
                               'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
                               d.repeatMonthDay === day
-                                ? 'bg-primary text-primary-foreground'
+                                ? 'picked-key'
                                 : 'text-muted-foreground hover-wash'
                             )}
                           >

@@ -9,6 +9,7 @@ import { openItemFromAsk } from '@/lib/open-chat';
 import { askerInitial, choiceLetter, type Asker } from '@/lib/needs-you';
 import { useNeedsYouStore } from '@/lib/needs-you-store';
 import type { AgentItem } from '@/lib/ask-home';
+import { buttonVariants } from '@/components/ui/button';
 
 /**
  * One asker's questions, as an options card in the ClawBoy convention chat
@@ -269,7 +270,7 @@ function Question({ item, onPage }: { item: AgentItem; onPage?: (delta: number) 
           data-testid="asker-card-submit"
           disabled={!value}
           onClick={submit}
-          className="inline-flex h-7 items-center rounded-full bg-primary px-3 text-xs font-medium text-primary-foreground disabled:bg-secondary disabled:text-muted-foreground"
+          className={buttonVariants({ size: 'sm' })}
         >
           Submit
         </button>

@@ -204,7 +204,7 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
       aria-label="Left over from earlier"
       className="mb-5"
     >
-      <div className="group/fold flex items-center rounded-[5px] pr-2 hover:bg-accent">
+      <div className="flex min-h-8 items-center rounded-[5px] pr-1.5 hover:bg-accent">
         {/* GroupSection's canvas heading: the same size, ink and chevron. */}
         <button
           type="button"
@@ -219,28 +219,21 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
           </span>
           <ChevronDown className={cn('h-3 w-3 shrink-0 text-muted-foreground transition-transform', !open && '-rotate-90')} />
         </button>
-        <span
-          className={cn(
-            'flex items-center gap-3 text-xs text-muted-foreground transition-opacity',
-            // A folded fold keeps them on screen: they are the way through it
-            // without opening it. Keyed to `open` itself, not to today's count,
-            // so a pile that started folded and shrank to five still shows
-            // them. Otherwise caption hover or focus. On touch there is no
-            // hover, so they stay.
-            !open || isMobile
-              ? 'opacity-100'
-              : 'opacity-0 group-hover/fold:opacity-100 group-has-[:focus-visible]/fold:opacity-100'
-          )}
-        >
+        {/* Always on screen, open or folded, on every pointer (Kirby,
+            2026-11-05: option B, two small neutral keys). They are the way
+            through a folded pile without opening it, and an open one should
+            not hide the verbs that settle all of it behind a hover. Neither
+            is what Enter does, so no lime skirt. */}
+        <span data-testid="ghost-bulk" className="flex items-center gap-2">
           {keepable.length > 0 && (
-            <button type="button" data-testid="ghost-keep-all" className="hover:text-foreground" onClick={keepAll}>
+            <Button variant="outline" size="xs" data-testid="ghost-keep-all" onClick={keepAll}>
               Keep all
-            </button>
+            </Button>
           )}
           {sendable.length > 0 && (
-            <button type="button" data-testid="ghost-send-all" className="hover:text-foreground" onClick={sendAll}>
+            <Button variant="outline" size="xs" data-testid="ghost-send-all" onClick={sendAll}>
               Send all to sidebar
-            </button>
+            </Button>
           )}
         </span>
       </div>

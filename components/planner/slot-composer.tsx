@@ -78,11 +78,15 @@ export function TypeChip({
 }
 
 /**
- * The keys and the blur rule, shared by both shapes. `keepOpen` is a row that
+ * The keys and the blur rule, shared by every shape. `keepOpen` is a row that
  * stays after ↵ for the next title (an Anytime list); a grid slot closes,
- * because the block it made now stands where it was.
+ * because the block it made now stands where it was. `closeOnBlur` puts a
+ * keepOpen row away when focus leaves it (Zen's composer).
  */
-function useComposer(target: SlotTarget, { keepOpen, onDone }: { keepOpen: boolean; onDone: () => void }) {
+export function useComposer(
+  target: SlotTarget,
+  { keepOpen, onDone, closeOnBlur = false }: { keepOpen: boolean; onDone: () => void; closeOnBlur?: boolean }
+) {
   const [title, setTitle] = useState('');
   const [type, setType] = useState(target.type ?? 'task');
   const menuOpen = useRef(false);
@@ -110,6 +114,17 @@ function useComposer(target: SlotTarget, { keepOpen, onDone }: { keepOpen: boole
     if (!keepOpen) onDone();
   };
 
+  /** Put the composer away and drop whatever was typed (esc, or a surface's own close). */
+  const discard = () => {
+    setTitle('');
+    if (keepOpen) {
+      discarding.current = true;
+      inputRef.current?.blur();
+      discarding.current = false;
+    }
+    onDone();
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.nativeEvent.isComposing) return;
     if (e.key === 'Enter') {
@@ -124,13 +139,7 @@ function useComposer(target: SlotTarget, { keepOpen, onDone }: { keepOpen: boole
       // Ours alone: Escape also closes the item panel, and the composer is in front of it.
       e.preventDefault();
       e.stopPropagation();
-      setTitle('');
-      if (keepOpen) {
-        discarding.current = true;
-        inputRef.current?.blur();
-        discarding.current = false;
-      }
-      onDone();
+      discard();
     }
   };
 
@@ -138,6 +147,9 @@ function useComposer(target: SlotTarget, { keepOpen, onDone }: { keepOpen: boole
     if (menuOpen.current || discarding.current) return;
     if (title.trim()) commit(false);
     else if (!keepOpen) onDone();
+    // A row that keeps itself open for the next title while focused, but goes
+    // away once you click elsewhere (Zen's composer).
+    if (keepOpen && closeOnBlur) onDone();
   };
 
   const onMenuOpenChange = (open: boolean) => {
@@ -145,7 +157,7 @@ function useComposer(target: SlotTarget, { keepOpen, onDone }: { keepOpen: boole
     if (!open) requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  return { title, setTitle, type, setType, inputRef, onKeyDown, onBlur, onMenuOpenChange };
+  return { title, setTitle, type, setType, inputRef, onKeyDown, onBlur, onMenuOpenChange, discard };
 }
 
 const kbd = 'rounded-xs border border-border px-1 font-mono text-[10px] text-muted-foreground';
