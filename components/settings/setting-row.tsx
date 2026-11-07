@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { TimeField } from '@/components/ui/time-picker';
 import { PropertyChip, ChipOption } from '@/components/primitives/property-chip';
+import { SettingTray, trayFits } from './setting-tray';
 import { cn } from '@/lib/utils';
 import {
   displayValue,
@@ -197,6 +198,20 @@ function ControlFor({
       );
 
     case 'enum':
+      if (trayFits(record)) {
+        return (
+          <SettingTray
+            id={controlId}
+            label={record.label}
+            options={record.options ?? []}
+            value={String(value)}
+            disabled={disabled}
+            describedBy={describedBy}
+            testId={`setting-${record.id}`}
+            onChange={(next) => onWrite(next)}
+          />
+        );
+      }
       return (
         <PropertyChip
           id={controlId}
@@ -427,6 +442,7 @@ export function SettingRow({
   const modified = isModified(record, ctx) && !disabled;
   // Must agree with the variant switch above: only the textarea goes full width.
   const wide = record.control === 'text' && (record.textVariant ?? 'multiline') === 'multiline';
+  const tray = trayFits(record);
 
   const runs = highlightRuns(record.label, ranges ?? []);
 
@@ -447,7 +463,13 @@ export function SettingRow({
         // 162px = the 132px control column plus the 24px reset slot and its gap,
         // so every control's right edge still lands on one vertical down the
         // whole pane — the single biggest source of calm in a surface this long.
-        wide ? 'flex flex-col gap-2' : 'grid grid-cols-[minmax(0,1fr)_162px] items-center gap-6',
+        // A tray (setting-tray.tsx) is wider than the column and right-packed
+        // like every control, so its right edge still lands on the line.
+        wide
+          ? 'flex flex-col gap-2'
+          : tray
+            ? 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-6'
+            : 'grid grid-cols-[minmax(0,1fr)_162px] items-center gap-6',
         // Its own element, and never inside anything that fades: the lime
         // accent must not be dimmed through a parent's opacity.
         modified &&
@@ -464,7 +486,8 @@ export function SettingRow({
               at a <span> is a dangling association, not a helpful one. A
               pending row has no control either, for the same window. */}
           <LabelTag
-            asLabel={record.control !== 'info' && !pending}
+            // A tray is a radio group named by aria-label; a <label> can't point at it.
+            asLabel={record.control !== 'info' && !pending && !tray}
             htmlFor={controlId}
             className={cn(
               'text-sm font-medium',

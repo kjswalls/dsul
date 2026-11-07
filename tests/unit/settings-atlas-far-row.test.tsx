@@ -6,7 +6,7 @@
  * the chip kept saying Bloom until something else re-rendered the page, so the
  * setting read as broken.
  */
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 
@@ -84,11 +84,13 @@ afterEach(() => {
 describe('look.atlasFar on the settings page', () => {
   it('shows the new pick as soon as it is written', async () => {
     render(<SettingsPage />);
-    const chip = await screen.findByTestId('setting-look.atlasFar');
-    expect(chip).toHaveTextContent('Bloom');
+    // Two short options draw as a tray; the picked one is the checked radio.
+    const picked = () => within(screen.getByTestId('setting-look.atlasFar')).getByRole('radio', { checked: true });
+    await screen.findByTestId('setting-look.atlasFar');
+    expect(picked()).toHaveTextContent('Bloom');
     act(() => settingById('look.atlasFar')!.write('dusk', {} as never));
     expect(useLookStore.getState().atlasFarPaper).toBe('dusk');
-    await waitFor(() => expect(screen.getByTestId('setting-look.atlasFar')).toHaveTextContent('Dusk'));
+    await waitFor(() => expect(picked()).toHaveTextContent('Dusk'));
   });
 
   it('says so while a dark theme is showing, and stays live', () => {

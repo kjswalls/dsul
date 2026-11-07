@@ -598,12 +598,13 @@ describe('the AI pane', () => {
   it('keeps On this device, and the focus in it, when chat is turned back on', async () => {
     given({ ...NOTHING_CONNECTED, choice: 'none' });
     renderShell('beacon');
-    const control = screen.getByTestId('setting-beacon.provider');
+    // A three-way pick is a tray now: its picked radio is the one tab stop.
+    const control = within(screen.getByTestId('setting-beacon.provider')).getByRole('radio', { checked: true });
     control.focus();
     expect(document.activeElement).toBe(control);
     act(() => useAISettingsStore.setState({ chatTarget: 'model' }));
     expect(screen.getByTestId('ai-device')).toBeInTheDocument();
-    expect(screen.getByTestId('setting-beacon.provider')).toBe(control);
+    expect(screen.getByTestId('setting-beacon.provider')).toContainElement(control);
     expect(document.activeElement).toBe(control);
     await act(async () => {});
   });
