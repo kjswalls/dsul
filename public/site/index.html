@@ -147,6 +147,42 @@ html:not([data-in]) .ky-if-in,html[data-in] .ky-if-out{display:none}
 .ky-why input{flex:1 1 200px;min-width:0;min-height:40px;padding:0 12px;box-sizing:border-box;border:1px solid oklch(1 0 0 / 12%);border-radius:10px;background:oklch(0.16 0.004 286);color:var(--ink);font:inherit;font-size:16px}
 .ky-why button{flex:0 0 auto;min-height:40px;padding:0 14px;border-radius:10px;border:1px solid oklch(1 0 0 / 14%);background:transparent;color:var(--ink);font:inherit;font-size:14px;cursor:pointer}
 .ky-thanks{font-size:13px;color:var(--lime)}
+/* the hero's live demo (script: "the live demo"). Static markup above is the no-script picture. */
+.ky-demo-hint{flex:1;text-align:center;font-family:"Geist Mono",ui-monospace,monospace;font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ky-demo-reset{margin-left:auto;border:0;background:transparent;font:inherit;font-size:11px;color:var(--faint);cursor:pointer;padding:4px 6px;border-radius:6px}
+.ky-demo-reset:hover{color:var(--ink);background:oklch(1 0 0 / 6%)}
+.ky-demo button{font:inherit;color:inherit}
+.ky-demo .ky-chk{padding:0;background:transparent;cursor:pointer;transition:background .15s,border-color .15s}
+.ky-demo .ky-chk:hover{border-color:oklch(1 0 0 / 55%)}
+.ky-demo .ky-chk-done,.ky-demo .ky-chk-done:hover{display:flex;align-items:center;justify-content:center;background:var(--lime);border-color:var(--lime)}
+.ky-demo [data-drag]{cursor:grab;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.ky-demo .ky-row{transition:background .12s,opacity .2s,transform .2s}
+.ky-demo .ky-row:hover{background:oklch(1 0 0 / 5%)}
+.ky-demo .ky-row.ky-going{opacity:0;transform:translateX(12px)}
+.ky-demo .ky-row.ky-lifted{opacity:.35}
+.ky-demo .ky-ghost .ky-verbs{opacity:0;transition:opacity .12s}
+.ky-demo .ky-ghost:hover .ky-verbs,.ky-demo .ky-ghost:focus-within .ky-verbs,.ky-demo .ky-ghost.ky-open .ky-verbs{opacity:1}
+.ky-demo .ky-ibtn{border:0;background:transparent;cursor:pointer;padding:0}
+.ky-demo .ky-ibtn:hover{color:var(--ink);background:oklch(1 0 0 / 8%)}
+.ky-demo .ky-foldbtn{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;padding:0;cursor:pointer;color:var(--muted);font-size:12px}
+.ky-demo .ky-foldbtn svg{transition:transform .15s}
+.ky-demo .ky-foldbtn[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.ky-demo .ky-txtbtn{border:0;background:transparent;padding:0;cursor:pointer;color:var(--faint);font-size:12px}
+.ky-demo .ky-txtbtn:hover{color:var(--ink)}
+.ky-demo .ky-drop{position:relative;min-height:32px;border-radius:8px}
+.ky-demo .ky-empty{height:32px;border-radius:8px;border:1px dashed oklch(1 0 0 / 9%)}
+.ky-demo .ky-line{position:absolute;left:6px;right:6px;height:2px;margin-top:-1px;border-radius:2px;background:var(--lime);box-shadow:0 0 8px oklch(0.87 0.19 125 / 70%);pointer-events:none}
+.ky-demo .ky-add{width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;background:oklch(0.15 0.004 286);border:1px solid var(--line);color:var(--ink);font:inherit;font-size:16px}
+.ky-demo .ky-add::placeholder{color:oklch(0.55 0.01 286)}
+.ky-demo .ky-add:focus{outline:none;border-color:oklch(1 0 0 / 30%)}
+.ky-demo .ky-sorted{padding:6px 10px;font-size:12px;color:var(--muted)}
+.ky-demo .ky-sorted b{font-weight:500;color:var(--lime)}
+.ky-drag-float{position:fixed;z-index:50;pointer-events:none;display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;background:oklch(0.25 0.004 286);box-shadow:0 10px 24px oklch(0 0 0 / 50%),0 0 0 1px oklch(1 0 0 / 12%);font-size:13px;color:var(--ink);transform:rotate(-1.5deg);max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ky-toast{position:absolute;left:50%;bottom:14px;transform:translate(-50%,6px);padding:6px 12px;border-radius:999px;background:oklch(0.24 0.004 286);border:1px solid oklch(1 0 0 / 10%);font-size:12px;color:var(--ink-2);opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;white-space:nowrap}
+.ky-toast.on{opacity:1;transform:translate(-50%,0)}
+@media (hover:none){.ky-demo .ky-ghost .ky-verbs{opacity:1}}
+@media (max-width:600px){.ky-demo .ky-verbs{display:inline-flex!important}.ky-demo .ky-ghost .ky-date{display:none}.ky-demo-hint{display:none}}
+@media (prefers-reduced-motion:reduce){.ky-demo .ky-row,.ky-toast,.ky-demo .ky-foldbtn svg{transition:none}}
 [hidden]{display:none!important}
 @media (max-width:600px){.ky-verbs{display:none!important}.ky-wrap{padding-left:16px;padding-right:16px}.ky-topnav{display:none!important}.ky-h1{white-space:normal;font-size:38px}.ky-joinbtn{flex:1 1 100%!important;justify-content:center}.ky-sec{padding-bottom:104px}}
 </style>
@@ -195,11 +231,13 @@ they're just hanging out.</h1>
     <div style="position: relative; z-index: 1; max-width: 1000px; margin: 64px auto 0; padding-bottom: 136px">
       <div class="ky-ann ky-ann-out" style="top: 112px"><span aria-hidden="true">←</span> just hanging out</div>
       <div class="ky-ann ky-ann-in"><span aria-hidden="true">↓</span> just hanging out</div>
-      <div class="ky-mock" style="position: relative" role="img" aria-label="dsul's Today view. At the top, four things from earlier days wait in a faded fold called From earlier, each with the weekday it was planned for in grey and no red. Below, the morning, afternoon and evening lists, and the braindump on the left.">
+      <div class="ky-mock" style="position: relative" role="region" aria-label="A working demo of dsul's Today view. Nothing here is saved.">
         <div style="display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-bottom: 1px solid oklch(1 0 0 / 7%); background: oklch(0.155 0.004 286)">
           <span style="width: 9px; height: 9px; border-radius: 50%; background: oklch(0.32 0.004 286)"></span><span style="width: 9px; height: 9px; border-radius: 50%; background: oklch(0.32 0.004 286)"></span><span style="width: 9px; height: 9px; border-radius: 50%; background: oklch(0.32 0.004 286)"></span>
+          <span class="ky-demo-hint" data-demo-hint hidden>live demo. drag, tick, sort. nothing's saved.</span>
+          <button type="button" class="ky-demo-reset" data-demo-reset hidden>start over</button>
         </div>
-        <div style="display: flex; flex-wrap: wrap; text-align: left">
+        <div id="ky-demo" class="ky-demo" style="display: flex; flex-wrap: wrap; text-align: left">
           <!-- braindump -->
           <div class="ky-side" style="display: flex; flex-direction: column; gap: 10px; padding: 14px 12px">
             <div style="display: flex; align-items: center; gap: 8px; padding: 0 10px">
@@ -726,6 +764,248 @@ doing today?</h2>
     clearTimeout(resizing);
     resizing = setTimeout(buildField, 200);
   });
+
+  // ── the live demo in the hero ───────────────────────────────────────────
+  // A tiny Today: tick things, sort the leftovers, drag from the braindump onto
+  // a part of the day (or back). State lives here and nowhere else; "start over"
+  // puts it back. The markup it replaces is the no-script picture of the same.
+  (function demo() {
+    var root = document.getElementById('ky-demo');
+    if (!root) return;
+    var mock = root.parentNode;
+    var hint = mock.querySelector('[data-demo-hint]'), reset = mock.querySelector('[data-demo-reset]');
+    var calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    var LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    var PARTS = [['morning', 'Morning'], ['afternoon', 'Afternoon'], ['evening', 'Evening']];
+    var now = new Date();
+    function ago(n) { return DAYS[(now.getDay() - n + 70) % 7]; }
+    var seq = 0;
+    function it(t, extra) { var o = { id: 'd' + (++seq), t: t }; for (var k in extra) o[k] = extra[k]; return o; }
+    var S;
+    function fresh() {
+      S = {
+        open: true, sortedOnce: false,
+        brain: [it('is it hot sauce season'), it('gift for jo???'), it('renew passport (before it\'s an emergency)'), it('fix the wobbly chair'), it('find the good tape')],
+        ghosts: [it('text the group chat back', { day: ago(1) }), it('return the library book (it\'s fine)', { day: ago(3) }), it('cancel the free trial (before it\'s not free)', { day: ago(4) }), it('learn the ukulele', { day: ago(6) })],
+        morning: [it('drink a water', { done: true }), it('reply to sam (the short reply, not the essay)')],
+        afternoon: [it('go outside on purpose')],
+        evening: []
+      };
+    }
+    fresh();
+
+    function esc(t) { return String(t).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); }
+    var TICK = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="oklch(0.22 0.05 130)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg>';
+    function icon(d, w) { return '<svg width="' + (w || 13) + '" height="' + (w || 13) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>'; }
+    var VERBS = [
+      ['keep', 'Keep for today', icon('<path d="M12 5v14M5 12h14"></path>')],
+      ['tomorrow', 'Move to tomorrow', icon('<path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"></path>')],
+      ['side', 'Send to sidebar', icon('<path d="M3 4v16M21 12H7M12 7l-5 5 5 5"></path>')],
+      ['go', 'Let it go', icon('<path d="M18 6 6 18M6 6l12 12"></path>', 12)]
+    ];
+    function chk(item, list) {
+      var label = (item.done ? 'Mark not done: ' : 'Mark done: ') + item.t;
+      return '<button type="button" class="ky-chk' + (item.done ? ' ky-chk-done' : '') + (list === 'ghosts' ? ' ky-chk-ghost' : '') + '" data-act="tick" aria-pressed="' + (item.done ? 'true' : 'false') + '" aria-label="' + esc(label) + '">' + (item.done ? TICK : '') + '</button>';
+    }
+    function row(item, list) {
+      var done = item.done ? ' style="text-decoration: line-through; color: var(--faint)"' : '';
+      return '<div class="ky-row" data-id="' + item.id + '" data-list="' + list + '" data-drag' + (list === 'brain' ? '' : ' style="background: oklch(1 0 0 / 3%)"') + '>' + chk(item, list) + '<span class="ky-t"' + done + '>' + esc(item.t) + '</span></div>';
+    }
+    function ghost(item) {
+      var verbs = VERBS.map(function (v) { return '<button type="button" class="ky-ibtn" data-act="' + v[0] + '" title="' + v[1] + '" aria-label="' + v[1] + ': ' + esc(item.t) + '">' + v[2] + '</button>'; }).join('');
+      return '<div class="ky-row ky-ghost" data-id="' + item.id + '" data-list="ghosts" style="align-items: center">' + chk(item, 'ghosts') + '<span class="ky-t">' + esc(item.t) + '</span><span class="ky-verbs" style="flex: none; display: inline-flex; align-items: center; gap: 2px">' + verbs + '</span><span class="ky-date">' + item.day + '</span></div>';
+    }
+    function render() {
+      var undated = S.brain.length + 18;
+      var h = '<div class="ky-side" style="display: flex; flex-direction: column; gap: 10px; padding: 14px 12px">' +
+        '<div style="display: flex; align-items: center; gap: 8px; padding: 0 10px"><span style="font-weight: 500; color: oklch(0.95 0.003 286)">Braindump</span><span class="ky-date">' + undated + ' undated</span></div>' +
+        '<div class="ky-drop" data-drop="brain">' + S.brain.map(function (i) { return row(i, 'brain'); }).join('') + (S.brain.length ? '' : '<div class="ky-sorted">empty. suspicious.</div>') + '</div>' +
+        '<div style="flex: 1; min-height: 12px"></div>' +
+        '<div style="border-radius: 12px; border: 1px solid oklch(1 0 0 / 9%); background: oklch(0.18 0.004 286); padding: 8px"><form data-add><label class="ky-sr" for="ky-demo-add">add a thought to the braindump</label><input id="ky-demo-add" class="ky-add" maxlength="80" autocomplete="off" placeholder="Add a task…"></form></div>' +
+        '</div>';
+      h += '<div class="ky-canvas" style="position: relative; padding: 22px 24px 52px; display: flex; flex-direction: column; gap: 18px">';
+      h += '<div style="font-size: 20px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink)">' + LONG[now.getDay()] + ', ' + MONTHS[now.getMonth()] + ' ' + now.getDate() + '</div>';
+      if (S.ghosts.length) {
+        h += '<div style="display: flex; flex-direction: column; gap: 2px"><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 0 10px 4px; font-size: 12px">' +
+          '<button type="button" class="ky-foldbtn" data-act="fold" aria-expanded="' + S.open + '">From earlier <span style="color: var(--faint)">' + S.ghosts.length + '</span>' + icon('<path d="m6 9 6 6 6-6"></path>', 12) + '</button>' +
+          '<span style="margin-left: auto; display: inline-flex; gap: 12px"><button type="button" class="ky-txtbtn" data-act="keepall">Keep all</button><button type="button" class="ky-txtbtn" data-act="sideall">Send all to sidebar</button></span></div>' +
+          (S.open ? S.ghosts.map(ghost).join('') : '') + '</div>';
+      } else if (S.sortedOnce) {
+        h += '<div class="ky-sorted"><b>All sorted</b>, you got this.</div>';
+      }
+      PARTS.forEach(function (p) {
+        var list = S[p[0]];
+        h += '<div style="display: flex; flex-direction: column; gap: 6px"><div class="ky-lbl" style="padding: 0 10px">' + p[1] + '</div>' +
+          '<div class="ky-drop" data-drop="' + p[0] + '" style="display: flex; flex-direction: column; gap: 6px">' + (list.length ? list.map(function (i) { return row(i, p[0]); }).join('') : '<div class="ky-empty"></div>') + '</div></div>';
+      });
+      h += '<div class="ky-toast" aria-hidden="true"></div><div class="ky-sr" role="status" aria-live="polite" data-live></div></div>';
+      var focusId = document.activeElement && root.contains(document.activeElement) ? document.activeElement.id : '';
+      root.innerHTML = h;
+      if (focusId) { var f = document.getElementById(focusId); if (f) f.focus(); }
+    }
+
+    var toastTimer;
+    function tell(text) {
+      var t = root.querySelector('.ky-toast'), live = root.querySelector('[data-live]');
+      if (!t) return;
+      t.textContent = text; live.textContent = text;
+      t.classList.add('on');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(function () { var x = root.querySelector('.ky-toast'); if (x) x.classList.remove('on'); }, 1800);
+    }
+    function find(id) {
+      var lists = ['brain', 'ghosts', 'morning', 'afternoon', 'evening'];
+      for (var n = 0; n < lists.length; n++) {
+        var arr = S[lists[n]];
+        for (var k = 0; k < arr.length; k++) if (arr[k].id === id) return { list: lists[n], arr: arr, i: k, item: arr[k] };
+      }
+      return null;
+    }
+    function take(id) { var f = find(id); if (f) f.arr.splice(f.i, 1); return f; }
+    // Fade the row out, then change the state and redraw.
+    function leave(rowEl, then) {
+      if (calm || !rowEl) { then(); render(); return; }
+      rowEl.classList.add('ky-going');
+      setTimeout(function () { then(); render(); }, 180);
+    }
+    function settled() { if (!S.ghosts.length) S.sortedOnce = true; }
+    function partNow() { var h = new Date().getHours(); return h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening'; }
+
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-act]');
+      if (!b || !root.contains(b)) return;
+      var act = b.getAttribute('data-act');
+      var rowEl = b.closest('[data-id]');
+      var id = rowEl && rowEl.getAttribute('data-id');
+      if (act === 'fold') { S.open = !S.open; render(); return; }
+      if (act === 'keepall' || act === 'sideall') {
+        var n = S.ghosts.length;
+        var moved = S.ghosts.splice(0, n).map(function (g) { return it(g.t); });
+        if (act === 'keepall') { S[partNow()] = S[partNow()].concat(moved); tell(n + ' kept for today'); }
+        else { S.brain = moved.concat(S.brain); tell(n + ' back in the braindump'); }
+        settled(); render(); return;
+      }
+      var f = id && find(id);
+      if (!f) return;
+      if (act === 'tick') {
+        if (f.list === 'brain' || f.list === 'ghosts') {
+          f.item.done = true; render();
+          var again = root.querySelector('[data-id="' + id + '"]');
+          setTimeout(function () { leave(again, function () { take(id); settled(); }); }, calm ? 0 : 380);
+          tell(f.list === 'ghosts' ? 'done. late counts.' : 'done. look at you.');
+          return;
+        }
+        f.item.done = !f.item.done; render();
+        if (f.item.done) tell('nice.');
+        var back = root.querySelector('[data-id="' + id + '"] [data-act="tick"]'); if (back) back.focus();
+        return;
+      }
+      leave(rowEl, function () {
+        take(id);
+        if (act === 'keep') { S[partNow()].push(it(f.item.t)); tell('kept for today'); }
+        else if (act === 'tomorrow') tell('see you tomorrow, ' + (f.item.t.length > 22 ? 'buddy' : f.item.t));
+        else if (act === 'side') { S.brain.unshift(it(f.item.t)); tell('back in the braindump'); }
+        else if (act === 'go') tell('let go. no hard feelings.');
+        settled();
+      });
+    });
+
+    root.addEventListener('submit', function (e) {
+      if (!e.target.matches('[data-add]')) return;
+      e.preventDefault();
+      var input = e.target.querySelector('input');
+      var t = input.value.trim();
+      if (!t) return;
+      S.brain.unshift(it(t.slice(0, 80)));
+      render();
+      tell('in the braindump. it\'s good at waiting.');
+      var again = document.getElementById('ky-demo-add'); if (again) again.focus();
+    });
+
+    // ── dragging, mouse or a held finger ──
+    var drag = null;
+    function startDrag(e, rowEl) {
+      var id = rowEl.getAttribute('data-id'), f = find(id);
+      if (!f) return;
+      var ghostEl = document.createElement('div');
+      ghostEl.className = 'ky-drag-float';
+      ghostEl.textContent = f.item.t;
+      document.body.appendChild(ghostEl);
+      rowEl.classList.add('ky-lifted');
+      drag.on = true; drag.id = id; drag.float = ghostEl; drag.row = rowEl;
+      moveDrag(e);
+    }
+    function target(x, y) {
+      var el = document.elementFromPoint(x, y);
+      var zone = el && el.closest && el.closest('[data-drop]');
+      if (!zone || !root.contains(zone)) return null;
+      var rows = Array.prototype.filter.call(zone.querySelectorAll('[data-id]'), function (r) { return r.getAttribute('data-id') !== drag.id; });
+      var at = rows.length, top = 0;
+      var zr = zone.getBoundingClientRect();
+      for (var k = 0; k < rows.length; k++) {
+        var r = rows[k].getBoundingClientRect();
+        if (y < r.top + r.height / 2) { at = k; top = r.top - zr.top - 3; break; }
+        top = r.bottom - zr.top + 3;
+      }
+      if (!rows.length) top = zr.height / 2;
+      return { zone: zone, list: zone.getAttribute('data-drop'), at: at, top: top };
+    }
+    function moveDrag(e) {
+      drag.float.style.left = (e.clientX - 18) + 'px';
+      drag.float.style.top = (e.clientY - 16) + 'px';
+      var t = target(e.clientX, e.clientY);
+      var old = root.querySelector('.ky-line'); if (old) old.remove();
+      drag.t = t;
+      if (t) { var line = document.createElement('div'); line.className = 'ky-line'; line.style.top = t.top + 'px'; t.zone.appendChild(line); }
+    }
+    function endDrag(drop) {
+      var d = drag; drag = null;
+      if (!d || !d.on) return;
+      d.float.remove();
+      var line = root.querySelector('.ky-line'); if (line) line.remove();
+      if (d.row) d.row.classList.remove('ky-lifted');
+      if (!drop || !d.t) return;
+      var f = take(d.id);
+      if (!f) return;
+      var item = d.t.list === 'brain' ? it(f.item.t) : (f.list === 'brain' ? it(f.item.t) : f.item);
+      S[d.t.list].splice(Math.min(d.t.at, S[d.t.list].length), 0, item);
+      render();
+      if (d.t.list !== f.list) tell(d.t.list === 'brain' ? 'back in the braindump' : 'on for this ' + d.t.list);
+    }
+    root.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      var rowEl = e.target.closest('[data-drag]');
+      if (!rowEl || e.target.closest('button,input')) return;
+      drag = { on: false, x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse', timer: 0 };
+      if (drag.touch) {
+        var ev = e;
+        drag.timer = setTimeout(function () { if (drag && !drag.on) startDrag(ev, rowEl); }, 260);
+      }
+      drag.rowEl = rowEl;
+    });
+    window.addEventListener('pointermove', function (e) {
+      if (!drag) return;
+      if (drag.on) { moveDrag(e); return; }
+      var far = Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > (drag.touch ? 10 : 4);
+      if (!far) return;
+      if (drag.touch) { clearTimeout(drag.timer); drag = null; return; }
+      startDrag(e, drag.rowEl);
+    });
+    window.addEventListener('pointerup', function () { if (drag) { clearTimeout(drag.timer); endDrag(true); } });
+    window.addEventListener('pointercancel', function () { if (drag) { clearTimeout(drag.timer); endDrag(false); } });
+    // a held finger that has picked something up shouldn't also scroll the page
+    root.addEventListener('touchmove', function (e) { if (drag && drag.on) e.preventDefault(); }, { passive: false });
+    root.addEventListener('contextmenu', function (e) { if (drag) e.preventDefault(); });
+
+    if (reset) {
+      reset.hidden = false;
+      reset.addEventListener('click', function () { fresh(); render(); tell('fresh start'); });
+    }
+    if (hint) hint.hidden = false;
+    render();
+  })();
 
   // ── the signup, one state for both copies of the form ───────────────────
   var tpl = document.getElementById('ky-join-tpl');
