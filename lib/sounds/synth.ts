@@ -4,8 +4,8 @@
  * Imported lazily by lib/sounds/cue.ts the first time a sound plays, so it
  * never loads for anyone with the extension off. Each sound is a few notes
  * and noise bursts through one shared chain: a pack's sounds → a dry bus and
- * a small room (a generated impulse) → the volume → a gentle compressor that
- * keeps two overlapping sounds from clipping.
+ * a small room (a generated impulse) → the volume → a fixed lift → a limiting
+ * compressor that keeps two overlapping sounds from clipping.
  *
  * The packs were tuned with Kirby on a prototype page (2026-10-31; the
  * picks are recorded in memory/plans/sounds.md), so a number here is a
@@ -22,6 +22,9 @@ let bus: GainNode;
 let wet: GainNode;
 let noiseBuf: AudioBuffer;
 
+/** The fixed lift after the volume: about +14 dB. */
+export const LIFT = 5;
+
 function impulse(c: Ctx, sec: number, decay: number): AudioBuffer {
   const len = Math.floor(c.sampleRate * sec);
   const b = c.createBuffer(2, len, c.sampleRate);
@@ -34,18 +37,29 @@ function impulse(c: Ctx, sec: number, decay: number): AudioBuffer {
 
 /** The context, made on first use. Null where the browser has no Web Audio. */
 function audio(): Ctx | null {
-  if (ctx) return ctx;
+  if (ctx && ctx.state !== 'closed') return ctx;
   const AC =
     typeof window === 'undefined'
       ? undefined
       : window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AC) return null;
   const c = new AC();
+  // The packs' note levels were tuned by ear on headphones, where they sit
+  // around -30 dBFS. Through laptop speakers that is below hearing, while the
+  // browser still calls the tab audible (Kirby, 2026-11-07). One fixed lift
+  // brings them up to an ordinary UI-sound level without retuning any pack,
+  // and the compressor after it is a limiter, so a big chord can't clip.
+  const lift = c.createGain();
+  lift.gain.value = LIFT;
   const comp = c.createDynamicsCompressor();
-  comp.threshold.value = -16;
-  comp.ratio.value = 3;
+  comp.threshold.value = -9;
+  comp.knee.value = 6;
+  comp.ratio.value = 8;
+  comp.attack.value = 0.002;
+  comp.release.value = 0.12;
   master = c.createGain();
-  master.connect(comp);
+  master.connect(lift);
+  lift.connect(comp);
   comp.connect(c.destination);
   bus = c.createGain();
   bus.connect(master);
