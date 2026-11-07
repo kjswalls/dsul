@@ -741,6 +741,12 @@
     inset 0 1px 0 oklch(0 0 0 / 9%), inset 0 3px 6px oklch(0 0 0 / 12%),
     inset 0 1px 2px oklch(0 0 0 / 7%),
     0 4px 4px oklch(0 0 0 / 0%), 0 1px 2px oklch(0 0 0 / 0%);
+  /* A keycap button under the pointer (.key:hover): rest's layers, cast a
+     little longer and darker as the key rises toward you. */
+  --shadow-key-lifted:
+    inset 0 1px 0 oklch(0 0 0 / 0%), inset 0 3px 6px oklch(0 0 0 / 0%),
+    inset 0 1px 2px oklch(0 0 0 / 0%),
+    0 6px 8px oklch(0 0 0 / 16%), 0 2px 3px oklch(0 0 0 / 10%);
 
   /* The surface a pressed pill settles onto — a hair of the well (surface-3)
      mixed into the raised surface, so the recess darkens as it sinks rather
@@ -994,6 +1000,10 @@
     inset 0 1px 0 oklch(0 0 0 / 25%), inset 0 3px 7px oklch(0 0 0 / 42%),
     inset 0 1px 2px oklch(0 0 0 / 25%), inset 0 -1px 1px oklch(1 0 0 / 6%),
     0 1px 2px oklch(0 0 0 / 0%), 0 4px 10px oklch(0 0 0 / 0%);
+  --shadow-key-lifted:
+    inset 0 1px 0 oklch(1 0 0 / 10%), inset 0 3px 7px oklch(0 0 0 / 0%),
+    inset 0 1px 2px oklch(0 0 0 / 0%), inset 0 -1px 1px oklch(1 0 0 / 0%),
+    0 2px 3px oklch(0 0 0 / 38%), 0 7px 14px oklch(0 0 0 / 34%);
 
   --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 10%);
 
@@ -1782,6 +1792,13 @@ body {
                  (3px and 2px until 2026-11-07, when Kirby found the keys tall)
      the cast    --shadow-key-rest, --shadow-key-pressed on a press
 
+   Under the pointer the key rises (Kirby's "A Rise", 2026-11-07, mocks at
+   /mnt/project-files/keycap-hover/): up 1px, the skirt grows to 3px, the
+   cast lengthens (--shadow-key-lifted) and the face brightens (--key-wash,
+   less shade in light, more foreground in dark). It eases in over 260ms and
+   settles back a little slower; a press is quick. Reduced motion keeps the
+   lift and drops the easing.
+
    .key-main stands on a LIME skirt: --primary itself, a flat edge, never
    mixed or faded, and never a glow (a rim lit with lime is AI's alone). A
    disabled button fades through opacity-50, and the accent must never be
@@ -1795,19 +1812,28 @@ body {
   --key-ring: 0 0 0 0 transparent;
   background-image: linear-gradient(
     180deg,
-    color-mix(in oklab, var(--foreground) calc(var(--key-bevel-top) + var(--key-wash)), transparent),
-    color-mix(in oklab, var(--foreground) calc(var(--key-bevel-bottom) + var(--key-wash)), transparent)
+    color-mix(in oklab, var(--foreground) max(0%, calc(var(--key-bevel-top) + var(--key-wash))), transparent),
+    color-mix(in oklab, var(--foreground) max(0%, calc(var(--key-bevel-bottom) + var(--key-wash))), transparent)
   );
   box-shadow:
     inset 0 0 0 1px var(--key-rim),
     0 2px 0 var(--key-skirt),
     var(--key-ring),
     var(--shadow-key-rest);
+  /* Settling back: a touch slower than the rise, so leaving reads as calm. */
   transition:
-    translate 120ms var(--ease-out-soft),
-    box-shadow 120ms var(--ease-out-soft),
+    translate 320ms var(--ease-out-soft),
+    box-shadow 320ms var(--ease-out-soft),
+    --key-wash 320ms var(--ease-out-soft),
     background-color 150ms var(--ease-out-soft),
     color 150ms var(--ease-out-soft);
+}
+/* Registered so the face's brighten eases with the lift instead of jumping
+   (an unregistered custom property can't interpolate). */
+@property --key-wash {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
 }
 :where(.dark) .key {
   --key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 9%);
@@ -1824,15 +1850,27 @@ body {
   --key-skirt: var(--key-rim);
 }
 @media (hover: hover) {
-  .key:hover {
+  .key:hover:not(:disabled, [aria-disabled='true']) {
+    /* Light: less shade at the foot. Dark: the foreground is light, so more. */
+    --key-wash: -3%;
+    translate: 0 -1px;
+    box-shadow:
+      inset 0 0 0 1px var(--key-rim),
+      0 3px 0 var(--key-skirt),
+      var(--key-ring),
+      var(--shadow-key-lifted);
+    transition-duration: 260ms, 260ms, 260ms, 150ms, 150ms;
+  }
+  :where(.dark) .key:hover:not(:disabled, [aria-disabled='true']) {
     --key-wash: 3%;
   }
 }
 .key:focus-visible {
   --key-ring: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
 }
-.key:active {
+.key:active:not([aria-disabled='true']) {
   translate: 0 1px;
+  transition-duration: 90ms, 90ms, 90ms, 150ms, 150ms;
   box-shadow:
     inset 0 0 0 1px var(--key-rim),
     0 1px 0 var(--key-skirt),
@@ -1845,14 +1883,6 @@ body {
 .key-main:is(:disabled, [aria-disabled='true']) {
   --key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 12%);
   --key-skirt: var(--key-rim);
-}
-.key[aria-disabled='true']:active {
-  translate: none;
-  box-shadow:
-    inset 0 0 0 1px var(--key-rim),
-    0 2px 0 var(--key-skirt),
-    var(--key-ring),
-    var(--shadow-key-rest);
 }
 @media (prefers-reduced-motion: reduce) {
   .key {
