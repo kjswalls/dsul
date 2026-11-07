@@ -74,7 +74,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { TimeList } from '@/components/ui/time-picker';
-import { Textarea } from '@/components/ui/textarea';
+import { LiveNotesField } from '@/components/planner/live-notes-field';
+import { NotesMarkdown } from '@/components/planner/notes-markdown';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -3013,6 +3014,11 @@ function ItemDialogInner({
   // the field out from under the caret. Every other surface keeps it.
   const [notesOpenFor, setNotesOpenFor] = useState<string | null>(null);
   const [notesSummonedFor, setNotesSummonedFor] = useState<string | null>(null);
+  // An item's notes render as markdown at rest (components/planner/notes-markdown.tsx)
+  // and turn back into the field when clicked: which item's are being edited,
+  // and where the caret goes when the field mounts.
+  const [notesEditingFor, setNotesEditingFor] = useState<string | null>(null);
+  const notesCaret = useRef<number | null>(null);
   const hideEmptyNotes = presentation === 'panel' && mode === 'edit' && !!editItem;
   const showNotes =
     !!activeDraft &&
@@ -3037,8 +3043,21 @@ function ItemDialogInner({
     const ta = notesRef.current;
     if (!ta) return;
     ta.style.height = 'auto';
-    ta.style.height = `${Math.min(ta.scrollHeight, 220)}px`;
-  }, [activeDraft?.notes, activeTypeName, open]);
+    ta.style.height = `${Math.min(ta.scrollHeight, 320)}px`;
+  }, [activeDraft?.notes, activeTypeName, open, notesEditingFor]);
+  // Clicked open from the rendered note: the caret goes where the click was.
+  useEffect(() => {
+    const ta = notesRef.current;
+    const at = notesCaret.current;
+    if (!ta || at === null || !notesEditingFor || notesEditingFor !== editItem?.id) return;
+    notesCaret.current = null;
+    ta.focus({ preventScroll: true });
+    ta.setSelectionRange(at, at);
+  }, [notesEditingFor, editItem?.id]);
+  // An edit item's notes show rendered unless they are being edited (or empty,
+  // where the field is what there is to show).
+  const notesRendered =
+    mode === 'edit' && !!editItem && !!activeDraft?.notes?.trim() && notesEditingFor !== editItem.id;
 
   // ── Header pieces ────────────────────────────────────────────────────────
   // Extracted so the docked panel can LEAD with the title — putting its heading
@@ -3951,8 +3970,19 @@ function ItemDialogInner({
                   use it, and on the docked panel it takes no room while empty
                   (`showNotes`: + → Notes brings it). data-sub-input so Enter
                   makes a newline; ⌘/Ctrl+Enter still saves. */}
-              {showNotes && (
-                <Textarea
+              {showNotes && notesRendered && editItem && (
+                <NotesMarkdown
+                  key={editItem.id}
+                  source={activeDraft.notes}
+                  foldKey={editItem.id}
+                  onEdit={(caret) => {
+                    notesCaret.current = caret;
+                    setNotesEditingFor(editItem.id);
+                  }}
+                />
+              )}
+              {showNotes && !notesRendered && (
+                <LiveNotesField
                   ref={notesRef}
                   rows={1}
                   data-sub-input
@@ -3960,8 +3990,27 @@ function ItemDialogInner({
                   placeholder="Notes"
                   value={activeDraft.notes}
                   onChange={(e) => patchDraft(activeTypeName, { notes: e.target.value })}
-                  onFocus={() => editItem && setNotesOpenFor(editItem.id)}
-                  onBlur={autosaves ? flushNow : undefined}
+                  onFocus={() => {
+                    if (!editItem) return;
+                    setNotesOpenFor(editItem.id);
+                    // Focused is editing: the first letter typed into empty notes
+                    // must not swap the field for the rendered note under the caret.
+                    setNotesEditingFor(editItem.id);
+                  }}
+                  onEscape={
+                    mode === 'edit' && activeDraft.notes.trim()
+                      ? () => {
+                          notesRef.current?.blur();
+                          return true;
+                        }
+                      : undefined
+                  }
+                  onBlur={(e) => {
+                    if (autosaves) flushNow();
+                    // Leaving the field renders the note again, unless focus only
+                    // went to the window or another tab (it comes back to the field).
+                    if (e.relatedTarget || document.hasFocus()) setNotesEditingFor(null);
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                       e.preventDefault();

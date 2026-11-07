@@ -107,6 +107,9 @@ test.describe('Item panel', () => {
       await reloadApp(page);
       await expect(itemCard(page, taskId)).toBeVisible({ timeout: 10_000 });
       const reopened = await openPanelFor(page, taskId, taskTitle);
+      // Written notes open rendered; a click on them brings the field back.
+      await expect(reopened.getByTestId('item-notes-view')).toContainText(noteText);
+      await reopened.getByTestId('item-notes-view').getByText(noteText).click();
       await expect(reopened.getByTestId('item-dialog-notes')).toHaveValue(noteText);
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);

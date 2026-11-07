@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { NotesProse } from '@/components/planner/notes-markdown';
 import { Check, X } from 'lucide-react';
 import { Button, ButtonKey } from '@/components/ui/button';
 import { DaySchedule, deriveTimedEntries } from '@/components/views/day-schedule';
@@ -229,9 +230,9 @@ function DeskItem({ item }: { item: Item }) {
         <h2 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-balance">{item.title}</h2>
       </div>
       {notes && (
-        <p className="whitespace-pre-wrap text-sm text-muted-foreground" data-testid="do-stuff-desk-notes">
-          {notes}
-        </p>
+        <div data-testid="do-stuff-desk-notes">
+          <NotesProse source={notes} className="text-muted-foreground" />
+        </div>
       )}
       <Steps parentId={id} />
       {/* What the AI got ready for it, where the work happens. */}
