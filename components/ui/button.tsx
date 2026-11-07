@@ -11,7 +11,7 @@ const buttonVariants = cva(
       variant: {
         // Keycaps (Kirby, 2026-11-05: "F" in the keycap round). Every button
         // that carries a face is the same paper key as the sidebar's Ctrl K
-        // launcher: a bevelled face, a hairline rim, a 3px skirt it sinks into
+        // launcher: a bevelled face, a hairline rim, a 2px skirt it sinks into
         // when pressed. The shape, the skirt and the press live in globals.css
         // under `.key`; the face colour is a background-color in the
         // components layer, so a caller's bg-* still wins it.
@@ -31,9 +31,11 @@ const buttonVariants = cva(
       size: {
         // One compact height for dialog and form actions. A ButtonKey pulls
         // itself toward the edge (globals.css) so it sits like a keycap.
-        default: 'h-[30px] px-3 has-[>svg]:px-2.5',
-        sm: 'h-7 gap-1.5 px-2.5 has-[>svg]:px-2',
-        lg: 'h-9 px-4 has-[>svg]:px-3',
+        // 26/24/32 since 2026-11-07 (Kirby: the keys read tall with their
+        // skirt under them); the skirt is 2px.
+        default: 'h-[26px] px-3 has-[>svg]:px-2.5',
+        sm: 'h-6 gap-1.5 px-2.5 has-[>svg]:px-2',
+        lg: 'h-8 px-4 has-[>svg]:px-3',
         icon: 'size-9',
         'icon-sm': 'size-8',
         'icon-lg': 'size-10',

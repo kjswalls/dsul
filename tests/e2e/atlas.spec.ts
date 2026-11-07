@@ -343,16 +343,14 @@ test.describe('atlas', () => {
     await page.goto('/settings/look');
     await expect(page.locator('[data-setting-row="look.atlasFar"]').first()).toBeVisible();
     // Picking Dusk shows at once (the page's look tick once left it out, so
-    // the chip kept saying Bloom), and Bloom puts it back.
-    const farChip = page.getByTestId('setting-look.atlasFar').first();
-    await farChip.click();
-    // By value inside the open picker: the Look pane also has a dark theme named Dusk.
-    const pick = (v: string) => page.locator(`[data-radix-popper-content-wrapper] button[data-value="${v}"]`);
+    // the pick kept saying Bloom), and Bloom puts it back. Two short options
+    // draw as a tray of radios.
+    const far = page.getByTestId('setting-look.atlasFar').first();
+    const pick = (v: string) => far.locator(`[role="radio"][data-value="${v}"]`);
     await pick('dusk').click();
-    await expect(farChip).toContainText('Dusk');
-    await farChip.click();
+    await expect(pick('dusk')).toHaveAttribute('aria-checked', 'true');
     await pick('bloom').click();
-    await expect(farChip).toContainText('Bloom');
+    await expect(pick('bloom')).toHaveAttribute('aria-checked', 'true');
     await page.goto('/');
     await waitForAppReady(page);
     await setScope(page, 'Day');

@@ -1778,7 +1778,8 @@ body {
                  translucent bevel, brighter at the top as a lit key is
                  (--key-bevel-*, shared with Ask's and the do stuff key)
      the rim     a 1px inset hairline
-     the skirt   a 3px edge under the face, which a press sinks 2px into
+     the skirt   a 2px edge under the face, which a press sinks 1px into
+                 (3px and 2px until 2026-11-07, when Kirby found the keys tall)
      the cast    --shadow-key-rest, --shadow-key-pressed on a press
 
    .key-main stands on a LIME skirt: --primary itself, a flat edge, never
@@ -1799,7 +1800,7 @@ body {
   );
   box-shadow:
     inset 0 0 0 1px var(--key-rim),
-    0 3px 0 var(--key-skirt),
+    0 2px 0 var(--key-skirt),
     var(--key-ring),
     var(--shadow-key-rest);
   transition:
@@ -1831,7 +1832,7 @@ body {
   --key-ring: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
 }
 .key:active {
-  translate: 0 2px;
+  translate: 0 1px;
   box-shadow:
     inset 0 0 0 1px var(--key-rim),
     0 1px 0 var(--key-skirt),
@@ -1849,7 +1850,7 @@ body {
   translate: none;
   box-shadow:
     inset 0 0 0 1px var(--key-rim),
-    0 3px 0 var(--key-skirt),
+    0 2px 0 var(--key-skirt),
     var(--key-ring),
     var(--shadow-key-rest);
 }
@@ -1920,6 +1921,95 @@ body {
 }
 [data-layout-skin='retro'] .day-today {
   color: var(--day-today);
+}
+
+/* ─── Trays (components/settings/setting-tray.tsx) ──────────────────────────
+   A pick between two or three named options (Kirby, 2026-11-07, after the
+   done/skip control): a sunk tray, the picked option a raised face with a lime
+   tick. A switch still means on or off. Disabled, the tick goes grey rather
+   than fading, since the accent is never dimmed through opacity. */
+.tray {
+  --tray-well: color-mix(in oklab, var(--surface-3), var(--foreground) 6%);
+  --tray-face: var(--surface-2);
+  --tray-well-shadow:
+    inset 0 1px 2px oklch(0 0 0 / 10%),
+    inset 0 0 0 1px color-mix(in oklab, var(--surface-3), var(--foreground) 9%);
+  --tray-face-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--surface-2), var(--foreground) 8%),
+    0 1px 2px oklch(0 0 0 / 12%), 0 2px 4px oklch(0 0 0 / 6%);
+  display: inline-flex;
+  padding: 2px;
+  border-radius: calc(var(--radius) * 0.5 + 2px);
+  background: var(--tray-well);
+  box-shadow: var(--tray-well-shadow);
+}
+.dark .tray {
+  --tray-well: color-mix(in oklab, var(--surface-0), black 30%);
+  --tray-face: color-mix(in oklab, var(--surface-2), var(--foreground) 9%);
+  --tray-well-shadow: inset 0 1px 2px oklch(0 0 0 / 40%), inset 0 0 0 1px oklch(1 0 0 / 4%);
+  --tray-face-shadow: inset 0 1px 0 oklch(1 0 0 / 6%), 0 1px 2px oklch(0 0 0 / 40%);
+}
+.tray-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: calc(var(--radius) * 0.5);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--muted-foreground);
+  transition:
+    background-color 120ms var(--ease-out-soft),
+    color 120ms var(--ease-out-soft);
+}
+@media (hover: hover) {
+  .tray-option:not([data-picked]):not(:disabled):hover {
+    color: var(--foreground);
+  }
+}
+.tray-option[data-picked] {
+  background: var(--tray-face);
+  box-shadow: var(--tray-face-shadow);
+  color: var(--foreground);
+}
+.tray-option:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ring) 60%, transparent);
+}
+.tray-option[data-picked]:focus-visible {
+  box-shadow: var(--tray-face-shadow), 0 0 0 2px color-mix(in oklab, var(--ring) 60%, transparent);
+}
+.tray-option:disabled {
+  cursor: not-allowed;
+  color: color-mix(in oklab, var(--muted-foreground), transparent 40%);
+}
+.tray-tick {
+  width: 12px;
+  height: 12px;
+  color: var(--primary);
+}
+.tray-option:disabled .tray-tick {
+  color: var(--muted-foreground);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tray-option {
+    transition: none;
+  }
+}
+
+/* A settings card stands a little above the page (Kirby's "A2", 2026-11-07):
+   a hairline a step darker at its foot and a soft cast under it. */
+[data-settings-card] {
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--border), var(--foreground) 8%),
+    0 4px 10px -4px oklch(0 0 0 / 10%);
+}
+.dark [data-settings-card] {
+  box-shadow:
+    0 1px 0 oklch(0 0 0 / 35%),
+    0 4px 10px -4px oklch(0 0 0 / 40%);
 }
 
 /* Timeline day navigation slide animations */
