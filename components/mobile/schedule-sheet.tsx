@@ -16,6 +16,7 @@ import { useUIStore } from '@/lib/ui-store';
 import { useScheduleSheet } from '@/lib/schedule-sheet-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { getItemTypeConfig, isPausable } from '@/lib/item-registry';
+import { deleteConfirmRequest } from '@/lib/item-verbs';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { isRecurring, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import { isPausedOn, suppressionReason, suppressionLabel } from '@/lib/active';
@@ -129,17 +130,13 @@ export function ScheduleSheet() {
 
   const onDelete = () => {
     if (!row) return;
-    const { id, title } = row.item;
+    const { id } = row.item;
     const isTask = row.itemType === 'task';
     close();
-    confirm({
-      title: `Delete ${isTask ? 'Task' : 'Habit'}?`,
-      // The type's own words, as every other delete prompt: to the Trash, not gone.
-      description: getItemTypeConfig(typeName ?? row.itemType).form.deleteDescription(title),
-      confirmLabel: 'Delete',
-      destructive: true,
-      onConfirm: () => (isTask ? deleteTask(id) : deleteHabit(id)),
-    });
+    // The type's own title and words, as every other delete prompt: to the Trash, not gone.
+    confirm(
+      deleteConfirmRequest(row.item, typeName ?? row.itemType, () => (isTask ? deleteTask(id) : deleteHabit(id)))
+    );
   };
 
   return (

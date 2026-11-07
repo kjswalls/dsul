@@ -11,7 +11,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { useUIStore } from '@/lib/ui-store';
+import { Undo2 } from 'lucide-react';
+import { useUIStore, type ConfirmPreview } from '@/lib/ui-store';
 
 /**
  * The one confirm prompt for the whole app, driven by ui-store.confirm().
@@ -87,9 +88,15 @@ export function ConfirmDialog() {
       >
         <AlertDialogHeader>
           <AlertDialogTitle>{shown?.title}</AlertDialogTitle>
-          <AlertDialogDescription>{shown?.description}</AlertDialogDescription>
+          {/* With a preview the row says what is going and the deck says
+              where, so the full sentence stays only for screen readers. */}
+          <AlertDialogDescription className={shown?.preview ? 'sr-only' : undefined}>
+            {shown?.description}
+          </AlertDialogDescription>
+          {shown?.preview && <ConfirmItemRow preview={shown.preview} />}
         </AlertDialogHeader>
         <AlertDialogFooter>
+          {shown?.preview && <ConfirmDeckNote note={shown.preview.note} />}
           <AlertDialogCancel data-testid="confirm-dialog-cancel">Cancel</AlertDialogCancel>
           <AlertDialogAction
             // The confirm LABEL is caller-supplied ('Delete', 'Reset streak',
@@ -104,5 +111,41 @@ export function ConfirmDialog() {
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  );
+}
+
+/**
+ * The item a confirm acts on, drawn as it sits on the planner: the box, the
+ * title, the day or tally (Kirby's "item in hand", 2026-11-07). A picture, not
+ * a control, so it is hidden from screen readers, which hear the description.
+ */
+export function ConfirmItemRow({ preview }: { preview: Pick<ConfirmPreview, 'title' | 'meta'> }) {
+  return (
+    <div
+      aria-hidden="true"
+      data-testid="confirm-dialog-item"
+      className="bg-secondary flex min-w-0 items-center gap-2.5 rounded-[10px] border px-3 py-2.5"
+    >
+      <span className="border-muted-foreground/50 size-4 flex-none rounded-[5px] border-[1.5px]" />
+      <span className="text-foreground min-w-0 flex-1 truncate text-sm">{preview.title}</span>
+      {preview.meta && (
+        <span className="text-muted-foreground flex-none text-xs whitespace-nowrap tabular-nums">
+          {preview.meta}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** The deck's left side on an item confirm: where the item goes. */
+export function ConfirmDeckNote({ note }: { note: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs max-sm:justify-center sm:mr-auto"
+    >
+      <Undo2 className="size-3.5 flex-none" />
+      {note}
+    </span>
   );
 }
