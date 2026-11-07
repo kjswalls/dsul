@@ -3502,7 +3502,7 @@ function ItemDialogInner({
       testId="item-dialog-type-switch"
       alwaysChevron
       // In the rail's top row the type is a quiet label until hovered, so
-      // Reschedule is the row's one boxed control (Kirby's pick B, 2026-11-07).
+      // Reschedule is the row's one boxed control (option B of the 2026-11-07 mocks).
       className={actionsInRail ? 'border-transparent bg-transparent px-1.5 text-[13px] font-medium' : 'font-medium'}
       contentClassName="w-72"
     >
