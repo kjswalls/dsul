@@ -860,12 +860,13 @@
   --sched-shadow-done: var(--shadow-elev-md);
 
   /* The accent emission wash rides its own layer so week columns and done blocks
-     can dial it to zero without touching the plate underneath. Light runs it
-     weaker and reaches further than dark: on white a tint reads at a fraction of
-     the alpha it needs on a dark ground, and the long tail is what makes it a
-     fade rather than a stripe. */
-  --sched-wash: 0.34;
-  --sched-wash-hover: 0.5;
+     can dial it to zero without touching the plate underneath. The gradient is
+     `.sched-lamp` at the end of this file, one recipe per mode; light's is a
+     pale tint rather than the accent itself, so these opacities are not
+     comparable with dark's. The long tail is what makes it a fade rather than a
+     stripe. */
+  --sched-wash: 0.6;
+  --sched-wash-hover: 0.85;
   --sched-wash-reach: 84px;
 
   /* The unlit rail down the lane. Deliberately BELOW hairline contrast: it
@@ -887,7 +888,7 @@
 
      A nested plate is deliberately not glass: there is nothing informative behind
      it, so it has nothing to let through. */
-  --sched-wash-field: 0.2;
+  --sched-wash-field: 0.35;
   --sched-pocket: color-mix(in oklab, var(--surface-3) 45%, transparent);
   /* The lip the child's plate disappears under — same gesture as the pressed-key
      inset, one hair of it. */
@@ -5671,4 +5672,49 @@ body {
 }
 [data-item-deck] [data-slot='property-chip']:not([data-set]) {
   border-color: transparent;
+}
+
+/* ── The schedule block's lamp (components/views/day-schedule.tsx) ──────────
+   The accent wash bleeding off a block's rail-facing edge. The block hands its
+   accent over as --lamp; the recipe lives here so each mode can have its own.
+   Three stops, not two: a bright edge, a fast falloff by 40px, then a long tail
+   out to the reach, which reads as light falling across the card rather than a
+   stripe. Strength is the layer's opacity (--sched-wash, -hover, -field).
+
+   Dark adds the accent itself: on a dark plate a low-alpha accent can only
+   brighten, so it reads as light.
+
+   Light can't do that. The accent (L 0.6 to 0.86) is DARKER than the white
+   plate, so a low-alpha accent over white darkens as much as it tints, and a
+   darkened tint is grey: a coral block washed muddy pink, a slate one plain grey
+   (Kirby, 2026-11-07). Light instead lays down a tint LIGHTER than the accent,
+   the accent's own hue and chroma at L 0.88, at a higher alpha, so the colour
+   arrives without the grey. The card, its glass, shadow and hover lift are
+   untouched. Relative colour syntax, so it sits behind @supports; a browser
+   without it keeps the old recipe. */
+.sched-lamp {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--lamp) 32%, transparent) 0px,
+    color-mix(in oklab, var(--lamp) 12%, transparent) 40px,
+    transparent var(--sched-wash-reach)
+  );
+}
+@supports (color: oklch(from red l c h)) {
+  .sched-lamp {
+    background: linear-gradient(
+      90deg,
+      oklch(from var(--lamp) 0.88 c h / 0.92) 0px,
+      oklch(from var(--lamp) 0.88 c h / 0.37) 40px,
+      oklch(from var(--lamp) 0.88 c h / 0) var(--sched-wash-reach)
+    );
+  }
+}
+.dark .sched-lamp {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--lamp) 32%, transparent) 0px,
+    color-mix(in oklab, var(--lamp) 12%, transparent) 40px,
+    transparent var(--sched-wash-reach)
+  );
 }
