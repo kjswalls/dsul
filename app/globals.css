@@ -5632,11 +5632,13 @@ body {
    the dialog's own radius. In light it is a step toward the well; in dark it
    sinks toward the backdrop. Unset chips drop their dashed outline here: the
    deck is already the frame, and a dashed box inside it read as a hole. */
-[data-item-deck] {
+[data-item-deck],
+[data-slot='alert-dialog-footer'] {
   border-top: 1px solid var(--border);
   background-color: color-mix(in oklab, var(--surface-3), var(--modal) 35%);
 }
-.dark [data-item-deck] {
+.dark [data-item-deck],
+.dark [data-slot='alert-dialog-footer'] {
   background-color: color-mix(in oklab, var(--surface-0), var(--modal) 20%);
 }
 [data-item-deck] [data-slot='property-chip']:not([data-set]) {

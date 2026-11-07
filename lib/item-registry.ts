@@ -214,6 +214,12 @@ export interface ItemTypeConfig {
      * "cannot be undone"; and they must hold on a phone, which has no Trash.
      */
     deleteDescription: (title: string) => string
+    /**
+     * The delete confirm's short deck line, beside Cancel and Delete, while the
+     * item itself is drawn above it (the confirm's "item in hand", 2026-11-07).
+     * `deleteDescription` stays the dialog's accessible description.
+     */
+    deleteNote: string
   }
   ai: {
     /**
@@ -277,6 +283,7 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
       newContainerIcon: 'Briefcase',
       deleteDescription: (title) =>
         `Moves "${title}" to Trash for 30 days, then deletes it for good.`,
+      deleteNote: 'In Trash for 30 days',
     },
     ai: {
       renderContextSection: (items, { todayStr }) => {
@@ -425,6 +432,7 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
       newContainerIcon: 'Star',
       deleteDescription: (title) =>
         `Moves "${title}" and its history to Trash for 30 days, then deletes them for good.`,
+      deleteNote: 'History goes too. In Trash for 30 days',
     },
     ai: {
       renderContextSection: (items, { todayStr }) => {
@@ -551,6 +559,7 @@ export function buildCustomTypeConfig(
       newContainerIcon: 'Star',
       deleteDescription: (title) =>
         `Moves "${title}" to Trash for 30 days, then deletes it for good.`,
+      deleteNote: 'In Trash for 30 days',
     },
     ai: {
       renderContextSection: (items, _ctx) => {

@@ -95,9 +95,22 @@ export type ActiveDialog =
 /** The organizers the "new" dialog can make. Item types are console-only. */
 export type NewContainerKind = 'goal' | 'routine' | 'season' | 'project';
 
+/**
+ * The thing a confirm acts on, drawn as it sits on the planner (Kirby's
+ * "item in hand", 2026-11-07). With one, the confirm shows the row instead of
+ * the description (still its accessible description) and `note` in the deck.
+ */
+export interface ConfirmPreview {
+  title: string;
+  /** The row's muted trailing text: the task's day, or a habit's tally. */
+  meta?: string;
+  note: string;
+}
+
 export interface ConfirmRequest {
   title: string;
   description: string;
+  preview?: ConfirmPreview;
   confirmLabel?: string;
   destructive?: boolean;
   /**

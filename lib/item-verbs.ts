@@ -1,5 +1,5 @@
 import { usePlannerStore } from './planner-store';
-import { useUIStore } from './ui-store';
+import { useUIStore, type ConfirmPreview, type ConfirmRequest } from './ui-store';
 import { streaksEnabled } from './extension-gates';
 import { getItemTypeConfig, itemTypeName } from './item-registry';
 import { toggleRowDone, toggleTaskDone } from './item-toggle';
@@ -237,6 +237,50 @@ export function deleteConfirmTitle(label: string): string {
   return `Delete ${label.toLowerCase()}?`;
 }
 
+/** The fields a delete confirm draws its row from. */
+interface DeletableItem {
+  title: string;
+  startDate?: string;
+  completedDates?: string[];
+}
+
+/**
+ * The delete prompt, one shape for every surface that deletes an item (this
+ * verb, the row's hover delete, the hovered-item shortcut, the phone's
+ * schedule sheet): the type's own title and words, and the item itself drawn
+ * as its row. `typeName` is passed because the legacy projections some
+ * callers hold carry no custom type.
+ */
+export function deleteConfirmRequest(
+  item: DeletableItem,
+  typeName: string,
+  onConfirm: () => void
+): ConfirmRequest {
+  const config = getItemTypeConfig(typeName);
+  return {
+    title: deleteConfirmTitle(config.label),
+    description: config.form.deleteDescription(item.title),
+    preview: deleteConfirmPreview(item, typeName),
+    confirmLabel: 'Delete',
+    destructive: true,
+    onConfirm,
+  };
+}
+
+/** The row a delete confirm draws: a dated item's day, or an undated one's tally. */
+export function deleteConfirmPreview(item: DeletableItem, typeName: string): ConfirmPreview {
+  const config = getItemTypeConfig(typeName);
+  const done = item.completedDates?.length ?? 0;
+  const meta = config.dateAnchored
+    ? item.startDate && /^\d{4}-\d{2}-\d{2}$/.test(item.startDate)
+      ? formatTargetDay(item.startDate)
+      : undefined
+    : done > 0
+      ? `${done} done`
+      : undefined;
+  return { title: item.title, meta, note: config.form.deleteNote };
+}
+
 /**
  * Confirmed, not immediate. Every other verb is a single undo away; this one
  * takes a habit's whole history to the Trash with it, so it goes through the
@@ -248,14 +292,11 @@ const del: ItemVerb = {
   label: () => 'Delete',
   eligible: () => true,
   run: (item) => {
-    const config = getItemTypeConfig(itemTypeName(item));
-    useUIStore.getState().confirm({
-      title: deleteConfirmTitle(config.label),
-      description: config.form.deleteDescription(item.title),
-      confirmLabel: 'Delete',
-      destructive: true,
-      onConfirm: () => (isHabit(item) ? planner().deleteHabit(item.id) : planner().deleteTask(item.id)),
-    });
+    useUIStore.getState().confirm(
+      deleteConfirmRequest(item, itemTypeName(item), () =>
+        isHabit(item) ? planner().deleteHabit(item.id) : planner().deleteTask(item.id)
+      )
+    );
   },
 };
 
