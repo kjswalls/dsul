@@ -1356,7 +1356,7 @@ export function ScheduleBlock({
             <span
               aria-hidden
               className={cn(
-                'pointer-events-none absolute inset-0 z-0 transition-opacity duration-150',
+                'sched-lamp pointer-events-none absolute inset-0 z-0 transition-opacity duration-150',
                 // A container stops being a lamp and becomes the FIELD its contents
                 // are lit against, so its own wash goes ambient. Without this the
                 // child's wash reads as a second light source inside the first.
@@ -1364,13 +1364,9 @@ export function ScheduleBlock({
                   ? 'opacity-[var(--sched-wash-field)]'
                   : 'opacity-[var(--sched-wash)] group-hover/blk:opacity-[var(--sched-wash-hover)]'
               )}
-              style={{
-                background:
-                  `linear-gradient(90deg,` +
-                  ` color-mix(in oklab, ${accent} 32%, transparent) 0px,` +
-                  ` color-mix(in oklab, ${accent} 12%, transparent) 40px,` +
-                  ` transparent var(--sched-wash-reach))`,
-              }}
+              // The gradient itself is `.sched-lamp` in globals.css, one recipe per
+              // mode: the accent only travels here, as --lamp.
+              style={{ '--lamp': accent } as React.CSSProperties}
             />
           )}
 
