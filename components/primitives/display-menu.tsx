@@ -66,6 +66,7 @@ import { accentColorForName } from '@/lib/accent-colors';
 import {
   BRAINDUMP_GROUP_BY_OPTIONS,
   CANVAS_GROUP_BY_OPTIONS,
+  canvasNoneGrouping,
   TYPE_OPTIONS,
   groupBySupport,
   sortByBlockedBy,
@@ -663,9 +664,12 @@ export function DisplayMenu({
   // to switch layout; "your account does not have this feature" is a different
   // sentence, and its home is the extension's own settings pane — where the row
   // still is, because off means inert rather than gone.
-  const groupOptions = (isCanvas ? CANVAS_GROUP_BY_OPTIONS : BRAINDUMP_GROUP_BY_OPTIONS).filter(
-    (o) => o.value !== 'goal' || goalsOn
-  );
+  // Day × List draws 'none' as Habits / Tasks / Projects, so the row names that
+  // instead of "None" (see canvasNoneGrouping). Same value, honest words.
+  const noneShape = isCanvas ? canvasNoneGrouping(scope, view.layout) : null;
+  const groupOptions = (isCanvas ? CANVAS_GROUP_BY_OPTIONS : BRAINDUMP_GROUP_BY_OPTIONS)
+    .filter((o) => o.value !== 'goal' || goalsOn)
+    .map((o) => (o.value === 'none' && noneShape ? { ...o, label: noneShape.label, icon: noneShape.icon } : o));
   const groupLabel = groupOptions.find((o) => o.value === groupBy)?.label ?? 'None';
 
   /**
@@ -695,6 +699,7 @@ export function DisplayMenu({
     goal: previewNames(displayGoals(goals).map((g) => g.name)),
     // The braindump splits its corpus into exactly these two — see braindump.tsx.
     type: 'Tasks, Habits',
+    ...(noneShape ? { none: noneShape.hint } : {}),
   };
   /** How far the CURRENT value reaches on this surface — see groupBySupport. */
   const groupReach = isCanvas

@@ -1853,29 +1853,6 @@ body {
     var(--key-ring),
     var(--shadow-key-rest);
 }
-/* The heading-sized key (Button size="xs"): a 2px skirt, which a press sinks
-   all the way into. */
-.key-xs {
-  box-shadow:
-    inset 0 0 0 1px var(--key-rim),
-    0 2px 0 var(--key-skirt),
-    var(--key-ring),
-    var(--shadow-key-rest);
-}
-.key-xs:active {
-  box-shadow:
-    inset 0 0 0 1px var(--key-rim),
-    0 0 0 var(--key-skirt),
-    var(--key-ring),
-    var(--shadow-key-pressed);
-}
-.key-xs[aria-disabled='true']:active {
-  box-shadow:
-    inset 0 0 0 1px var(--key-rim),
-    0 2px 0 var(--key-skirt),
-    var(--key-ring),
-    var(--shadow-key-rest);
-}
 @media (prefers-reduced-motion: reduce) {
   .key {
     transition: none;
@@ -1895,8 +1872,8 @@ body {
              rim (a half-lime rim read as the lit rim, which is AI's alone);
              a 1.5px skirt
 
-   Today is the lime notch under the number, in --day-today, so lime in a
-   calendar means "today" and nothing else. Unlayered, like .key: these
+   Today is its number lit in lime (.day-today), on the picked key too, so
+   lime in a calendar means "today" and nothing else. Unlayered, like .key: these
    box-shadows must beat the focus ring utilities, so the ring is redrawn. */
 .picked-key {
   --picked-key-face: var(--surface-2);
@@ -1929,26 +1906,20 @@ body {
 .picked-key:focus-visible {
   --picked-key-ring: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
 }
+/* Today's number, lit (Kirby's "H1", 2026-11-06). Bright lime reads as text
+   only on a dark surface; on white it takes the accent's own hue a step
+   deeper, so a theme that recolours the accent recolours this too. The retro
+   skins choose their own --day-today, and keep it. */
 .day-today {
-  position: relative;
   color: var(--day-today);
-  font-weight: 600;
+  color: oklch(from var(--primary) calc(l - 0.26) c h);
+  font-weight: 700;
 }
-.day-today::after {
-  content: '';
-  position: absolute;
-  bottom: 4px;
-  left: 50%;
-  width: 10px;
-  height: 2px;
-  margin-left: -5px;
-  border-radius: 1px;
-  background: var(--primary);
-  pointer-events: none;
+.dark .day-today {
+  color: var(--primary);
 }
-/* On a picked key the number goes back to ink; the notch stays. */
-.day-today.picked-key {
-  color: var(--foreground);
+[data-layout-skin='retro'] .day-today {
+  color: var(--day-today);
 }
 
 /* Timeline day navigation slide animations */
@@ -2388,7 +2359,7 @@ body {
   initial-value: transparent;
 }
 
-:is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
+:is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count], [data-ai-tile]) {
   --ask-icon-ink: oklch(0.62 0.135 85);
   --ask-icon-lit: var(--ai);
   --ask-icon-accent: var(--lime-solid);
@@ -2398,7 +2369,7 @@ body {
   --ask-icon-unlit: var(--ink-1);
   --ask-icon-unlit-mid: var(--ink-2);
 }
-.dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
+.dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count], [data-ai-tile]) {
   --ask-icon-ink: var(--ai);
   --ask-icon-pair: oklch(0.84 0.12 190);
   --ask-icon-pair-ink: var(--ask-icon-pair);
@@ -2406,26 +2377,26 @@ body {
 /* Each look's partner: light from its light relay colour, dark from its glow
    (Sorbet's is a deep rose beside the pink; an apricot read rust there). The
    tints keep Paper's and Night's. */
-:root[data-look-light='studio']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
+:root[data-look-light='studio']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count], [data-ai-tile]) {
   --ask-icon-pair: oklch(0.65 0.13 225);
   --ask-icon-pair-ink: var(--ask-icon-pair);
 }
-:root[data-look-light='sorbet']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
+:root[data-look-light='sorbet']:not(.dark) :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count], [data-ai-tile]) {
   --ask-icon-pair: oklch(0.64 0.15 18);
 }
-:root[data-look-dark='terminal'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
+:root[data-look-dark='terminal'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count], [data-ai-tile]) {
   --ask-icon-pair: oklch(0.86 0.12 90);
 }
-:root[data-look-dark='dusk'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
+:root[data-look-dark='dusk'].dark :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count], [data-ai-tile]) {
   --ask-icon-pair: oklch(0.76 0.12 350);
 }
 /* After the looks, and as specific: Notepad Retro's skin re-points the accent
    under whichever look is on, so its partner has to win over theirs too. */
-:root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
+:root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count], [data-ai-tile]) {
   --ask-icon-pair: oklch(0.66 0.11 210);
   --ask-icon-pair-ink: var(--ask-icon-pair);
 }
-:root.dark [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count]) {
+:root.dark [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark], [data-do-key], [data-agent-chip], [data-ai-relay], [data-ai-chip], [data-ask-count], [data-ai-tile]) {
   --ask-icon-pair: oklch(0.8 0.1 215);
 }
 
@@ -2855,6 +2826,17 @@ body {
     linear-gradient(var(--agent-chip-fill), var(--agent-chip-fill)) padding-box,
     radial-gradient(circle at 10px 50%, var(--ask-icon-accent) 0, var(--ask-icon-pair) 18px, var(--agent-chip-rim) 40px)
       border-box;
+}
+/* A History row the AI, an agent or a recipe wrote (components/planner/
+   item-history.tsx): the tile's rim in the aurora, the accent into its
+   partner, around the popover's own surface. Never a fill: the lime stays a
+   line, at full strength. */
+[data-ai-tile] {
+  border: 1px solid transparent;
+  color: var(--ask-icon-pair-ink);
+  background:
+    linear-gradient(var(--popover), var(--popover)) padding-box,
+    linear-gradient(135deg, var(--ask-icon-accent), var(--ask-icon-pair)) border-box;
 }
 [data-agent-chip] [data-agent-chip-dot] {
   width: 6px;

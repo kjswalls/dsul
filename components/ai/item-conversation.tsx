@@ -153,7 +153,10 @@ export function ItemConversation({
   const inputRef = useRef<HTMLInputElement>(null);
   const prevCount = useRef(0);
   const inline = mode === 'inline';
-  const events = useItemEvents(item, canChat);
+  // The desktop rail draws the chat alone; its changes are in ⋯ › History
+  // (the item panel beta, 2026-11-06). Every other shape keeps one stream.
+  const chatOnly = mode === 'pinned';
+  const events = useItemEvents(item, canChat && !chatOnly);
   // Runs of changes opened, by the run's key (its oldest line's, which a new
   // change never moves).
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
@@ -177,14 +180,14 @@ export function ItemConversation({
   const noteRows = useMemo(() => noteEntries(notes ?? [], notePlacedAt), [notes, notePlacedAt]);
   const slots = useMemo(
     () =>
-      buildStream(getItemEventsAvailable() ? (events ?? []) : [], messages, {
+      buildStream(getItemEventsAvailable() && !chatOnly ? (events ?? []) : [], messages, {
         filter: 'all',
         now: new Date(),
         unfolded,
         files,
         notes: noteRows,
       }),
-    [events, messages, unfolded, files, noteRows]
+    [events, messages, unfolded, files, noteRows, chatOnly]
   );
   const anyChange = slots.some((rows) => rows.some((r) => r.kind !== 'day'));
 
@@ -248,7 +251,7 @@ export function ItemConversation({
   const rowsAt = (i: number) => <StreamRows itemId={item.id} rows={slots[i] ?? []} onOpen={open} />;
   const heading = (menu: ReactNode) => (
     <div className="flex min-h-6 items-center justify-between gap-2">
-      {(anyChange || messages.length > 0) && <BandLabel>Timeline</BandLabel>}
+      {(anyChange || messages.length > 0) && <BandLabel>{chatOnly ? 'Chat' : 'Timeline'}</BandLabel>}
       <div className="ml-auto flex items-center gap-1">{menu}</div>
     </div>
   );

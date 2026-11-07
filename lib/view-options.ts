@@ -117,6 +117,26 @@ export const CANVAS_GROUP_BY_OPTIONS: ViewOption<GroupBy>[] = [
 ];
 
 /**
+ * What 'none' draws on this surface, when it is not a flat list.
+ *
+ * Day × List renders 'none' as three sections, Habits / Tasks / Projects
+ * (`defaultListGroups` in components/views/day-list.tsx), so a Grouping row that
+ * said "None" over them was describing a different screen. The value stays
+ * 'none' (nothing is stored, and Reset still lands here); only its words change
+ * where the view gives it a shape. Every other surface's 'none' is a flat list
+ * or the layout's own partition, and keeps the plain "None".
+ */
+export function canvasNoneGrouping(
+  scope: ViewScope,
+  layout: ViewLayout
+): { label: string; hint: string; icon: ViewOption<GroupBy>['icon'] } | null {
+  if (scope === 'day' && layout === 'list') {
+    return { label: 'Type', hint: 'Habits, Tasks, Projects', icon: Shapes };
+  }
+  return null;
+}
+
+/**
  * How much of the CURRENT view a group-by value actually reaches.
  *
  * Three states, not two, because Phase 5a made "partly" the common case:

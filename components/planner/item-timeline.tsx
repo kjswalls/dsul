@@ -45,6 +45,7 @@ import { cn } from '@/lib/utils';
  */
 
 const NO_MESSAGES: ChatMessage[] = [];
+const NO_EVENTS: ItemEvent[] = [];
 
 /** Fetched again this long after the item last changed, so a save shows up without a reload. */
 const REFETCH_MS = 800;
@@ -160,8 +161,11 @@ export function TimelineRunLine({ run, onOpen }: { run: RunRow; onOpen: () => vo
   );
 }
 
-export function ItemTimeline({ item }: { item: Item }) {
-  const events = useItemEvents(item);
+export function ItemTimeline({ item, changes = true }: { item: Item; changes?: boolean }) {
+  // `changes={false}` is the desktop panel's: its changes are in ⋯ › History
+  // (the item panel beta, 2026-11-06), so only files and notes stay here.
+  const fetched = useItemEvents(item, changes);
+  const events = changes ? fetched : NO_EVENTS;
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
   const { canChat } = useAICapabilities();
   const threadId = useConversationsStore((s) => itemThreadId(s, item.id));
@@ -220,14 +224,14 @@ export function ItemTimeline({ item }: { item: Item }) {
   );
 
   const nothing =
-    !anything || (!getItemEventsAvailable() && talk.length === 0 && files.length === 0 && noteRows.length === 0);
+    !anything || ((!changes || !getItemEventsAvailable()) && talk.length === 0 && files.length === 0 && noteRows.length === 0);
   if (nothing) return null;
 
   return (
     <section data-testid="item-timeline" aria-labelledby={`item-timeline-${item.id}`} className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <BandLabel>
-          <span id={`item-timeline-${item.id}`}>Timeline</span>
+          <span id={`item-timeline-${item.id}`}>{changes ? 'Timeline' : 'Files and notes'}</span>
         </BandLabel>
       </div>
       {days.length === 0 ? (

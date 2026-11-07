@@ -172,7 +172,7 @@ describe('the timeline', () => {
 });
 
 describe('the timeline inside the conversation', () => {
-  it('is one stream: each change sits between the messages by time, and no second timeline', async () => {
+  it('is chat only in the desktop rail: its changes are in History, never between the messages', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     fetchItemEvents.mockResolvedValue(events);
     withThread();
@@ -180,14 +180,31 @@ describe('the timeline inside the conversation', () => {
     render(<ItemConversation item={ITEM} mode="pinned" />);
     await act(async () => {});
     const section = screen.getByTestId('item-conversation');
-    // One "Timeline" heading and no filter.
+    expect(section).toHaveTextContent('Chat');
+    expect(section).not.toHaveTextContent('Timeline');
+    const text = section.textContent ?? '';
+    const order = ['hi', 'hello'].map((t) => text.indexOf(t));
+    expect(order.every((at) => at >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(text).not.toContain('You added it');
+    expect(screen.queryAllByTestId('item-timeline-change')).toHaveLength(0);
+    expect(fetchItemEvents).not.toHaveBeenCalled();
+  });
+
+  it('is one stream elsewhere: each change sits between the messages by time', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    fetchItemEvents.mockResolvedValue(events);
+    withThread();
+    useConversationsStore.setState({ resolveItemThread: async () => 'c1', openThread: async () => {} } as never);
+    render(<ItemConversation item={ITEM} mode="inline" />);
+    await act(async () => {});
+    const section = screen.getByTestId('item-thread');
     expect(section).toHaveTextContent('Timeline');
     expect(screen.queryByTestId('item-timeline-filter')).toBeNull();
     const text = section.textContent ?? '';
     const order = ['You added it', 'hi', 'hello', 'AI renamed it'].map((t) => text.indexOf(t));
     expect(order.every((at) => at >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
-    expect(screen.queryByTestId('item-timeline-talk')).toBeNull();
     expect(screen.getAllByTestId('item-timeline-change')).toHaveLength(2);
   });
 });
