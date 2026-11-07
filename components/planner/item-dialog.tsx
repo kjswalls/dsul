@@ -18,6 +18,7 @@ import {
   Check,
   Clock,
   Flag,
+  Folder,
   Moon,
   Bell,
   Pause as PauseIcon,
@@ -104,6 +105,7 @@ import {
   ChipOption,
   ChipSectionLabel,
   PropertyChip,
+  PropertyChipCompact,
 } from '@/components/primitives/property-chip';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useAwayStore } from '@/lib/away-store';
@@ -1432,7 +1434,14 @@ function ItemDialogInner({
    */
   /** A seed-menu row that is not a chip: what it opens is the caller's, and takes focus. */
   type SeedExtra = { key: string; label: string; icon: LucideIcon; onSelect: () => void };
-  const renderChips = (type: string, d: ItemDraft, lead?: ReactNode, extraSeed: readonly SeedExtra[] = []) => {
+  const renderChips = (
+    type: string,
+    d: ItemDraft,
+    lead?: ReactNode,
+    extraSeed: readonly SeedExtra[] = [],
+    /** The deck: every common property out at rest as a bare icon (see below). */
+    compact = false
+  ) => {
     const config = getItemTypeConfig(type);
     const patch = (updates: Partial<ItemDraft>) => patchDraft(type, updates);
     /**
@@ -1676,6 +1685,8 @@ function ItemDialogInner({
     const containerControl = (
       <PropertyChip
         icon={Plus}
+        // A bare "+" in the deck's icon row would read as "add property".
+        compactIcon={Folder}
         swatch={d.container === 'none' ? undefined : containerColor(d.container)}
         swatchShape="square"
         // No band label carries the noun any more, so the chip carries it
@@ -2671,14 +2682,26 @@ function ItemDialogInner({
       ),
     ];
 
-    const shows = (p: ClearingProp) => p.can && (p.set || p.required || revealed.has(p.key));
+    // The deck (Kirby's pick "C", 2026-11-06): on the add dialog's deck there
+    // is no "hidden while unset". The When cluster, priority and the project
+    // are out at rest as bare icons (PropertyChipCompact), and they grow their
+    // words once they hold a value; only the rarer containers (routine,
+    // season, goal) still wait behind the seed.
+    const atRest = (p: ClearingProp) => compact && (p.group !== 'container' || p.key === 'project');
+    const shows = (p: ClearingProp) =>
+      p.can && (p.set || p.required || revealed.has(p.key) || atRest(p));
     const visible = props.filter(shows);
     const leadWhen = visible.filter((p) => p.group !== 'container');
     const containerVisible = visible.filter((p) => p.group === 'container');
-    const seedItems = props.filter((p) => p.can && !p.set && !p.required && !revealed.has(p.key));
+    const seedItems = props.filter((p) => p.can && !shows(p));
 
     return (
-      <div className="flex flex-wrap items-center gap-1.5" data-testid="item-clearing-field">
+      <PropertyChipCompact value={compact}>
+      <div
+        className="flex flex-wrap items-center gap-1.5"
+        data-testid="item-clearing-field"
+        data-compact={compact || undefined}
+      >
         {lead}
         {leadWhen.map((p) => (
           <Fragment key={p.key}>{p.node}</Fragment>
@@ -2751,6 +2774,7 @@ function ItemDialogInner({
           </PropertyChip>
         )}
       </div>
+      </PropertyChipCompact>
     );
   };
 
@@ -3707,7 +3731,8 @@ function ItemDialogInner({
           // Notes leads the seed while the docked panel hides the empty field.
           hideEmptyNotes && !showNotes && editItem && activeConfig.fields.includes('notes')
             ? [{ key: 'notes', label: 'Notes', icon: AlignLeft, onSelect: () => setNotesSummonedFor(editItem.id) }]
-            : []
+            : [],
+          deck
         )
       : null;
 
@@ -4020,7 +4045,15 @@ function ItemDialogInner({
                     aria-keyshortcuts="Enter"
                     className="max-sm:w-full"
                   >
-                    {mode === 'add' ? `Add ${activeConfig.label}` : 'Save changes'}
+                    {mode === 'add'
+                      ? `Add ${
+                          // Sentence case for the built-in nouns ("Add task");
+                          // a custom type's name is the user's own spelling.
+                          (ALL_ITEM_TYPES as readonly string[]).includes(activeTypeName)
+                            ? activeConfig.label.toLowerCase()
+                            : activeConfig.label
+                        }`
+                      : 'Save changes'}
                     <ButtonKey />
                   </Button>
                 </div>

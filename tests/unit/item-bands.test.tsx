@@ -396,19 +396,35 @@ describe('the capture surface gets the field too', () => {
     expect(bandLabels()).toEqual([]);
   });
 
-  it('folds an unset property into the seed instead of drawing an empty row', () => {
+  /** The deck's bare-icon chips, by the noun they carry as their name. */
+  const iconChips = () =>
+    Array.from(field().querySelectorAll('[data-icon-only]')).map((b) => b.getAttribute('aria-label'));
+
+  it('lays the common properties out as bare icons on the deck, the rare containers in the seed', () => {
+    // The deck (Kirby's pick "C", 2026-11-06): no empty labelled row, and no
+    // noun either. Priority and the project sit at rest as icons named by
+    // their noun; routine, season and goal still wait behind the seed.
     capture();
-    // Priority left the header for the field, and a fresh task has none — so it
-    // is reachable BY NAME from the seed rather than parked unset on screen.
+    expect(field().getAttribute('data-compact')).toBe('true');
+    expect(iconChips()).toEqual(expect.arrayContaining(['Priority', CONTAINER_KINDS.project.label]));
     expect(field().textContent).not.toContain('Priority');
     for (const kind of ['project', 'routine', 'season', 'goal'] as const) {
       expect(field().textContent).not.toContain(CONTAINER_KINDS[kind].label);
     }
     fireEvent.click(screen.getByTestId('item-clearing-seed'));
-    expect(seedOptions().some((t) => t.includes('Priority'))).toBe(true);
-    for (const kind of ['project', 'routine', 'season', 'goal'] as const) {
+    expect(seedOptions().some((t) => t.includes('Priority'))).toBe(false);
+    expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.project.label))).toBe(false);
+    for (const kind of ['routine', 'season', 'goal'] as const) {
       expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS[kind].label))).toBe(true);
     }
+  });
+
+  it('opens a bare icon straight into its picker', () => {
+    capture();
+    const date = field().querySelector<HTMLElement>('[data-icon-only][aria-label="Date"]');
+    expect(date?.getAttribute('title')).toBe('Date');
+    fireEvent.click(date!);
+    expect(document.querySelectorAll('[data-radix-popper-content-wrapper]')).toHaveLength(1);
   });
 
   it('folds the WHEN cluster away too — the rows the complaint was actually about', () => {
@@ -424,17 +440,15 @@ describe('the capture surface gets the field too', () => {
      * affordance this layout exists to delete. This test is what fails instead.
      */
     capture(); // an undated task: the braindump / omnibar capture path
+    // On the deck they are bare icons: there at rest, but no word on screen.
     for (const noun of ['Date', 'Repeat', 'Remind']) {
       expect(field().textContent).not.toContain(noun);
+      expect(iconChips()).toContain(noun);
     }
     // A dateless task is not date-anchored ANYWHERE yet, so Time goes with it —
     // `showTime` is a capability question, not a value one.
     expect(field().textContent).not.toContain('Time');
-    // Absent from the field, present in the seed: folded, never removed.
-    fireEvent.click(screen.getByTestId('item-clearing-seed'));
-    for (const noun of ['Date', 'Repeat', 'Remind']) {
-      expect(seedOptions().some((t) => t.includes(noun))).toBe(true);
-    }
+    expect(iconChips()).not.toContain('Time');
   });
 
   it('keeps what the open ALREADY set on screen — the date you added from', () => {
@@ -457,13 +471,9 @@ describe('the capture surface gets the field too', () => {
     // value, defaulting to 1×), and flipping that to false silently drops it
     // into the seed on every surface with nothing else in the suite noticing.
     expect(field().textContent).toContain('1×');
-    expect(screen.queryByTestId('item-dialog-container-chip')).toBeNull();
-  });
-
-  it("offers a habit's project in the seed, as it does a task's", () => {
-    capture('habit');
-    fireEvent.click(screen.getByTestId('item-clearing-seed'));
-    expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.project.label))).toBe(true);
+    // Its project is optional and unset: a bare icon, never a word.
+    const project = screen.getByTestId('item-dialog-container-chip');
+    expect(project.hasAttribute('data-icon-only')).toBe(true);
   });
 
   it('picks the type when adding and switches it when editing', () => {
@@ -772,9 +782,11 @@ describe('a property summoned from the seed opens its own picker', () => {
    * back to its trigger (Radix's default) and strand the new picker unfocused;
    * that return runs on a timeout, hence the flush before the focus check.
    */
+  // The capture modal's deck lays the common properties out at rest, so its
+  // seed holds only the rarer containers.
   const surfaces = [
-    ['the capture modal (add)', () => capture()],
-    ['the panel (edit)', () => panel()],
+    ['the capture modal (add)', () => capture(), 2],
+    ['the panel (edit)', () => panel(), 3],
   ] as const;
 
   const seedKeys = () => {
@@ -786,11 +798,11 @@ describe('a property summoned from the seed opens its own picker', () => {
     return keys;
   };
 
-  for (const [name, mount] of surfaces) {
+  for (const [name, mount, atLeast] of surfaces) {
     it(`opens and focuses every revealed picker on ${name}`, async () => {
       mount();
       const keys = seedKeys();
-      expect(keys.length).toBeGreaterThan(3);
+      expect(keys.length).toBeGreaterThan(atLeast);
       cleanup();
       for (const key of keys) {
         mount();

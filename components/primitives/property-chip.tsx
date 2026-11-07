@@ -1,9 +1,20 @@
 'use client';
 
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, X, type LucideIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+
+/**
+ * The add dialog's deck lays every common property out at rest, and there is
+ * room for that only if an UNSET chip is its icon alone (Kirby's pick "C",
+ * 2026-11-06, mock at /mnt/project-files/add-dialog-props/). Inside this
+ * provider an unset chip with an icon drops its noun and caret, keeping the
+ * noun as its accessible name and tooltip; it grows its words once it holds a
+ * value. Everywhere else the rule below stands.
+ */
+const CompactUnset = createContext(false);
+export const PropertyChipCompact = CompactUnset.Provider;
 
 /**
  * One property of an item, as a chip that opens its own picker.
@@ -39,6 +50,7 @@ export function PropertyChip({
   onCloseAutoFocus,
   onClear,
   clearLabel,
+  compactIcon,
 }: {
   icon?: LucideIcon;
   /** Lets a <label htmlFor> point at the trigger. Without it the association is
@@ -83,9 +95,15 @@ export function PropertyChip({
   onClear?: () => void;
   /** The ×'s accessible name — "Remove from Chores". Defaults to "Clear <label>". */
   clearLabel?: string;
+  /** The icon an unset chip shows inside PropertyChipCompact, when `icon`
+   *  only makes sense beside its noun (a container's "+ Project"). */
+  compactIcon?: LucideIcon;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const isSet = !!value;
+  const compact = useContext(CompactUnset);
+  const ShownIcon = !isSet && compact && compactIcon ? compactIcon : Icon;
+  const iconOnly = compact && !isSet && !swatch && !glyph && !!ShownIcon;
   const clearable = isSet && !!onClear;
 
   // These pickers are portalled outside the Dialog, so the modal's scroll lock
@@ -126,12 +144,14 @@ export function PropertyChip({
         <button
           type="button"
           id={id}
-          aria-label={ariaLabel}
+          aria-label={ariaLabel ?? (iconOnly ? label : undefined)}
+          title={iconOnly ? label : undefined}
           aria-describedby={ariaDescribedBy}
           disabled={disabled}
           data-testid={testId}
           data-slot="property-chip"
           data-set={isSet || undefined}
+          data-icon-only={iconOnly || undefined}
           className={cn(
             'inline-flex h-7 min-w-0 max-w-full items-center gap-1.5 rounded-sm border px-2.5',
             'text-xs transition-colors disabled:pointer-events-none disabled:opacity-50',
@@ -145,6 +165,7 @@ export function PropertyChip({
             // The × sits flush against the right edge, so the pair reads as
             // one pill: square the join, and trim the padding before it.
             clearable && 'rounded-r-none pr-1.5',
+            iconOnly && 'w-7 justify-center px-0',
             className
           )}
         >
@@ -159,11 +180,11 @@ export function PropertyChip({
             />
           ) : glyph ? (
             <span className="flex shrink-0 items-center">{glyph}</span>
-          ) : Icon ? (
-            <Icon className="size-3 shrink-0" aria-hidden />
+          ) : ShownIcon ? (
+            <ShownIcon className="size-3 shrink-0" aria-hidden />
           ) : null}
-          <span className="truncate">{(isSet && display) || value || label}</span>
-          {!isSet || alwaysChevron ? (
+          {!iconOnly && <span className="truncate">{(isSet && display) || value || label}</span>}
+          {(!isSet && !iconOnly) || alwaysChevron ? (
             <ChevronDown className="size-3 shrink-0 opacity-60" aria-hidden />
           ) : null}
         </button>
