@@ -3229,7 +3229,7 @@ function ItemDialogInner({
               type="button"
               data-testid="item-dialog-reschedule"
               aria-label="Reschedule"
-              className="mr-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[7px] border border-border bg-surface-2 pr-1 pl-1.5 text-foreground shadow-sm transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:bg-accent"
+              className="mr-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[7px] border border-border pr-1 pl-1.5 text-foreground transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:bg-accent"
             >
               <CalendarClock className="size-3.5" aria-hidden />
               <ChevronDown className="size-3 text-muted-foreground" aria-hidden />
@@ -3501,7 +3501,9 @@ function ItemDialogInner({
       ariaLabel={`Type: ${activeConfig.label}. Change type`}
       testId="item-dialog-type-switch"
       alwaysChevron
-      className="font-medium"
+      // In the rail's top row the type is a quiet label until hovered, so
+      // Reschedule is the row's one boxed control (Kirby's pick B, 2026-11-07).
+      className={actionsInRail ? 'border-transparent bg-transparent px-1.5 text-[13px] font-medium' : 'font-medium'}
       contentClassName="w-72"
     >
       {(close) => (
@@ -3712,10 +3714,12 @@ function ItemDialogInner({
   // The tick: beside the title, or on the folded strip while the chat has the
   // panel (one at a time, so there is only ever one). Its own element, never
   // inside anything dimmed: the lime is never faded.
-  const tickBox =
+  // The folded line's tick is a size smaller than the title's, so it sits on
+  // the header's grid: centred under ‹, the title then starting under the type.
+  const tickBoxAt = (size: string) =>
     railTick && editItem ? (
       <RailDoneCheck
-        className="size-[18px]"
+        className={size}
         done={isDoneOn(editItem, railTick.dateStr)}
         partial={railTarget > 1 ? Math.min(railCount, railTarget) / railTarget : 0}
         label={ITEM_VERBS.tick.label(editItem, railTick)}
@@ -3729,6 +3733,7 @@ function ItemDialogInner({
         }}
       />
     ) : null;
+  const tickBox = tickBoxAt('size-[18px]');
 
   // The capture modal's deck (Kirby's pick in the keycap round, 2026-11-05):
   // on the desktop modal the body holds only words (type, title, notes), and a
@@ -3850,7 +3855,6 @@ function ItemDialogInner({
                   <>
                     {rescheduleMenu}
                     {attachInMenu && attachPicker.input}
-                    {rescheduleMenu && <span className="mx-1 h-4 w-px bg-border" aria-hidden />}
                     {moreMenu}
                     {openPageButton}
                   </>
@@ -3869,8 +3873,8 @@ function ItemDialogInner({
               the chat scrolls. */}
           {foldable && editItem && activeDraft && (
             <FoldRegion open={folded} testId="item-rail-region">
-              <div className="flex items-center gap-2.5 border-b border-border px-5 pb-2">
-                {folded && tickBox}
+              <div className={cn('flex items-center border-b border-border px-5 pb-2', folded ? 'gap-5' : 'gap-2.5')}>
+                {folded && tickBoxAt('size-4')}
                 <ItemRail
                   className="mx-0 w-auto flex-1"
                   title={activeDraft.title}
