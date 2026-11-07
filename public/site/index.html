@@ -49,15 +49,8 @@ a{color:var(--ink)}a:hover{color:oklch(1 0 0)}
 :focus-visible{outline:2px solid var(--lime);outline-offset:2px}
 .ky-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .ky-mono{font-family:"Geist Mono",ui-monospace,monospace}
-.ky-field{position:absolute;left:50%;top:0;transform:translateX(-50%);display:grid;grid-auto-rows:32px;-webkit-mask-image:radial-gradient(ellipse 58% 62% at 50% 40%,#000 28%,transparent 100%);mask-image:radial-gradient(ellipse 58% 62% at 50% 40%,#000 28%,transparent 100%);pointer-events:none;z-index:0}
+.ky-field{position:absolute;left:50%;top:0;transform:translateX(-50%);display:block;mix-blend-mode:plus-lighter;pointer-events:none;z-index:0}
 .ky-scrim{position:absolute;left:0;right:0;top:0;height:640px;background:radial-gradient(ellipse 34% 40% at 50% 42%,oklch(0.145 0.004 286 / 78%),oklch(0.145 0.004 286 / 0%));pointer-events:none;z-index:0}
-.ky-tile{position:relative;mix-blend-mode:plus-lighter}
-.ky-pulse{position:absolute;inset:-15px;border-radius:50%;background:radial-gradient(closest-side,color-mix(in oklch,currentColor 24%,transparent),transparent);opacity:.05;animation:ky-pulse 3.6s linear infinite}
-.ky-pulse::before{content:"";position:absolute;left:15.5px;top:15.5px;width:31px;height:31px;border-radius:6px;background:color-mix(in oklch,currentColor 14%,transparent)}
-.ky-pulse::after{content:"";position:absolute;left:22.5px;top:22.5px;width:17px;height:17px;border-radius:4px;background:color-mix(in oklch,currentColor 85%,transparent)}
-@keyframes ky-pulse{0%{opacity:.05}12%{opacity:1}36%{opacity:.05}100%{opacity:.05}}
-.ky-field.ky-rest .ky-pulse{animation-play-state:paused}
-@media (prefers-reduced-motion:reduce){.ky-pulse{animation:none;opacity:.5}}
 .ky-h{background:linear-gradient(180deg,oklch(0.99 0 0) 30%,oklch(0.72 0.01 286));-webkit-background-clip:text;background-clip:text;color:transparent}
 .ky-h1{margin:0;font-size:clamp(40px,6.2vw,76px);line-height:1.02;letter-spacing:-0.05em;font-weight:600;white-space:pre-line;text-wrap:balance}
 .ky-btn{display:inline-flex;align-items:center;gap:10px;min-height:44px;padding:0 18px;border-radius:10px;font-weight:500;font-size:15px;text-decoration:none}
@@ -183,7 +176,7 @@ html:not([data-in]) .ky-if-in,html[data-in] .ky-if-out{display:none}
   <main>
   <!-- hero -->
   <section id="top" class="ky-wrap" style="position: relative; padding-top: 96px">
-    <div class="ky-field" id="ky-field" aria-hidden="true"></div>
+    <canvas class="ky-field" id="ky-field" aria-hidden="true"></canvas>
     <div class="ky-scrim" aria-hidden="true"></div>
     <div style="position: relative; z-index: 1; max-width: 1040px; margin: 0 auto; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 22px">
       <a href="#join" style="display: inline-flex; align-items: center; gap: 10px; padding: 6px 12px 6px 6px; border-radius: 999px; background: oklch(0.2 0.004 286); border: 1px solid oklch(1 0 0 / 9%); font-size: 13px; color: oklch(0.8 0.008 286); text-decoration: none">
@@ -625,44 +618,109 @@ doing today?</h2>
   };
 
   // ── the relay field behind the hero ─────────────────────────────────────
+  // One canvas, not ~1,700 animated, blended, masked divs: the browser composited
+  // every tile as its own layer each frame, and that was the hero's lag. Each tile
+  // is one pre-drawn sprite per colour, stamped with additive blending ('lighter',
+  // and the canvas itself is plus-lighter over the page, as the tiles were). The
+  // radial mask is folded into each tile's alpha, so nothing is masked per frame.
   var field = document.getElementById('ky-field');
   var palette = ['oklch(0.87 0.19 125)', 'oklch(0.87 0.19 125)', 'oklch(0.87 0.19 125)', 'oklch(0.76 0.13 125)', 'oklch(0.66 0.1 55)', 'oklch(0.72 0.1 85)', 'oklch(0.66 0.09 190)', 'oklch(0.64 0.11 265)', 'oklch(0.66 0.1 140)'];
-  var ROWS = 34, MAX_COLS = 52, PERIOD = 3.6, INTENSITY = 0.7;
-  var builtCols = 0;
+  var ROWS = 34, MAX_COLS = 52, PERIOD = 3.6, INTENSITY = 0.7, CELL = 32, SPRITE = 62;
+  var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var ctx = field && field.getContext && field.getContext('2d');
+  var tiles = [], sprites = {}, dpr = 1, builtCols = 0, onScreen = true, raf = 0;
   function hash(i, seed) { var r = 43758.5453 * Math.sin((i + 1) * 12.9898 + 78.233 * seed); return r - Math.floor(r); }
-  function colsFor(width) { return Math.min(MAX_COLS, Math.ceil(width / 32) + 4); }
+  function colsFor(width) { return Math.min(MAX_COLS, Math.ceil(width / CELL) + 4); }
+  // The old .ky-pulse: a soft glow, a faint 31px square and a bright 17px one.
+  function sprite(color) {
+    if (sprites[color]) return sprites[color];
+    var c = document.createElement('canvas'), n = Math.ceil(SPRITE * dpr);
+    c.width = c.height = n;
+    var g = c.getContext('2d');
+    g.scale(dpr, dpr);
+    g.fillStyle = color;
+    var probe = g.fillStyle; // the colour as the canvas parsed it
+    var glow = g.createRadialGradient(31, 31, 0, 31, 31, 31);
+    glow.addColorStop(0, probe); glow.addColorStop(1, 'transparent');
+    g.globalAlpha = 0.24; g.fillStyle = glow; g.fillRect(0, 0, SPRITE, SPRITE);
+    g.fillStyle = probe;
+    g.globalAlpha = 0.14; rr(g, 15.5, 15.5, 31, 31, 6);
+    g.globalAlpha = 0.85; rr(g, 22.5, 22.5, 17, 17, 4);
+    return (sprites[color] = c);
+  }
+  function rr(g, x, y, w, h, r) {
+    g.beginPath();
+    if (g.roundRect) g.roundRect(x, y, w, h, r); else g.rect(x, y, w, h);
+    g.fill();
+  }
+  // The keyframes: .05, up to 1 by 12%, back to .05 by 36%, resting the rest.
+  function pulse(t) {
+    if (t < 0.12) return 0.05 + 0.95 * (t / 0.12);
+    if (t < 0.36) return 1 - 0.95 * ((t - 0.12) / 0.24);
+    return 0.05;
+  }
   function buildField() {
     var cols = colsFor(window.innerWidth);
-    if (!field || cols <= builtCols) return;
+    if (!ctx || cols <= builtCols) return;
     builtCols = cols;
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    sprites = {};
+    var w = cols * CELL, h = ROWS * CELL;
+    field.width = Math.ceil(w * dpr); field.height = Math.ceil(h * dpr);
+    field.style.width = w + 'px'; field.style.height = h + 'px';
     var fx = cols * 0.5, fy = ROWS * 0.36, maxD = Math.hypot(fx, fy);
-    var frag = document.createDocumentFragment();
+    tiles = [];
     for (var r = 0; r < ROWS; r++) {
       for (var c = 0; c < cols; c++) {
         var i = r * MAX_COLS + c;
+        var x = (c + 0.5) * CELL, y = (r + 0.5) * CELL;
+        // radial-gradient(ellipse 58% 62% at 50% 40%, #000 28%, transparent 100%)
+        var e = Math.hypot((x - w * 0.5) / (w * 0.58), (y - h * 0.4) / (h * 0.62));
+        var mask = e <= 0.28 ? 1 : e >= 1 ? 0 : 1 - (e - 0.28) / 0.72;
+        var alpha = (0.35 + 0.65 * hash(i, 3)) * INTENSITY * mask;
+        if (alpha < 0.01) continue;
         var d = Math.min(1, Math.hypot(c + 0.5 - fx, r + 0.5 - fy) / maxD);
-        var phase = (2.4 * d + 0.09 * hash(i, 1)) % 1;
-        var tile = document.createElement('div');
-        tile.className = 'ky-tile';
-        tile.style.color = palette[Math.floor(hash(i, 2) * palette.length) % palette.length];
-        tile.style.opacity = ((0.35 + 0.65 * hash(i, 3)) * INTENSITY).toFixed(3);
-        var pulse = document.createElement('div');
-        pulse.className = 'ky-pulse';
-        pulse.style.animationDelay = (-(1 - phase) * PERIOD).toFixed(2) + 's';
-        tile.appendChild(pulse);
-        frag.appendChild(tile);
+        tiles.push({
+          x: c * CELL - 15, y: r * CELL - 15, a: alpha,
+          phase: (2.4 * d + 0.09 * hash(i, 1)) % 1,
+          img: sprite(palette[Math.floor(hash(i, 2) * palette.length) % palette.length])
+        });
       }
     }
-    field.style.gridTemplateColumns = 'repeat(' + cols + ', 32px)';
-    field.replaceChildren(frag);
+    draw(performance.now());
   }
+  function draw(now) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.clearRect(0, 0, field.width, field.height);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var t0 = now / 1000 / PERIOD;
+    for (var k = 0; k < tiles.length; k++) {
+      var tl = tiles[k];
+      var p = still ? 0.5 : pulse((t0 + tl.phase) % 1);
+      ctx.globalAlpha = tl.a * p;
+      ctx.drawImage(tl.img, tl.x, tl.y, SPRITE, SPRITE);
+    }
+  }
+  function loop(now) {
+    raf = 0;
+    if (!onScreen || document.hidden || still) return;
+    draw(now);
+    raf = requestAnimationFrame(loop);
+  }
+  function wake() { if (!raf && onScreen && !document.hidden && !still) raf = requestAnimationFrame(loop); }
   buildField();
-  // Off screen, the tiles rest: no reason to keep ~1,700 animations running under the fold.
+  wake();
+  // Off screen or in a background tab, the field rests.
   if (field && 'IntersectionObserver' in window) {
     new IntersectionObserver(function (entries) {
-      field.classList.toggle('ky-rest', !entries[0].isIntersecting);
+      onScreen = entries[0].isIntersecting;
+      wake();
     }).observe(field);
   }
+  document.addEventListener('visibilitychange', wake);
   var resizing;
   window.addEventListener('resize', function () {
     clearTimeout(resizing);
