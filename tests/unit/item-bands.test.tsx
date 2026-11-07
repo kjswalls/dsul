@@ -823,6 +823,44 @@ describe('a property summoned from the seed opens its own picker', () => {
     const notes = screen.getByTestId('item-dialog-notes');
     expect(document.activeElement).toBe(notes);
     expect(screen.queryByTestId('item-clearing-seed-notes')).toBeNull();
+    // Typing into it keeps the field: notes being written never render under the caret.
+    fireEvent.change(notes, { target: { value: '# Plan' } });
+    expect(screen.getByTestId('item-dialog-notes')).toBe(notes);
+    expect(screen.queryByTestId('item-notes-view')).toBeNull();
+  });
+
+  it('renders written notes as markdown, and a click on them opens the field with the caret there', async () => {
+    const item = task({ notes: '### Sun\n- Drive up\n- **Secret Pizza**' });
+    seed({ items: [item] });
+    panel(item);
+    expect(screen.queryByTestId('item-dialog-notes')).toBeNull();
+    const view = screen.getByTestId('item-notes-view');
+    expect(view.querySelector('h3')?.textContent).toBe('Sun');
+    expect(view.querySelector('strong')?.textContent).toBe('Secret Pizza');
+    expect(view.textContent).not.toContain('**');
+    // Enter from the keyboard: the field, caret at the end.
+    const body = view.querySelector('[tabindex="0"]') as HTMLElement;
+    fireEvent.keyDown(body, { key: 'Enter' });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    const field = screen.getByTestId('item-dialog-notes') as HTMLTextAreaElement;
+    expect(field.value).toBe('### Sun\n- Drive up\n- **Secret Pizza**');
+    expect(document.activeElement).toBe(field);
+    expect(field.selectionStart).toBe(field.value.length);
+    // Leaving the field renders it again.
+    fireEvent.blur(field, { relatedTarget: screen.getByTestId('item-dialog-title-input') });
+    expect(screen.queryByTestId('item-dialog-notes')).toBeNull();
+    expect(screen.getByTestId('item-notes-view')).toBeInTheDocument();
+  });
+
+  it('keeps an add dialog\'s notes a field, with the markers drawn faint behind it', () => {
+    capture();
+    const field = screen.getByTestId('item-dialog-notes');
+    fireEvent.change(field, { target: { value: '- **bold**' } });
+    const paint = field.closest('[data-live-notes]')!.querySelector('[aria-hidden]')!;
+    expect(paint.textContent).toContain('- **bold**');
+    expect(screen.queryByTestId('item-notes-view')).toBeNull();
   });
 
   it('keeps the notes field on the capture modal, empty or not', () => {

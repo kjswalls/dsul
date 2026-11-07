@@ -375,11 +375,18 @@ export function answerNote(notes: string | undefined, question: string, answer: 
   return answersNote(notes, [{ question, answer }]);
 }
 
-/** Several answers at once, a line each, in the order they were asked. */
+/**
+ * Several answers at once, a line each, in the order they were asked. An
+ * answer of several lines (a pasted plan) goes under its question instead, so
+ * the notes keep its shape and render it as written.
+ */
 export function answersNote(notes: string | undefined, answers: readonly { question: string; answer: string }[]): string {
   const lines = answers
     .filter((a) => a.answer.trim())
-    .map((a) => `${a.question.trim()} ${a.answer.trim()}`);
+    .map((a) => {
+      const answer = a.answer.trim();
+      return `${a.question.trim()}${answer.includes('\n') ? '\n' : ' '}${answer}`;
+    });
   const before = (notes ?? '').trimEnd();
   return [...(before ? [before] : []), ...lines].join('\n');
 }

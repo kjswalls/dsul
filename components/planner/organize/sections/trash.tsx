@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { NotesProse } from '@/components/planner/notes-markdown';
 import { Check, RotateCcw } from 'lucide-react';
 import { CategoryIcon } from '@/lib/category-icons';
 import { accentColorForName } from '@/lib/accent-colors';
@@ -454,7 +455,7 @@ function ItemFacts({ item, subtasks }: { item: Item; subtasks: Item[] }) {
       {notes && (
         <div className="mt-3">
           <Eyebrow>Notes</Eyebrow>
-          <p className="text-foreground mt-1.5 text-sm whitespace-pre-wrap">{notes}</p>
+          <NotesProse source={notes} className="text-foreground mt-1.5" />
         </div>
       )}
 

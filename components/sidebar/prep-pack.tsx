@@ -444,7 +444,7 @@ export function QuestionBody({
       }}
       onKeyDown={(e) => {
         if (e.metaKey || e.ctrlKey || e.altKey || e.nativeEvent.isComposing) return;
-        if (e.target instanceof HTMLInputElement || numbered) return;
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || numbered) return;
         const at = e.key.length === 1 ? e.key.toUpperCase().charCodeAt(0) - 65 : -1;
         const options = questions[0]?.options ?? [];
         if (at >= 0 && at < options.length) {
@@ -494,12 +494,22 @@ export function QuestionBody({
             {(!numbered || !q.options?.length || i === questions.length - 1 || typed[i]) && (
               <div className={OWN_WORDS_ROW}>
                 <Pencil className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                <input
+                {/* A textarea, one row until it holds more, so a pasted plan keeps
+                    its line breaks (a one-line input dropped them, and the note
+                    it lands in ran together). Enter still sends; Shift+Enter is
+                    a new line. */}
+                <textarea
                   value={typed[i]}
+                  rows={1}
                   placeholder="Your own words…"
                   aria-label={`Your answer: ${q.question}`}
                   onChange={(e) => setTyped((all) => all.map((t, at) => (at === i ? e.target.value : t)))}
                   onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      e.currentTarget.form?.requestSubmit();
+                      return;
+                    }
                     if (e.key === 'Escape' && typed[i]) {
                       // Consumed, so the popover's own Escape does not close it and lose the words.
                       e.preventDefault();
@@ -508,7 +518,7 @@ export function QuestionBody({
                     }
                   }}
                   data-testid="prep-pack-answer"
-                  className="h-8 min-w-0 flex-1 bg-transparent px-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                  className="field-sizing-content max-h-40 min-h-8 min-w-0 flex-1 resize-none bg-transparent px-1 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground"
                 />
               </div>
             )}
