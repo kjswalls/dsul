@@ -707,6 +707,9 @@ function PanelBody({ panel, rail, children }: { panel: boolean; rail: boolean; c
  * gate flipping never re-parents what is inside (see PanelBody); folded, the
  * content is `inert`, so nothing hidden takes focus or a tap.
  */
+/** The Lift's travel time, folding the item panel for its chat (see leadSwap). */
+const RAIL_LIFT_MS = 260;
+
 function FoldRegion({
   open,
   active = true,
@@ -726,13 +729,21 @@ function FoldRegion({
       className={cn(
         // Rows only, never opacity: the details hold lime marks, and the lime
         // is never faded through a parent (CLAUDE.md). The clip hides them.
-        active && 'grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none',
+        active && 'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none',
         active && (open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')
       )}
     >
       {/* -mx-1/px-1: room for a focus ring at the clipped edge. */}
       <div className={active ? '-mx-1 min-h-0 overflow-hidden px-1' : undefined} inert={!open}>
-        {children}
+        {/* The Lift: the details rise a little as their rows close. */}
+        <div
+          className={cn(
+            active && 'transition-transform duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none',
+            active && !open && '-translate-y-2.5'
+          )}
+        >
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -3642,6 +3653,20 @@ function ItemDialogInner({
   const fold = useCallback(() => {
     if (editItemId) setFoldedFor(editItemId);
   }, [editItemId]);
+  // Unfolding, the folded title stays mounted while it lifts out of the row
+  // (the Lift, below), then goes. Adjusted during render, React's pattern for
+  // state that follows a change.
+  const [foldLeaving, setFoldLeaving] = useState(false);
+  const [foldSeen, setFoldSeen] = useState(folded);
+  if (foldSeen !== folded) {
+    setFoldSeen(folded);
+    setFoldLeaving(!folded);
+  }
+  useEffect(() => {
+    if (!foldLeaving) return;
+    const t = window.setTimeout(() => setFoldLeaving(false), RAIL_LIFT_MS + 80);
+    return () => window.clearTimeout(t);
+  }, [foldLeaving]);
 
   // Rename into the panel (lib/item-rename.ts: F2 with no row under the
   // pointer, or Rename on a surface with no editable row): unfold, then select
@@ -3740,11 +3765,12 @@ function ItemDialogInner({
   // step aside until the details open; the day and time ride the tooltip.
   // A tap on the title opens the details again.
   const foldedLead =
-    foldable && folded && editItem && activeDraft ? (
+    foldable && (folded || foldLeaving) && editItem && activeDraft ? (
       <div data-testid="item-rail-region" className="flex min-w-0 flex-1 items-center gap-2">
         {tickBoxAt('size-4')}
         <ItemRail
           className="mx-0 w-auto min-w-0 flex-1 flex-nowrap"
+          shimmer={folded}
           title={activeDraft.title}
           chips={[]}
           hint={[activeDraft.container === 'none' ? null : activeDraft.container, ...railChips.map((c) => c.label)]
@@ -3766,6 +3792,37 @@ function ItemDialogInner({
         />
       </div>
     ) : null;
+
+  // The Lift (Kirby's pick, 2026-11-08, mock at
+  // /mnt/project-files/item-panel-rail/rail-motion.html): folding, the type
+  // rises out of the row as the tick and title rise into it, and back again
+  // on the way out. The two trade places by sliding inside a clip, never by
+  // fading: the type's square and a ticked box are lime, and lime is never
+  // faded through a parent (CLAUDE.md). The words arriving catch one pass of
+  // light (`rail-shimmer`, Kirby's ask). Whichever layer is away is inert.
+  const liftLayer = 'absolute inset-0 flex min-w-0 items-center px-1.5 transition-transform ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none';
+  const leadSwap = foldable ? (
+    <div className="relative -mx-1.5 -my-1 h-10 min-w-0 flex-1 overflow-hidden" data-rail-lift="">
+      <div
+        inert={folded}
+        className={cn(liftLayer, folded ? '-translate-y-full' : 'translate-y-0 delay-[60ms]')}
+        style={{ transitionDuration: `${RAIL_LIFT_MS}ms` }}
+      >
+        <span key={folded ? 'away' : 'back'} className={cn('flex min-w-0', !folded && foldLeaving && 'rail-shimmer')}>
+          {typeSwitch}
+        </span>
+      </div>
+      <div
+        inert={!folded}
+        className={cn(liftLayer, folded ? 'translate-y-0 delay-[60ms]' : 'translate-y-full')}
+        style={{ transitionDuration: `${RAIL_LIFT_MS}ms` }}
+      >
+        {foldedLead}
+      </div>
+    </div>
+  ) : (
+    typeSwitch
+  );
 
   // The capture modal's deck (Kirby's pick in the keycap round, 2026-11-05):
   // on the desktop modal the body holds only words (type, title, notes), and a
@@ -3881,12 +3938,28 @@ function ItemDialogInner({
               // One top row (the item panel beta, 2026-11-06): the type chip
               // leads after an icon-only ‹, and Reschedule, ⋯, open as page
               // and ✕ end it, so the body carries no second header row.
-              lead={actionsInRail ? (foldedLead ?? typeSwitch) : undefined}
-              divided={!!foldedLead}
+              lead={actionsInRail ? leadSwap : undefined}
+              divided={folded}
               actions={
                 actionsInRail && editItem ? (
                   <>
-                    {!foldedLead && rescheduleMenu}
+                    {rescheduleMenu &&
+                      (foldable ? (
+                        // Folded, Reschedule gives its room to the title: its
+                        // column closes as it fades (no lime in it to dim).
+                        <span
+                          inert={folded}
+                          className={cn(
+                            'grid transition-[grid-template-columns,opacity] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none',
+                            folded ? 'grid-cols-[0fr] opacity-0' : 'grid-cols-[1fr] opacity-100'
+                          )}
+                          style={{ transitionDuration: `${RAIL_LIFT_MS}ms` }}
+                        >
+                          <span className="flex min-w-0 overflow-hidden">{rescheduleMenu}</span>
+                        </span>
+                      ) : (
+                        rescheduleMenu
+                      ))}
                     {attachInMenu && attachPicker.input}
                     {moreMenu}
                     {openPageButton}

@@ -41,6 +41,7 @@ export function ItemRail({
   chips,
   onExpand,
   hint,
+  shimmer = false,
   className,
 }: {
   /** The item's name, first on the line; also names it for a screen reader. */
@@ -52,6 +53,8 @@ export function ItemRail({
   /** Its facts in words, as the line's tooltip, when it draws no chips (the
    *  one-row fold, Kirby's pick D1 on 2026-11-08, has room for the title only). */
   hint?: string;
+  /** One pass of light across the title as it arrives (the panel's fold). */
+  shimmer?: boolean;
   className?: string;
 }) {
   return (
@@ -67,7 +70,7 @@ export function ItemRail({
         className,
       )}
     >
-      <span data-rail-title="" className="min-w-0 max-w-full truncate text-sm font-medium text-foreground">
+      <span data-rail-title="" className={cn("min-w-0 max-w-full truncate text-sm font-medium text-foreground", shimmer && "rail-shimmer")}>
         {title || "Untitled"}
       </span>
       {container && (

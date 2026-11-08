@@ -1146,8 +1146,11 @@ describe("the item's pinned conversation", () => {
       expect(rail.querySelector('[data-rail-title]')).toHaveTextContent('Book the dentist');
       expect(rail.querySelector('[data-rail-chip]')).toBeNull();
       expect(rail).toHaveAttribute('title', 'Health · Wed, Oct 14 · Anytime · 30 min · 1/2');
-      expect(within(header).queryByTestId('item-dialog-type-switch')).toBeNull();
-      expect(within(header).queryByTestId('item-dialog-reschedule')).toBeNull();
+      // They lift away inside the row and go inert; they never fade (lime).
+      expect(within(header).getByTestId('item-dialog-type-switch').closest('[inert]')).not.toBeNull();
+      expect(within(header).getByTestId('item-dialog-reschedule').closest('[inert]')).not.toBeNull();
+      expect(railRegion().closest('[inert]')).toBeNull();
+      expect(header.querySelector('[data-rail-lift]')?.className).not.toMatch(/opacity/);
       expect(within(header).getByTestId('item-dialog-more')).toBeInTheDocument();
       expect(within(dialog()).getByTestId('rail-back')).toHaveTextContent(/^Ask$/);
       // The chat is outside the fold, so it is still there to read.
