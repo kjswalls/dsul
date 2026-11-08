@@ -10,6 +10,7 @@ import { DoStuffDockKeys } from '@/components/sidebar/do-stuff-dock';
 import { RelayField } from '@/components/primitives/relay-field';
 import { useToastAnchor } from '@/hooks/use-toast-anchor';
 import { RELAY } from '@/lib/relay-config';
+import { AURORA_DARK_RELAY } from '@/lib/relay-palettes';
 import { useLayoutDef } from '@/lib/look-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useDoStuffEnabled } from '@/lib/extension-gates';
@@ -217,18 +218,32 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
         className="relative flex min-h-0 flex-col rounded-[10px] bg-surface-3 px-[10px] pt-[18px] pb-[14px] shadow-[var(--shadow-elev-bar)]"
       >
         {RELAY.dock && (
-          <RelayField
-            className="absolute inset-0 z-0 rounded-[10px]"
-            tone="quiet"
-            focalY={0.7}
-            pitch={20}
-            idleIntensity={0.2}
-            activeIntensity={0.6}
-            activeIntensityLight={0.4}
-            active={focused}
-            burst={burst + starts}
-            mask="radial-gradient(135% 120% at 50% 62%, black 30%, transparent 100%)"
-          />
+          <>
+            {/* The aurora's colours under thin glass (Kirby, 2026-11-08; mocks
+                /mnt/project-files/day-done/dock.html): lime, mint and teal in
+                both modes, a 2px frost in dark and 1px in light, where the tiles
+                are ink on paper and need the brighter mix to read. The field is
+                turned up to make up for what the glass takes. */}
+            <RelayField
+              className="absolute inset-0 z-0 rounded-[10px]"
+              lightPalette="aurora"
+              darkPalette={AURORA_DARK_RELAY}
+              focalY={0.7}
+              pitch={20}
+              idleIntensity={0.34}
+              activeIntensity={1}
+              idleIntensityLight={0.45}
+              activeIntensityLight={0.85}
+              active={focused}
+              burst={burst + starts}
+              mask="radial-gradient(135% 120% at 50% 62%, black 30%, transparent 100%)"
+            />
+            <div
+              data-dock-glass=""
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-0 rounded-[10px]"
+            />
+          </>
         )}
         {showCatchUpHost && (
           <div
