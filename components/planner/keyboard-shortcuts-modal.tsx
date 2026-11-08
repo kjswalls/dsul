@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { Keyboard } from 'lucide-react';
 
 import {
   Dialog,
@@ -16,6 +15,8 @@ import {
   ShortcutsPanel,
 } from '@/components/settings/shortcuts-panel';
 import { SHORTCUT_ONLY_CTX } from '@/lib/settings/manifest';
+import { DECK_DIALOG } from '@/components/ui/deck-dialog';
+import { cn } from '@/lib/utils';
 
 /**
  * The ⌘/ shell: the shortcuts table, summoned over your work.
@@ -44,25 +45,26 @@ export function KeyboardShortcutsModal({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="border-border flex max-h-[80vh] flex-col overflow-hidden sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="text-foreground flex items-center gap-2">
-            <Keyboard className="size-5" aria-hidden />
-            Keyboard shortcuts
-          </DialogTitle>
+      <DialogContent className={cn(DECK_DIALOG.content, 'flex max-h-[80vh] flex-col sm:max-w-lg')}>
+        <DialogHeader className="px-[22px] pt-[22px] pb-3 text-left">
+          <DialogTitle className={DECK_DIALOG.title}>Keyboard shortcuts</DialogTitle>
           <DialogDescription className="sr-only">
             Every binding in dsul, rebindable in place.
           </DialogDescription>
         </DialogHeader>
 
-        {/* The scrolling half. `-mx-6 px-6` so the rows' own hover wash reaches
-            the dialog's edges instead of stopping short of them. */}
-        <div className="-mx-6 min-h-0 flex-1 overflow-y-auto px-6">
+        {/* The scrolling half, edge to edge so the rows' own hover wash reaches
+            the dialog's sides instead of stopping short of them. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-[22px] pb-4">
           <ShortcutsPanel variant="overlay" ctx={SHORTCUT_ONLY_CTX} />
         </div>
 
-        <div className="border-border flex items-center justify-between gap-2 border-t pt-4">
-          <ResetAllShortcutsButton />
+        {/* The deck, pinned under the scroll: reset quiet on the left, the
+            way out on the right (the dialog restyle's round 2, 2026-11-07). */}
+        <div data-dialog-deck className={DECK_DIALOG.deck}>
+          <div className={DECK_DIALOG.deckLead}>
+            <ResetAllShortcutsButton />
+          </div>
           <div className="flex items-center gap-2">
             {/* The same table has a permanent address, and saying so is the
                 point of the two shells: this one is summoned over your work,
@@ -72,7 +74,7 @@ export function KeyboardShortcutsModal({
                 Open in settings
               </Link>
             </Button>
-            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+            <Button size="sm" onClick={() => onOpenChange(false)}>
               Done
             </Button>
           </div>
