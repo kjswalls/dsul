@@ -155,9 +155,14 @@ describe('what the dialog says', () => {
   it('is capped to the viewport and scrolls, so the buttons are never cut off', async () => {
     mount({ ...PLAIN, appleIds: ['001234.dsul.0001'], beeminder: true, ledger: true, openclaw: true });
     await ready();
-    const classes = screen.getByTestId('delete-account-dialog').className.split(/\s+/);
-    expect(classes).toContain('max-h-[calc(100dvh-2rem)]');
-    expect(classes).toContain('overflow-y-auto');
+    const dialog = screen.getByTestId('delete-account-dialog');
+    expect(dialog.className.split(/\s+/)).toContain('max-h-[calc(100dvh-2rem)]');
+    // The body scrolls and the deck stays pinned outside it, holding the buttons.
+    const submit = screen.getByTestId('delete-account-submit');
+    const scroller = dialog.querySelector('.overflow-y-auto');
+    expect(scroller).not.toBeNull();
+    expect(scroller!.contains(submit)).toBe(false);
+    expect(submit.closest('[data-dialog-deck]')).not.toBeNull();
   });
 
   it('labels the field with the instruction and shows DELETE as its placeholder', async () => {

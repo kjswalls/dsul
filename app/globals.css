@@ -5664,11 +5664,13 @@ body {
    sinks toward the backdrop. Unset chips drop their dashed outline here: the
    deck is already the frame, and a dashed box inside it read as a hole. */
 [data-item-deck],
+[data-dialog-deck],
 [data-slot='alert-dialog-footer'] {
   border-top: 1px solid var(--border);
   background-color: color-mix(in oklab, var(--surface-3), var(--modal) 35%);
 }
 .dark [data-item-deck],
+.dark [data-dialog-deck],
 .dark [data-slot='alert-dialog-footer'] {
   background-color: color-mix(in oklab, var(--surface-0), var(--modal) 20%);
 }
