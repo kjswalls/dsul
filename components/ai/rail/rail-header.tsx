@@ -221,7 +221,7 @@ export function RailHeader({
             <span className="truncate">{back.label}</span>
           </button>
         )}
-        {lead && <div className="flex min-w-0 items-center gap-1">{lead}</div>}
+        {lead && <div className="flex min-w-0 flex-1 items-center gap-1">{lead}</div>}
         {back && titled && <ChevronRight className="-mx-1.5 size-3.5 shrink-0 text-muted-foreground/60" aria-hidden />}
         {titled && (
           <h2

@@ -3735,6 +3735,38 @@ function ItemDialogInner({
     ) : null;
   const tickBox = tickBoxAt('size-[18px]');
 
+  // Folded, the item's tick and title take the header row itself (Kirby's
+  // pick D1, 2026-11-08): ‹, tick, title, then ⋯ ↗ ✕. The type and Reschedule
+  // step aside until the details open; the day and time ride the tooltip.
+  // A tap on the title opens the details again.
+  const foldedLead =
+    foldable && folded && editItem && activeDraft ? (
+      <div data-testid="item-rail-region" className="flex min-w-0 flex-1 items-center gap-2">
+        {tickBoxAt('size-4')}
+        <ItemRail
+          className="mx-0 w-auto min-w-0 flex-1 flex-nowrap"
+          title={activeDraft.title}
+          chips={[]}
+          hint={[activeDraft.container === 'none' ? null : activeDraft.container, ...railChips.map((c) => c.label)]
+            .filter(Boolean)
+            .join(' · ')}
+          onExpand={(e) => {
+            setFoldedFor(null);
+            // The line leaves the row under the pointer, so focus moves to the
+            // title, and the body goes back to its top: scrolled to the chat,
+            // the details would open above the fold.
+            const body = e.currentTarget
+              .closest('[data-testid="item-dialog"]')
+              ?.querySelector<HTMLElement>('[data-rail-body]');
+            requestAnimationFrame(() => {
+              if (body) body.scrollTop = 0;
+              document.getElementById(titleId)?.focus({ preventScroll: true });
+            });
+          }}
+        />
+      </div>
+    ) : null;
+
   // The capture modal's deck (Kirby's pick in the keycap round, 2026-11-05):
   // on the desktop modal the body holds only words (type, title, notes), and a
   // recessed strip along the dialog's foot holds the chip field and the
@@ -3849,11 +3881,11 @@ function ItemDialogInner({
               // One top row (the item panel beta, 2026-11-06): the type chip
               // leads after an icon-only ‹, and Reschedule, ⋯, open as page
               // and ✕ end it, so the body carries no second header row.
-              lead={actionsInRail ? typeSwitch : undefined}
+              lead={actionsInRail ? (foldedLead ?? typeSwitch) : undefined}
               actions={
                 actionsInRail && editItem ? (
                   <>
-                    {rescheduleMenu}
+                    {!foldedLead && rescheduleMenu}
                     {attachInMenu && attachPicker.input}
                     {moreMenu}
                     {openPageButton}
@@ -3867,35 +3899,6 @@ function ItemDialogInner({
               }}
               closeTestId="item-dialog-close"
             />
-          )}
-          {/* The details, folded to their facts line, while the chat has the
-              panel. Outside the body like the header, so it stays put while
-              the chat scrolls. */}
-          {foldable && editItem && activeDraft && (
-            <FoldRegion open={folded} testId="item-rail-region">
-              <div className={cn('flex items-center border-b border-border px-5 pb-2', folded ? 'gap-5' : 'gap-2.5')}>
-                {folded && tickBoxAt('size-4')}
-                <ItemRail
-                  className="mx-0 w-auto flex-1"
-                  title={activeDraft.title}
-                  container={activeDraft.container === 'none' ? undefined : activeDraft.container}
-                  chips={railChips}
-                  onExpand={(e) => {
-                    setFoldedFor(null);
-                    // The line goes inert under the pointer, so focus moves to
-                    // the title, and the body goes back to its top: scrolled
-                    // to the chat, the details would open above the fold.
-                    const body = e.currentTarget
-                      .closest('[data-testid="item-dialog"]')
-                      ?.querySelector<HTMLElement>('[data-rail-body]');
-                    requestAnimationFrame(() => {
-                      if (body) body.scrollTop = 0;
-                      document.getElementById(titleId)?.focus({ preventScroll: true });
-                    });
-                  }}
-                />
-              </div>
-            </FoldRegion>
           )}
           <PanelBody panel={presentation === 'panel'} rail={!!railChrome}>
           {/* The visible heading is the title field itself; Radix still needs a

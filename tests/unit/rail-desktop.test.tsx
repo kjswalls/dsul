@@ -1112,13 +1112,15 @@ describe("the item's pinned conversation", () => {
       usePlannerStore.setState({ items: [DATED, PLANTS, ...steps] } as never);
     });
 
-    it('opens with the details out and the rail folded away', () => {
+    it('opens with the details out, the type and Reschedule in the header, and no folded line', () => {
       renderShell();
       openRow(DATED);
       expect(details()).toHaveAttribute('data-open', 'true');
-      expect(railRegion()).toHaveAttribute('data-open', 'false');
-      expect(inertInside(railRegion())).toBe(true);
+      expect(within(dialog()).queryByTestId('item-rail-region')).toBeNull();
       expect(inertInside(details())).toBe(false);
+      const header = dialog().querySelector('[data-rail-header]') as HTMLElement;
+      expect(within(header).getByTestId('item-dialog-type-switch')).toBeInTheDocument();
+      expect(within(header).getByTestId('item-dialog-reschedule')).toBeInTheDocument();
     });
 
     it('folds when the box takes focus, keeping the conversation and naming the item in the rail', () => {
@@ -1136,16 +1138,18 @@ describe("the item's pinned conversation", () => {
       // The fold clips, never fades: the details hold lime, and lime is never dimmed through a parent.
       expect(details().className).not.toMatch(/opacity/);
       expect(railRegion().className).not.toMatch(/opacity/);
-      expect(railRegion()).toHaveAttribute('data-open', 'true');
+      // One row (D1): the tick and title take the header; the type and
+      // Reschedule step aside, and the facts ride the title's tooltip.
+      const header = dialog().querySelector('[data-rail-header]') as HTMLElement;
+      expect(railRegion().closest('[data-rail-header]')).toBe(header);
       const rail = within(dialog()).getByTestId('item-rail');
-      expect(rail).toHaveTextContent('Health');
-      // The strip leads with the title; the header names only the view beneath.
       expect(rail.querySelector('[data-rail-title]')).toHaveTextContent('Book the dentist');
-      expect(dialog().querySelector('[data-rail-header]')).not.toHaveTextContent('Book the dentist');
+      expect(rail.querySelector('[data-rail-chip]')).toBeNull();
+      expect(rail).toHaveAttribute('title', 'Health · Wed, Oct 14 · Anytime · 30 min · 1/2');
+      expect(within(header).queryByTestId('item-dialog-type-switch')).toBeNull();
+      expect(within(header).queryByTestId('item-dialog-reschedule')).toBeNull();
+      expect(within(header).getByTestId('item-dialog-more')).toBeInTheDocument();
       expect(within(dialog()).getByTestId('rail-back')).toHaveTextContent(/^Ask$/);
-      expect(rail.querySelector('[data-rail-chip="date"]')).toHaveTextContent('Wed, Oct 14');
-      expect(rail.querySelector('[data-rail-chip="steps"]')).toHaveTextContent('1/2');
-      expect(rail.querySelector('[data-rail-chip="repeat"]')).toBeNull();
       // The chat is outside the fold, so it is still there to read.
       const chat = within(dialog()).getByTestId('item-conversation');
       expect(chat.closest('[data-testid="item-details"]')).toBeNull();
