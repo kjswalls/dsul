@@ -100,6 +100,7 @@ import { watchOnboardingAfterLoad } from '@/lib/onboarding-watch';
 import type { MobileSurface } from '@/lib/mobile-nav-store';
 import { BOOT_SIDEBAR_VAR } from '@/lib/shell-prepaint';
 import { cueSound } from '@/lib/sounds/cue';
+import { DayDoneAurora } from '@/components/celebrate/day-done-aurora';
 
 /**
  * The first-run toasts, "Streaks are on" and the rituals intro, with their own
@@ -967,6 +968,8 @@ export function AppShell() {
       />
 
       <ConfirmDialog />
+
+      <DayDoneAurora />
 
       {/* An AppShell-level sibling rather than a DesktopShell child, so
           without this it floats over the Zen room: the bulk bar appears over it

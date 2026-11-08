@@ -31,7 +31,22 @@ export function isDayCleared(
   dateStr: string,
   ctx: ActivationContext,
 ): boolean {
-  let anyDone = false
+  return dayDoneCount(items, dateStr, ctx) !== null
+}
+
+/**
+ * How many things the cleared day was: the items that occur and are active on
+ * `dateStr` and were genuinely DONE (not skipped or cancelled). Null while the
+ * day is not cleared, by the same two conditions as isDayCleared, which is
+ * this function asked for a yes or no. The day done aurora prints it ("5 of 5
+ * done").
+ */
+export function dayDoneCount(
+  items: readonly Item[],
+  dateStr: string,
+  ctx: ActivationContext,
+): number | null {
+  let done = 0
 
   for (const item of items) {
     if ('parentItemId' in item && item.parentItemId) continue
@@ -41,11 +56,11 @@ export function isDayCleared(
     // the day open nor counts towards it.
     if (!isItemActiveOn(item, dateStr, ctx)) continue
 
-    if (isOpenLoopOn(item, dateStr)) return false
-    if (wasDone(item, dateStr)) anyDone = true
+    if (isOpenLoopOn(item, dateStr)) return null
+    if (wasDone(item, dateStr)) done++
   }
 
-  return anyDone
+  return done > 0 ? done : null
 }
 
 /**

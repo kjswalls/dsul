@@ -2,6 +2,8 @@
 
 import { memo, useState, useEffect, useRef } from 'react';
 import { format, isToday } from 'date-fns';
+import { useTodayDone } from '@/hooks/use-today-done';
+import { DAY_DONE_CHIP } from '@/lib/day-done-moment';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -193,6 +195,7 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
   const goNext = () => stepScope(1);
   // Client-only (the server's clock and zone are not the user's), like
   // everything here that reads the date.
+  const todayDone = useTodayDone();
   const longDate = mounted ? format(selectedDate, 'EEEE, MMMM d') : null;
 
   return (
@@ -304,6 +307,18 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
             </span>
             <span data-narrow-sr="">Today</span>
           </button>
+        )}
+
+        {/* Today is cleared (lib/day-done.ts): the lime chip that stays after
+            the day done aurora, and shows whether or not the aurora played. */}
+        {mounted && isToday(selectedDate) && todayDone !== null && (
+          <span
+            data-day-done-chip=""
+            className="ml-1 inline-flex h-6 items-center gap-1.5 rounded-full bg-primary pl-1.5 pr-2.5 text-xs font-semibold text-primary-foreground"
+          >
+            <span aria-hidden="true" className="h-[7px] w-[7px] rounded-[2px] bg-primary-foreground" />
+            {DAY_DONE_CHIP}
+          </span>
         )}
 
         {/* What the planner has to say about this day (the season holding
