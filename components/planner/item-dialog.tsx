@@ -3882,6 +3882,7 @@ function ItemDialogInner({
               // leads after an icon-only ‹, and Reschedule, ⋯, open as page
               // and ✕ end it, so the body carries no second header row.
               lead={actionsInRail ? (foldedLead ?? typeSwitch) : undefined}
+              divided={!!foldedLead}
               actions={
                 actionsInRail && editItem ? (
                   <>

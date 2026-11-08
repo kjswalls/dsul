@@ -12,7 +12,7 @@ import { backLabel, railHeaderHeld, type AskView } from '@/lib/rail-store';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { useLayoutDef } from '@/lib/look-store';
-import { canvasHeaderPad, railHeaderRowOffset } from '@/lib/layout-themes';
+import { canvasHeaderPad, railHeaderDividedPad, railHeaderRowOffset } from '@/lib/layout-themes';
 import { RELAY } from '@/lib/relay-config';
 import { cn } from '@/lib/utils';
 
@@ -124,6 +124,7 @@ export function RailHeader({
   heading,
   actions,
   lead,
+  divided = false,
   home = false,
   onClose,
   closeTestId = 'rail-close',
@@ -139,6 +140,12 @@ export function RailHeader({
    * label and the tooltip, so the row keeps room for them.
    */
   lead?: ReactNode;
+  /**
+   * Close the row off with a hairline, as much room under the row as over it
+   * (the item panel folded for its chat, where the header is the item's only
+   * line; Kirby, 2026-11-08: the row read short and off-centre).
+   */
+  divided?: boolean;
   /** Ask home: the mark (the Ask key's own, components/ai/ask-mark.tsx), and the relay ground. */
   home?: boolean;
   onClose: () => void;
@@ -174,7 +181,7 @@ export function RailHeader({
         swallowing.current = false;
         if (held) swallow(e);
       }}
-      className={cn('relative isolate shrink-0 px-5 pb-2', canvasHeaderPad(slots))}
+      className={cn('relative isolate shrink-0 px-5', canvasHeaderPad(slots), divided ? cn('border-b border-border', railHeaderDividedPad(slots)) : 'pb-2')}
     >
       {home && RELAY.beacon && (
         <RelayField

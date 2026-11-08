@@ -356,6 +356,18 @@ export function canvasHeaderPad(slots: Pick<LayoutSlots, 'sidebar'>): string {
 }
 
 /**
+ * The padding under a rail header closed off with a hairline (RailHeader
+ * `divided`), equal to the room over its row: canvasHeaderPad plus
+ * railHeaderRowOffset, so the row sits centred in its band.
+ */
+export function railHeaderDividedPad(slots: Pick<LayoutSlots, 'sidebar' | 'header'>): string {
+  const left = slots.sidebar === 'left';
+  const capsule = slots.header === 'capsule';
+  if (left) return capsule ? 'pb-[39px]' : 'pb-[31px]';
+  return capsule ? 'pb-6' : 'pb-4';
+}
+
+/**
  * Where the rail header's 32px row starts under that shared padding, so its
  * centre is the date's: the capsule's date row sits under the capsule's own
  * p-2 (components/canvas/header-capsule.tsx), and the masthead and plain
