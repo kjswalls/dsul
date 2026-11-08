@@ -907,6 +907,11 @@ describe('nothing persists per-user state outside the registry', () => {
       // number from 0 to 100. Per device on purpose (the pack and switches are
       // the account's), and it says nothing about anyone.
       'lib/sounds/volume.ts',
+      // `dsul-day-done-played`: the last date this browser played the day done
+      // aurora, so it plays once a day. One date, nothing about anyone; the
+      // next account's first finished day simply plays (a new date) or, on the
+      // same date, shows only the chip.
+      'lib/day-done-moment.ts',
       // `dsul-atlas-places`: Atlas's per-device places, `{userId, places}`, the
       // fallback until migration 087 is applied. Keyed by the account's
       // container ids, so clearAtlasLocalState is in RAW_CLEARERS (own test

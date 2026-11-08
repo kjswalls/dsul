@@ -1213,6 +1213,19 @@ export const SETTINGS: SettingRecord[] = [
     defaultValue: true,
   },
   {
+    id: 'look.celebrate',
+    pane: 'look',
+    label: 'Celebrate a finished day',
+    description: 'A little aurora when everything on today is done.',
+    control: 'switch',
+    // Device-local like look.markStyle: view-store has no user_settings column,
+    // and naming one would PGRST204 the whole debounced flush.
+    keywords: ['celebrate', 'celebration', 'aurora', 'day done', 'all done', 'finished', 'confetti', 'reward', 'perfect'],
+    read: () => view().celebrateDayDone,
+    write: (v) => view().setCelebrateDayDone(Boolean(v)),
+    defaultValue: true,
+  },
+  {
     id: 'look.timeIndicator',
     pane: 'look',
     label: 'Current time line',

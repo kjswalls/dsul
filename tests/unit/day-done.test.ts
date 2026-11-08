@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { isDayCleared } from '@/lib/day-done';
+import { dayDoneCount, isDayCleared } from '@/lib/day-done';
 import type { ActivationContext } from '@/lib/active';
 import type { Item, Routine, Season } from '@dsul/types';
 
@@ -111,5 +111,21 @@ describe('isDayCleared', () => {
       habit({ repeatFrequency: 'none', startDate: DAY, status } as Partial<Item>);
     expect(isDayCleared([oneOff('skipped')], DAY, ctx)).toBe(false);
     expect(isDayCleared([oneOff('done')], DAY, ctx)).toBe(true);
+  });
+});
+
+describe('dayDoneCount', () => {
+  it('counts the things that were done, not the skips', () => {
+    const items = [
+      habit({ completedDates: [DAY] }),
+      task({ status: 'completed' }),
+      habit({ id: 'h2', skippedDates: [DAY] }),
+    ];
+    expect(dayDoneCount(items, DAY, ctx)).toBe(2);
+  });
+
+  it('is null while anything is open, and on a day of only skips', () => {
+    expect(dayDoneCount([habit({ completedDates: [DAY] }), task()], DAY, ctx)).toBeNull();
+    expect(dayDoneCount([habit({ skippedDates: [DAY] })], DAY, ctx)).toBeNull();
   });
 });

@@ -5722,3 +5722,120 @@ body {
     transparent var(--sched-wash-reach)
   );
 }
+
+/* ── Day done aurora (components/celebrate/day-done-aurora.tsx) ─────────────
+   The field is a canvas under a frosted pane; the copy sits crisp on top.
+   The lime count tile is its own element and the copy is revealed with a
+   clip, never an opacity, so the accent never dims through a parent. */
+[data-day-done] {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  cursor: pointer;
+  user-select: none;
+}
+[data-day-done] canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+[data-day-done-frost] {
+  position: absolute;
+  inset: 0;
+  background-color: transparent;
+  backdrop-filter: blur(0px);
+  -webkit-backdrop-filter: blur(0px);
+  transition:
+    backdrop-filter 0.45s ease,
+    -webkit-backdrop-filter 0.45s ease,
+    background-color 0.45s ease;
+}
+[data-day-done][data-phase='in'] [data-day-done-frost] {
+  background-color: color-mix(in oklch, var(--background) 36%, transparent);
+  backdrop-filter: blur(11px) saturate(1.3);
+  -webkit-backdrop-filter: blur(11px) saturate(1.3);
+}
+[data-day-done][data-phase='out'] [data-day-done-frost] {
+  transition-duration: 0.7s;
+}
+[data-day-done-copy],
+[data-day-done-hint] {
+  clip-path: inset(0 0 100% 0);
+  transition:
+    clip-path 0.6s cubic-bezier(0.2, 0.8, 0.2, 1),
+    translate 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+[data-day-done-copy] {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  translate: -50% -50%;
+  width: min(90vw, 600px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  color: var(--foreground);
+}
+[data-day-done][data-copy='in'] [data-day-done-copy] {
+  clip-path: inset(-20% -20% -20% -20%);
+  translate: -50% -56%;
+}
+[data-day-done][data-copy='in'] [data-day-done-hint] {
+  clip-path: inset(-20% -20% -20% -20%);
+}
+[data-day-done][data-phase='out'] [data-day-done-copy],
+[data-day-done][data-phase='out'] [data-day-done-hint] {
+  transition-duration: 0.45s;
+}
+[data-day-done-headline] {
+  margin: 0;
+  font-size: clamp(28px, 4.6vw, 48px);
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+  text-wrap: balance;
+  text-shadow: 0 0 24px color-mix(in oklch, var(--background) 55%, transparent);
+}
+[data-day-done-count] {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+[data-day-done-count] i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2.5px;
+  background: var(--primary);
+  box-shadow: 0 0 10px var(--primary);
+}
+[data-day-done-hint] {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-day-done-chip] {
+    animation: day-done-chip 0.5s cubic-bezier(0.2, 1.4, 0.4, 1);
+    transform-origin: left center;
+  }
+}
+@keyframes day-done-chip {
+  from {
+    scale: 0.4;
+  }
+  to {
+    scale: 1;
+  }
+}
