@@ -10,7 +10,6 @@ import { DoStuffDockKeys } from '@/components/sidebar/do-stuff-dock';
 import { RelayField } from '@/components/primitives/relay-field';
 import { useToastAnchor } from '@/hooks/use-toast-anchor';
 import { RELAY } from '@/lib/relay-config';
-import { AURORA_DARK_RELAY } from '@/lib/relay-palettes';
 import { useLayoutDef } from '@/lib/look-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useDoStuffEnabled } from '@/lib/extension-gates';
@@ -219,15 +218,15 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
       >
         {RELAY.dock && (
           <>
-            {/* The aurora's colours under thin glass (Kirby, 2026-11-08; mocks
-                /mnt/project-files/day-done/dock.html): lime, mint and teal in
-                both modes, a 2px frost in dark and 1px in light, where the tiles
-                are ink on paper and need the brighter mix to read. The field is
+            {/* Thin glass over the field (Kirby, 2026-11-08 and 2026-11-10;
+                mocks /mnt/project-files/day-done/dock.html): in dark the full
+                relay mix (or the theme's own) under a 2px frost; in light the
+                aurora's lime, mint and teal with orange and indigo sparks,
+                brighter so the ink-on-paper tiles read, under 1px. The field is
                 turned up to make up for what the glass takes. */}
             <RelayField
               className="absolute inset-0 z-0 rounded-[10px]"
               lightPalette="aurora"
-              darkPalette={AURORA_DARK_RELAY}
               focalY={0.7}
               pitch={20}
               idleIntensity={0.34}
