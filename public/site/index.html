@@ -35,7 +35,8 @@
   length caps below match lib/waitlist.ts, and tests/unit/marketing-site.test.ts
   fails if they drift. Copy rules: lowercase, playful, no em dashes, the AI has
   no name, and only what ships today is described in the present tense.
-  Fonts: Geist and Geist Mono (SIL OFL 1.1, /site/fonts/OFL.txt).
+  Fonts: Geist and Geist Mono (SIL OFL 1.1, /site/fonts/OFL.txt); Inter, latin subset, for
+  the hero demo drawn like the app (SIL OFL 1.1, /site/fonts/OFL-Inter.txt).
 -->
 <style>
 @font-face{font-family:Geist;src:url(/site/fonts/Geist-Variable.woff2) format("woff2");font-weight:100 900;font-display:swap}
@@ -147,42 +148,79 @@ html:not([data-in]) .ky-if-in,html[data-in] .ky-if-out{display:none}
 .ky-why input{flex:1 1 200px;min-width:0;min-height:40px;padding:0 12px;box-sizing:border-box;border:1px solid oklch(1 0 0 / 12%);border-radius:10px;background:oklch(0.16 0.004 286);color:var(--ink);font:inherit;font-size:16px}
 .ky-why button{flex:0 0 auto;min-height:40px;padding:0 14px;border-radius:10px;border:1px solid oklch(1 0 0 / 14%);background:transparent;color:var(--ink);font:inherit;font-size:14px;cursor:pointer}
 .ky-thanks{font-size:13px;color:var(--lime)}
-/* the hero's live demo (script: "the live demo"). Static markup above is the no-script picture. */
-.ky-demo-hint{flex:1;text-align:center;font-family:"Geist Mono",ui-monospace,monospace;font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ky-demo-reset{margin-left:auto;border:0;background:transparent;font:inherit;font-size:11px;color:var(--faint);cursor:pointer;padding:4px 6px;border-radius:6px}
+/* the hero's live demo, drawn like the app (Classic layout, Night theme). Tokens copied from
+   app/globals.css's .dark block; Inter as the app ships it. The script is "the live demo". */
+@font-face{font-family:Inter;src:url(/site/fonts/Inter-latin.woff2) format("woff2");font-weight:100 900;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+.ka-app{--a-ground:oklch(0.173 0.009 264);--a-side:oklch(0.178 0.008 268);--a-canvas:oklch(0.21 0.006 286);--a-well:oklch(0.245 0.006 286);--a-card:oklch(0.278 0.006 286);--a-ink0:oklch(0.955 0.002 286);--a-ink1:oklch(0.8 0.005 286);--a-ink2:oklch(0.7 0.008 286);--a-border:oklch(1 0 0 / 10%);--a-wash:oklch(1 0 0 / 6%);--a-check:oklch(0.42 0.008 286);--a-morning:oklch(0.78 0.11 85);--a-afternoon:oklch(0.76 0.11 55);--a-evening:oklch(0.62 0.1 285);
+  position:relative;border-radius:16px;background:var(--a-ground);border:1px solid oklch(1 0 0 / 9%);box-shadow:0 0 0 1px oklch(0 0 0 / 40%),0 30px 80px oklch(0 0 0 / 55%);overflow:hidden;text-align:left;font-family:Inter,system-ui,sans-serif;font-size:13.5px;line-height:1.35;color:var(--a-ink0);font-feature-settings:"cv11","ss01"}
+.ky-demo-bar{display:flex;align-items:center;gap:12px;margin:0 4px 10px;min-height:24px}
+.ky-demo-reset{margin-left:auto;border:0;background:transparent;font:inherit;font-size:12px;color:var(--faint);cursor:pointer;padding:4px 8px;border-radius:6px}
 .ky-demo-reset:hover{color:var(--ink);background:oklch(1 0 0 / 6%)}
+.ky-demo{display:flex;min-height:560px}
 .ky-demo button{font:inherit;color:inherit}
-.ky-demo .ky-chk{padding:0;background:transparent;cursor:pointer;transition:background .15s,border-color .15s}
-.ky-demo .ky-chk:hover{border-color:oklch(1 0 0 / 55%)}
-.ky-demo .ky-chk-done,.ky-demo .ky-chk-done:hover{display:flex;align-items:center;justify-content:center;background:var(--lime);border-color:var(--lime)}
+.ka-side{flex:0 0 268px;min-width:0;display:flex;flex-direction:column;gap:12px;padding:14px 12px 12px;background:var(--a-side)}
+.ka-lights{display:flex;gap:7px;padding:2px 4px 0}
+.ka-lights i{width:11px;height:11px;border-radius:50%;background:oklch(0.3 0.006 286)}
+.ka-word{display:flex;align-items:baseline;gap:2px;padding:0 6px;font-weight:600;font-size:14px;letter-spacing:-0.02em}
+.ka-word b{width:5px;height:5px;border-radius:50%;background:var(--lime)}
+.ka-pill{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px 0 14px;border-radius:10px;background:var(--a-card);box-shadow:0 1px 2px oklch(0 0 0 / 40%),inset 0 1px 0 oklch(1 0 0 / 5%);font-size:12.5px;color:var(--a-ink1)}
+.ka-pill span:first-child{flex:1}
+.ka-ico{display:inline-flex;gap:10px;color:var(--a-ink2)}
+.ka-list{display:flex;flex-direction:column;gap:1px;padding:2px 2px 0}
+.ka-spacer{flex:1;min-height:12px}
+.ka-dock{padding:10px;border-radius:14px;background:var(--a-well)}
+.ka-input{width:100%;box-sizing:border-box;height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--a-border);background:var(--a-card);color:var(--a-ink0);font:inherit;font-size:16px}
+.ka-input::placeholder{color:var(--a-ink2)}
+.ka-input:focus{outline:none;border-color:oklch(1 0 0 / 22%)}
+.ka-canvas{position:relative;flex:1 1 auto;min-width:0;margin:10px 10px 10px 0;padding:22px 26px 60px;border-radius:16px;background:var(--a-canvas);border:1px solid var(--a-border);box-shadow:0 8px 30px oklch(0 0 0 / 35%);display:flex;flex-direction:column;gap:14px}
+.ka-cap{align-self:flex-start;display:flex;flex-direction:column;gap:6px;padding:6px;border-radius:14px;background:var(--a-well)}
+.ka-date{display:flex;align-items:center;gap:12px;padding:4px 10px 2px;font-size:15px;font-weight:600;letter-spacing:-0.01em}
+.ka-date svg{color:var(--a-ink2)}
+.ka-ctl{display:flex;align-items:center;gap:4px;padding:5px 8px;border-radius:10px;background:var(--a-card);box-shadow:0 1px 2px oklch(0 0 0 / 40%),inset 0 1px 0 oklch(1 0 0 / 5%);font-size:12.5px;color:var(--a-ink0)}
+.ka-ctl span{display:inline-flex;align-items:center;gap:6px;padding:3px 6px}
+.ka-ctl svg{color:var(--a-ink1)}
+.ka-ctl i{width:1px;height:16px;background:var(--a-border)}
+.ka-fold{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border-radius:8px;background:var(--a-wash);font-size:12.5px}
+.ka-foldbtn{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;padding:0;cursor:pointer;color:var(--a-ink2)}
+.ka-foldbtn svg{transition:transform .15s}
+.ka-foldbtn[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.ka-txt{border:0;background:transparent;padding:0;cursor:pointer;color:var(--a-ink2)}
+.ka-txt:hover,.ka-foldbtn:hover{color:var(--a-ink0)}
+.ka-row{position:relative;display:flex;align-items:center;gap:12px;min-height:32px;padding:0 10px;border-radius:8px;transition:background .12s,opacity .2s,transform .2s}
+.ka-row:hover{background:var(--a-wash)}
+.ka-t{flex:1 1 auto;min-width:0}
+.ka-done .ka-t{text-decoration:line-through;color:var(--a-ink2)}
+.ka-ghost .ka-t{color:var(--a-ink2)}
+.ka-meta{flex:none;font-family:"Geist Mono",ui-monospace,monospace;font-size:11.5px;color:var(--a-ink2)}
+.ka-chk{flex:none;width:17px;height:17px;padding:0;border:0;border-radius:5px;background:var(--a-check);box-shadow:0 1.5px 4px oklch(0 0 0 / 60%),inset 0 1px 0 oklch(1 0 0 / 12%);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:filter .12s}
+.ka-chk:hover{filter:brightness(1.15)}
+.ka-chk-ghost{background:transparent;box-shadow:none;border:1.5px dashed oklch(0.7 0.008 286 / 55%);border-radius:50%}
+.ka-verbs{flex:none;display:inline-flex;gap:2px;opacity:0;transition:opacity .12s}
+.ka-ghost:hover .ka-verbs,.ka-ghost:focus-within .ka-verbs{opacity:1}
+.ka-ib{flex:none;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:var(--a-ink2);cursor:pointer;padding:0}
+.ka-ib:hover{color:var(--a-ink0);background:oklch(1 0 0 / 9%)}
+.ka-bucket{position:relative;display:flex;flex-direction:column;gap:8px}
+.ka-bh{display:flex;align-items:center;gap:8px;padding:0 10px;font-size:12.5px;color:var(--a-ink2)}
+.ka-bh .ka-dot{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%}
+.ka-now .ka-bh .ka-dot{background:oklch(0.87 0.19 125 / 16%);color:var(--lime)}
+.ka-count{margin-left:auto;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:5px;background:var(--a-well);font-size:11px;display:inline-flex;align-items:center;justify-content:center}
+.ka-card{display:flex;flex-direction:column;gap:1px;padding:8px 6px;border-radius:12px;background:var(--a-card);border:1px solid var(--a-border);box-shadow:0 1px 2px oklch(0 0 0 / 35%)}
+.ka-now .ka-card{border-left:2px solid var(--lime)}
+.ka-empty{height:10px}
+.ka-sorted{padding:6px 10px;font-size:12.5px;color:var(--a-ink2)}
+.ka-sorted b{font-weight:500;color:var(--lime)}
 .ky-demo [data-drag]{cursor:grab;touch-action:pan-y;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-.ky-demo .ky-row{transition:background .12s,opacity .2s,transform .2s}
-.ky-demo .ky-row:hover{background:oklch(1 0 0 / 5%)}
-.ky-demo .ky-row.ky-going{opacity:0;transform:translateX(12px)}
-.ky-demo .ky-row.ky-lifted{opacity:.35}
-.ky-demo .ky-ghost .ky-verbs{opacity:0;transition:opacity .12s}
-.ky-demo .ky-ghost:hover .ky-verbs,.ky-demo .ky-ghost:focus-within .ky-verbs,.ky-demo .ky-ghost.ky-open .ky-verbs{opacity:1}
-.ky-demo .ky-ibtn{border:0;background:transparent;cursor:pointer;padding:0}
-.ky-demo .ky-ibtn:hover{color:var(--ink);background:oklch(1 0 0 / 8%)}
-.ky-demo .ky-foldbtn{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;padding:0;cursor:pointer;color:var(--muted);font-size:12px}
-.ky-demo .ky-foldbtn svg{transition:transform .15s}
-.ky-demo .ky-foldbtn[aria-expanded="false"] svg{transform:rotate(-90deg)}
-.ky-demo .ky-txtbtn{border:0;background:transparent;padding:0;cursor:pointer;color:var(--faint);font-size:12px}
-.ky-demo .ky-txtbtn:hover{color:var(--ink)}
-.ky-demo .ky-drop{position:relative;min-height:32px;border-radius:8px}
-.ky-demo .ky-empty{height:32px;border-radius:8px;border:1px dashed oklch(1 0 0 / 9%)}
-.ky-demo .ky-line{position:absolute;left:6px;right:6px;height:2px;margin-top:-1px;border-radius:2px;background:var(--lime);box-shadow:0 0 8px oklch(0.87 0.19 125 / 70%);pointer-events:none}
-.ky-demo .ky-add{width:100%;box-sizing:border-box;padding:9px 10px;border-radius:8px;background:oklch(0.15 0.004 286);border:1px solid var(--line);color:var(--ink);font:inherit;font-size:16px}
-.ky-demo .ky-add::placeholder{color:oklch(0.55 0.01 286)}
-.ky-demo .ky-add:focus{outline:none;border-color:oklch(1 0 0 / 30%)}
-.ky-demo .ky-sorted{padding:6px 10px;font-size:12px;color:var(--muted)}
-.ky-demo .ky-sorted b{font-weight:500;color:var(--lime)}
-.ky-drag-float{position:fixed;z-index:50;pointer-events:none;display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;background:oklch(0.25 0.004 286);box-shadow:0 10px 24px oklch(0 0 0 / 50%),0 0 0 1px oklch(1 0 0 / 12%);font-size:13px;color:var(--ink);transform:rotate(-1.5deg);max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ky-toast{position:absolute;left:50%;bottom:14px;transform:translate(-50%,6px);padding:6px 12px;border-radius:999px;background:oklch(0.24 0.004 286);border:1px solid oklch(1 0 0 / 10%);font-size:12px;color:var(--ink-2);opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;white-space:nowrap}
+.ky-demo .ky-going{opacity:0;transform:translateX(12px)}
+.ky-demo .ky-lifted{opacity:.35}
+.ky-demo .ky-drop{position:relative}
+.ky-demo .ky-line{position:absolute;left:8px;right:8px;height:2px;margin-top:-1px;border-radius:2px;background:var(--lime);box-shadow:0 0 8px oklch(0.87 0.19 125 / 70%);pointer-events:none;z-index:2}
+.ky-drag-float{position:fixed;z-index:50;pointer-events:none;display:flex;align-items:center;gap:10px;height:34px;padding:0 12px;border-radius:8px;background:oklch(0.3 0.006 286);box-shadow:0 12px 28px oklch(0 0 0 / 55%),0 0 0 1px oklch(1 0 0 / 12%);font-family:Inter,system-ui,sans-serif;font-size:13.5px;color:oklch(0.955 0.002 286);transform:rotate(-1.5deg);max-width:300px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ky-toast{position:absolute;left:50%;bottom:16px;transform:translate(-50%,6px);padding:7px 14px;border-radius:999px;background:var(--a-card);border:1px solid var(--a-border);box-shadow:0 8px 20px oklch(0 0 0 / 40%);font-size:12.5px;color:var(--a-ink0);opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;white-space:nowrap}
 .ky-toast.on{opacity:1;transform:translate(-50%,0)}
-@media (hover:none){.ky-demo .ky-ghost .ky-verbs{opacity:1}}
-@media (max-width:600px){.ky-demo .ky-verbs{display:inline-flex!important}.ky-demo .ky-ghost .ky-date{display:none}.ky-demo-hint{display:none}}
-@media (prefers-reduced-motion:reduce){.ky-demo .ky-row,.ky-toast,.ky-demo .ky-foldbtn svg{transition:none}}
+@media (hover:none){.ka-verbs{opacity:1}}
+@media (max-width:820px){.ky-demo{flex-direction:column;min-height:0}.ka-side{flex:none}.ka-lights,.ka-spacer{display:none}.ka-canvas{margin:0 8px 8px;padding:18px 14px 56px}}
+@media (max-width:600px){.ka-ctl .ka-hide-sm,.ka-ctl i.ka-hide-sm{display:none}.ka-ghost .ka-meta{display:none}.ka-verbs{opacity:1}.ka-word{display:none}}
+@media (prefers-reduced-motion:reduce){.ka-row,.ky-toast,.ka-foldbtn svg{transition:none}}
 [hidden]{display:none!important}
 @media (max-width:600px){.ky-verbs{display:none!important}.ky-wrap{padding-left:16px;padding-right:16px}.ky-topnav{display:none!important}.ky-h1{white-space:normal;font-size:38px}.ky-joinbtn{flex:1 1 100%!important;justify-content:center}.ky-sec{padding-bottom:104px}}
 </style>
@@ -229,74 +267,11 @@ they're just hanging out.</h1>
 
     <!-- hero mock: today, with the leftovers fold open -->
     <div style="position: relative; z-index: 1; max-width: 1000px; margin: 64px auto 0; padding-bottom: 136px">
-      <div class="ky-ann ky-ann-out" style="top: 112px"><span aria-hidden="true">←</span> just hanging out</div>
+      <div class="ky-ann ky-ann-out" style="top: 170px"><span aria-hidden="true">←</span> just hanging out</div>
       <div class="ky-ann ky-ann-in"><span aria-hidden="true">↓</span> just hanging out</div>
-      <div class="ky-mock" style="position: relative" role="region" aria-label="A working demo of dsul's Today view. Nothing here is saved.">
-        <div style="display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-bottom: 1px solid oklch(1 0 0 / 7%); background: oklch(0.155 0.004 286)">
-          <span style="width: 9px; height: 9px; border-radius: 50%; background: oklch(0.32 0.004 286)"></span><span style="width: 9px; height: 9px; border-radius: 50%; background: oklch(0.32 0.004 286)"></span><span style="width: 9px; height: 9px; border-radius: 50%; background: oklch(0.32 0.004 286)"></span>
-          <span class="ky-demo-hint" data-demo-hint hidden>live demo. drag, tick, sort. nothing's saved.</span>
-          <button type="button" class="ky-demo-reset" data-demo-reset hidden>start over</button>
-        </div>
-        <div id="ky-demo" class="ky-demo" style="display: flex; flex-wrap: wrap; text-align: left">
-          <!-- braindump -->
-          <div class="ky-side" style="display: flex; flex-direction: column; gap: 10px; padding: 14px 12px">
-            <div style="display: flex; align-items: center; gap: 8px; padding: 0 10px">
-              <span style="font-weight: 500; color: oklch(0.95 0.003 286)">Braindump</span>
-              <span class="ky-date">23 undated</span>
-              <span class="ky-obtn" style="margin-left: auto; height: 22px; padding: 0 8px; font-size: 11px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"></path></svg>do stuff</span>
-            </div>
-            <div>
-              <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">is it hot sauce season</span></div>
-              <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">gift for jo???</span></div>
-              <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">renew passport (before it's an emergency)</span></div>
-              <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">fix the wobbly chair</span></div>
-              <div class="ky-row"><span class="ky-chk"></span><span class="ky-t">find the good tape</span></div>
-            </div>
-            <div style="flex: 1; min-height: 12px"></div>
-            <div style="border-radius: 12px; border: 1px solid oklch(1 0 0 / 9%); background: oklch(0.18 0.004 286); padding: 8px; display: flex; flex-direction: column; gap: 8px">
-              <div style="padding: 9px 10px; border-radius: 8px; background: oklch(0.15 0.004 286); border: 1px solid var(--line); color: oklch(0.55 0.01 286)">Add a task or search…</div>
-            </div>
-          </div>
-          <!-- today -->
-          <div class="ky-canvas" style="padding: 22px 24px 28px; display: flex; flex-direction: column; gap: 18px">
-            <div style="font-size: 20px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink)">Monday, November 2</div>
-            <div style="display: flex; flex-direction: column; gap: 2px">
-              <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 0 10px 4px; font-size: 12px">
-                <span style="color: var(--muted)">From earlier</span>
-                <span style="color: var(--faint)">4</span>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="oklch(0.6 0.01 286)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
-                <span style="margin-left: auto; display: inline-flex; gap: 12px; color: var(--faint)"><span>Keep all</span><span>Send all to sidebar</span></span>
-              </div>
-              <div class="ky-row ky-ghost" style="align-items: center; background: oklch(1 0 0 / 5%)">
-                <span class="ky-chk ky-chk-ghost" style="margin-top: 0"></span><span class="ky-t">text the group chat back</span>
-                <span class="ky-verbs" style="flex: none; display: inline-flex; align-items: center; gap: 2px">
-                  <span class="ky-ibtn" title="Keep for today"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></span>
-                  <span class="ky-ibtn" title="Move to tomorrow"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"></path></svg></span>
-                  <span class="ky-ibtn" title="Reschedule"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path></svg></span>
-                  <span class="ky-ibtn" title="Send to sidebar"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4v16M21 12H7M12 7l-5 5 5 5"></path></svg></span>
-                  <span class="ky-ibtn" title="Let it go"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></span>
-                </span>
-                <span class="ky-date">Sun</span>
-              </div>
-              <div class="ky-row ky-ghost"><span class="ky-chk ky-chk-ghost"></span><span class="ky-t">return the library book (it's fine)</span><span class="ky-date">Fri</span></div>
-              <div class="ky-row ky-ghost"><span class="ky-chk ky-chk-ghost"></span><span class="ky-t">cancel the free trial (before it's not free)</span><span class="ky-date">Thu</span></div>
-              <div class="ky-row ky-ghost"><span class="ky-chk ky-chk-ghost"></span><span class="ky-t">learn the ukulele</span><span class="ky-date">Tue</span></div>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 6px">
-              <div class="ky-lbl" style="padding: 0 10px">Morning</div>
-              <div class="ky-row" style="background: oklch(1 0 0 / 3%)"><span class="ky-chk ky-chk-done"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="oklch(0.22 0.05 130)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"></path></svg></span><span class="ky-t" style="text-decoration: line-through; color: var(--faint)">drink a water</span></div>
-              <div class="ky-row" style="background: oklch(1 0 0 / 3%)"><span class="ky-chk"></span><span class="ky-t">reply to sam (the short reply, not the essay)</span></div>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 6px">
-              <div class="ky-lbl" style="padding: 0 10px">Afternoon</div>
-              <div class="ky-row" style="background: oklch(1 0 0 / 3%)"><span class="ky-chk"></span><span class="ky-t">go outside on purpose</span></div>
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 6px">
-              <div class="ky-lbl" style="padding: 0 10px">Evening</div>
-              <div style="height: 32px; border-radius: 8px; border: 1px dashed oklch(1 0 0 / 9%)"></div>
-            </div>
-          </div>
-        </div>
+      <div class="ky-demo-bar"><span class="ky-ann" data-demo-hint hidden>live demo: drag, tick, sort. nothing's saved.</span><button type="button" class="ky-demo-reset" data-demo-reset hidden>start over</button></div>
+      <div class="ka-app" role="region" aria-label="A working demo of dsul's Today view, drawn like the app's Night theme. Nothing here is saved.">
+        <div id="ky-demo" class="ky-demo"><noscript><p class="ky-note" style="padding: 40px">this one's a live demo, so it needs javascript.</p></noscript></div>
       </div>
       <p style="margin: 18px auto 0; max-width: 560px; text-align: center; font-size: 14px; line-height: 1.5; color: var(--faint)">whatever you didn't get to waits at the top of today, a little faded, with the day you meant to do it. no red, not even for the ukulele.</p>
     </div>
@@ -772,7 +747,7 @@ doing today?</h2>
   (function demo() {
     var root = document.getElementById('ky-demo');
     if (!root) return;
-    var mock = root.parentNode;
+    var mock = root.parentNode.parentNode;
     var hint = mock.querySelector('[data-demo-hint]'), reset = mock.querySelector('[data-demo-reset]');
     var calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
     var DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -789,8 +764,8 @@ doing today?</h2>
         open: true, sortedOnce: false,
         brain: [it('is it hot sauce season'), it('gift for jo???'), it('renew passport (before it\'s an emergency)'), it('fix the wobbly chair'), it('find the good tape')],
         ghosts: [it('text the group chat back', { day: ago(1) }), it('return the library book (it\'s fine)', { day: ago(3) }), it('cancel the free trial (before it\'s not free)', { day: ago(4) }), it('learn the ukulele', { day: ago(6) })],
-        morning: [it('drink a water', { done: true }), it('reply to sam (the short reply, not the essay)')],
-        afternoon: [it('go outside on purpose')],
+        morning: [it('drink a water', { done: true }), it('reply to sam (the short reply, not the essay)', { meta: '15m' })],
+        afternoon: [it('go outside on purpose', { meta: '30m' })],
         evening: []
       };
     }
@@ -807,38 +782,52 @@ doing today?</h2>
     ];
     function chk(item, list) {
       var label = (item.done ? 'Mark not done: ' : 'Mark done: ') + item.t;
-      return '<button type="button" class="ky-chk' + (item.done ? ' ky-chk-done' : '') + (list === 'ghosts' ? ' ky-chk-ghost' : '') + '" data-act="tick" aria-pressed="' + (item.done ? 'true' : 'false') + '" aria-label="' + esc(label) + '">' + (item.done ? TICK : '') + '</button>';
+      var tick = item.done ? '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="oklch(0.87 0.19 125)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>' : '';
+      return '<button type="button" class="ka-chk' + (list === 'ghosts' ? ' ka-chk-ghost' : '') + '" data-act="tick" aria-pressed="' + (item.done ? 'true' : 'false') + '" aria-label="' + esc(label) + '">' + tick + '</button>';
     }
     function row(item, list) {
-      var done = item.done ? ' style="text-decoration: line-through; color: var(--faint)"' : '';
-      return '<div class="ky-row" data-id="' + item.id + '" data-list="' + list + '" data-drag' + (list === 'brain' ? '' : ' style="background: oklch(1 0 0 / 3%)"') + '>' + chk(item, list) + '<span class="ky-t"' + done + '>' + esc(item.t) + '</span></div>';
+      return '<div class="ka-row' + (item.done ? ' ka-done' : '') + '" data-id="' + item.id + '" data-list="' + list + '" data-drag>' + chk(item, list) + '<span class="ka-t">' + esc(item.t) + '</span>' + (item.meta ? '<span class="ka-meta">' + item.meta + '</span>' : '') + '</div>';
     }
     function ghost(item) {
-      var verbs = VERBS.map(function (v) { return '<button type="button" class="ky-ibtn" data-act="' + v[0] + '" title="' + v[1] + '" aria-label="' + v[1] + ': ' + esc(item.t) + '">' + v[2] + '</button>'; }).join('');
-      return '<div class="ky-row ky-ghost" data-id="' + item.id + '" data-list="ghosts" style="align-items: center">' + chk(item, 'ghosts') + '<span class="ky-t">' + esc(item.t) + '</span><span class="ky-verbs" style="flex: none; display: inline-flex; align-items: center; gap: 2px">' + verbs + '</span><span class="ky-date">' + item.day + '</span></div>';
+      var verbs = VERBS.map(function (v) { return '<button type="button" class="ka-ib" data-act="' + v[0] + '" title="' + v[1] + '" aria-label="' + v[1] + ': ' + esc(item.t) + '">' + v[2] + '</button>'; }).join('');
+      return '<div class="ka-row ka-ghost" data-id="' + item.id + '" data-list="ghosts">' + chk(item, 'ghosts') + '<span class="ka-t">' + esc(item.t) + '</span><span class="ka-verbs">' + verbs + '</span><span class="ka-meta">' + item.day + '</span></div>';
     }
+    var CHEV = icon('<path d="m6 9 6 6 6-6"></path>', 12);
+    var PART_ICON = {
+      morning: icon('<path d="M12 2v8M4.9 10.9l1.4 1.4M2 18h2M20 18h2M17.7 12.3l1.4-1.4M22 22H2M8 6l4-4 4 4M16 18a4 4 0 0 0-8 0"></path>', 13),
+      afternoon: icon('<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"></path>', 13),
+      evening: icon('<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>', 13)
+    };
     function render() {
-      var undated = S.brain.length + 18;
-      var h = '<div class="ky-side" style="display: flex; flex-direction: column; gap: 10px; padding: 14px 12px">' +
-        '<div style="display: flex; align-items: center; gap: 8px; padding: 0 10px"><span style="font-weight: 500; color: oklch(0.95 0.003 286)">Braindump</span><span class="ky-date">' + undated + ' undated</span></div>' +
-        '<div class="ky-drop" data-drop="brain">' + S.brain.map(function (i) { return row(i, 'brain'); }).join('') + (S.brain.length ? '' : '<div class="ky-sorted">empty. suspicious.</div>') + '</div>' +
-        '<div style="flex: 1; min-height: 12px"></div>' +
-        '<div style="border-radius: 12px; border: 1px solid oklch(1 0 0 / 9%); background: oklch(0.18 0.004 286); padding: 8px"><form data-add><label class="ky-sr" for="ky-demo-add">add a thought to the braindump</label><input id="ky-demo-add" class="ky-add" maxlength="80" autocomplete="off" placeholder="Add a task…"></form></div>' +
-        '</div>';
-      h += '<div class="ky-canvas" style="position: relative; padding: 22px 24px 52px; display: flex; flex-direction: column; gap: 18px">';
-      h += '<div style="font-size: 20px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink)">' + LONG[now.getDay()] + ', ' + MONTHS[now.getMonth()] + ' ' + now.getDate() + '</div>';
+      var nowPart = partNow();
+      var h = '<aside class="ka-side"><div class="ka-lights" aria-hidden="true"><i></i><i></i><i></i></div><div class="ka-word">dsul<b></b></div>' +
+        '<div class="ka-pill"><span>' + (S.brain.length + 18) + ' undated</span><span class="ka-ico" aria-hidden="true">' +
+        icon('<path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"></path>', 14) +
+        icon('<path d="m6 14 1.5-2.9A2 2 0 0 1 9.2 10H20a2 2 0 0 1 1.9 2.5l-1.5 6A2 2 0 0 1 18.4 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.7.9l.8 1.2a2 2 0 0 0 1.7.9H18a2 2 0 0 1 2 2v2"></path>', 14) +
+        icon('<rect x="3" y="3" width="18" height="18" rx="4"></rect><path d="M12 8v8M8 12h8"></path>', 14) + '</span></div>' +
+        '<div class="ka-list ky-drop" data-drop="brain">' + S.brain.map(function (i) { return row(i, 'brain'); }).join('') + (S.brain.length ? '' : '<div class="ka-sorted">empty. suspicious.</div>') + '</div>' +
+        '<div class="ka-spacer"></div>' +
+        '<form class="ka-dock" data-add><label class="ky-sr" for="ky-demo-add">add a thought to the braindump</label><input id="ky-demo-add" class="ka-input" maxlength="80" autocomplete="off" placeholder="Add a task or search…"></form>' +
+        '</aside>';
+      h += '<div class="ka-canvas">';
+      h += '<div class="ka-cap"><div class="ka-date">' + icon('<rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4M8 3v4M3 10h18"></path>', 15) +
+        icon('<path d="m15 18-6-6 6-6"></path>', 14) + '<span>' + LONG[now.getDay()] + ', ' + MONTHS[now.getMonth()] + ' ' + now.getDate() + '</span>' + icon('<path d="m9 18 6-6-6-6"></path>', 14) + '</div>' +
+        '<div class="ka-ctl" aria-hidden="true"><span>' + icon('<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 10h18M3 15h18"></path>', 14) + 'Buckets ' + CHEV + '</span>' +
+        '<span>' + icon('<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>', 14) + 'Day ' + CHEV + '</span><i class="ka-hide-sm"></i>' +
+        '<span class="ka-hide-sm">' + icon('<path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"></path>', 14) + 'Display ' + CHEV + '</span><i class="ka-hide-sm"></i>' +
+        '<span class="ka-hide-sm">' + icon('<path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10Z"></path><path d="M2 21c0-3 1.9-5.4 5.2-6.1 2.4-.5 4.9-2 5.8-4"></path>', 14) + '</span></div></div>';
       if (S.ghosts.length) {
-        h += '<div style="display: flex; flex-direction: column; gap: 2px"><div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 0 10px 4px; font-size: 12px">' +
-          '<button type="button" class="ky-foldbtn" data-act="fold" aria-expanded="' + S.open + '">From earlier <span style="color: var(--faint)">' + S.ghosts.length + '</span>' + icon('<path d="m6 9 6 6 6-6"></path>', 12) + '</button>' +
-          '<span style="margin-left: auto; display: inline-flex; gap: 12px"><button type="button" class="ky-txtbtn" data-act="keepall">Keep all</button><button type="button" class="ky-txtbtn" data-act="sideall">Send all to sidebar</button></span></div>' +
-          (S.open ? S.ghosts.map(ghost).join('') : '') + '</div>';
+        h += '<div><div class="ka-fold"><button type="button" class="ka-foldbtn" data-act="fold" aria-expanded="' + S.open + '">From earlier <span>' + S.ghosts.length + '</span>' + CHEV + '</button>' +
+          '<span style="margin-left: auto; display: inline-flex; gap: 14px"><button type="button" class="ka-txt" data-act="keepall">Keep all</button><button type="button" class="ka-txt" data-act="sideall">Send all to sidebar</button></span></div>' +
+          (S.open ? '<div style="padding-top: 4px">' + S.ghosts.map(ghost).join('') + '</div>' : '') + '</div>';
       } else if (S.sortedOnce) {
-        h += '<div class="ky-sorted"><b>All sorted</b>, you got this.</div>';
+        h += '<div class="ka-sorted"><b>All sorted</b>, you got this.</div>';
       }
       PARTS.forEach(function (p) {
         var list = S[p[0]];
-        h += '<div style="display: flex; flex-direction: column; gap: 6px"><div class="ky-lbl" style="padding: 0 10px">' + p[1] + '</div>' +
-          '<div class="ky-drop" data-drop="' + p[0] + '" style="display: flex; flex-direction: column; gap: 6px">' + (list.length ? list.map(function (i) { return row(i, p[0]); }).join('') : '<div class="ky-empty"></div>') + '</div></div>';
+        h += '<section class="ka-bucket ky-drop' + (p[0] === nowPart ? ' ka-now' : '') + '" data-drop="' + p[0] + '">' +
+          '<div class="ka-bh"><span class="ka-dot" style="color: var(--a-' + p[0] + ')">' + PART_ICON[p[0]] + '</span>' + p[1] + ' ' + CHEV + (list.length ? '<span class="ka-count">' + list.length + '</span>' : '') + '</div>' +
+          (list.length ? '<div class="ka-card">' + list.map(function (i) { return row(i, p[0]); }).join('') + '</div>' : '<div class="ka-empty"></div>') + '</section>';
       });
       h += '<div class="ky-toast" aria-hidden="true"></div><div class="ky-sr" role="status" aria-live="polite" data-live></div></div>';
       var focusId = document.activeElement && root.contains(document.activeElement) ? document.activeElement.id : '';
