@@ -5841,7 +5841,7 @@ body {
 }
 
 /* ── The dock's thin glass (components/sidebar/sidebar-dock.tsx) ────────────
-   Over the dock's aurora field, under its rows: 1px and a faint white wash on
+   Over the dock's relay field, under its rows: 1px and a faint white wash on
    paper, 2px and a wash of the capsule's own grey in dark. Frost, never an
    opacity, so the field's lime keeps its own strength. */
 [data-dock-glass] {

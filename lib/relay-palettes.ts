@@ -70,13 +70,16 @@ export const RELAY_LIGHT_PALETTES: Record<RelayLightPaletteKey, RelayLightPalett
     label: 'Aurora',
     kind: 'multi',
     description:
-      'Lime into mint into teal, a touch brighter than Relay so it reads on paper: the day done aurora and the crest on the app icon. The sidebar dock paints it.',
+      'Mostly lime, mint and teal (the day done aurora and the crest on the app icon), a touch brighter than Relay so it reads on paper, with orange and indigo as the odd spark. The sidebar dock paints it in light.',
     colors: [
+      'oklch(0.88 0.22 128)',
       'oklch(0.88 0.22 128)',
       'oklch(0.88 0.22 128)',
       'oklch(0.84 0.2 140)',
       'oklch(0.8 0.16 160)',
       'oklch(0.76 0.13 190)',
+      'oklch(0.7 0.13 50)',
+      'oklch(0.58 0.13 268)',
     ],
   },
   quiet: {
@@ -231,15 +234,3 @@ export function relayLightColors(key: RelayLightPaletteKey = DEFAULT_LIGHT_PALET
   return (RELAY_LIGHT_PALETTES[key] ?? RELAY_LIGHT_PALETTES[DEFAULT_LIGHT_PALETTE]).colors;
 }
 
-/**
- * The aurora's DARK colours (lime, mint, teal), for a field passed
- * `darkPalette`. A module constant, as that prop requires. The lime is the
- * brand lime the dark field already paints.
- */
-export const AURORA_DARK_RELAY: readonly string[] = [
-  'oklch(0.87 0.19 125)',
-  'oklch(0.87 0.19 125)',
-  'oklch(0.84 0.16 140)',
-  'oklch(0.8 0.13 165)',
-  'oklch(0.74 0.11 190)',
-];
