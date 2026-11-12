@@ -4,6 +4,10 @@
  * encouraging, a little silly, never a guess at what the reader is up to (no
  * time of day, no day of the week). Every line has to fit two lines at 27px in
  * the 320px column, so keep new ones short.
+ *
+ * The iPhone's sign-in screen picks from the same pool
+ * (ios/DsulCore/Sources/DsulCore/LoginHeadlines.swift). Change both together;
+ * tests/unit/login-headlines.test.ts fails when they differ.
  */
 
 /** Shown before the browser has picked a line, and as the fallback. */

@@ -34,6 +34,7 @@ struct SignInView: View {
     @Environment(\.webAuthenticationSession) private var webAuthenticationSession
     @Environment(\.colorScheme) private var colorScheme
     @State private var showsEmailField = false
+    @State private var headline = LoginHeadlines.pick()
     @State private var email = ""
     @FocusState private var emailFocused: Bool
     /// The Google button's height, which Apple's takes (50 is the email
@@ -92,7 +93,8 @@ struct SignInView: View {
             VStack(spacing: 8) {
                 Text("dsul")
                     .font(.system(size: 52, weight: .bold, design: .rounded))
-                Text("Sign in to see your day.")
+                Text(headline)
+                    .multilineTextAlignment(.center)
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
