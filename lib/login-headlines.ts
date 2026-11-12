@@ -12,15 +12,9 @@ export const DEFAULT_LOGIN_HEADLINE = 'ok! what are we doing today?';
 export const LOGIN_HEADLINES: readonly string[] = [
   DEFAULT_LOGIN_HEADLINE,
   'what stuff should we do today?',
-  'small steps still count.',
-  'big plans, tiny steps.',
   'one thing at a time. maybe two.',
-  'future you says thanks in advance.',
-  'you showed up. that’s step one.',
-  'brain full? empty it here.',
-  'let’s get stuff out of your head.',
-  'stuff won’t do itself. sadly.',
-  'some stuff, then snacks.',
+  'stuff won’t do itself. sadly. unless..?',
+  'do some stuff first, then snacks.',
   'a plan is just a list with dreams.',
 ];
 
