@@ -19,6 +19,18 @@ public enum LoginHeadlines {
         "stuff won’t do itself. sadly. unless..?",
         "do some stuff first, then snacks.",
         "a plan is just a list with dreams.",
+        "brain too full? empty it here.",
+        "tiny steps are still steps!",
+        "future you is proud as hell.",
+        "ok. where were we?",
+        "ok, what’s the move?",
+        "hi. got stuff?",
+        "pick a thing. any thing.",
+        "let’s wrangle some stuff.",
+        "the checkboxes miss you.",
+        "tiny plan, big snack.",
+        "stuff goes in. done stuff comes out.",
+        "a to-do list walks into a bar...",
         // pool:end
     ]
 
