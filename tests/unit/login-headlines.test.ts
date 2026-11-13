@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { DEFAULT_LOGIN_HEADLINE, LOGIN_HEADLINES, pickLoginHeadline } from '@/lib/login-headlines';
 
 describe('the sign-in headline', () => {
@@ -22,5 +24,16 @@ describe('the sign-in headline', () => {
 
   it('has no em dashes', () => {
     for (const line of LOGIN_HEADLINES) expect(line).not.toContain('—');
+  });
+
+  it('matches the iPhone pool line for line (ios/DsulCore LoginHeadlines.swift)', () => {
+    const swift = readFileSync(
+      join(process.cwd(), 'ios/DsulCore/Sources/DsulCore/LoginHeadlines.swift'),
+      'utf8',
+    );
+    const pool = swift.slice(swift.indexOf('// pool:start'), swift.indexOf('// pool:end'));
+    const lines = [...pool.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]);
+    expect(lines).toEqual([...LOGIN_HEADLINES]);
+    expect(swift).toContain(`defaultLine = "${DEFAULT_LOGIN_HEADLINE}"`);
   });
 });
