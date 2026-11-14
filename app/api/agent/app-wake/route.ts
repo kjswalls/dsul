@@ -1,6 +1,6 @@
 import { after } from 'next/server';
 import { isSameOrigin, jsonError, jsonOk, readJson, requireSession } from '@/app/api/ai/_shared/guard';
-import { fireRoutine, fireText, MAX_FIRE_ITEMS, wakeKey } from '@/lib/agent-wake';
+import { claimWake, fireRoutine, fireText, MAX_FIRE_ITEMS, wakeKey } from '@/lib/agent-wake';
 import { getWake } from '@/lib/agent-wake-store';
 import { createServiceClient } from '@/lib/supabase-service';
 
@@ -30,25 +30,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NOT_AN_APP = new Set(['openclaw', 'beacon', 'ai', 'you', 'me']);
 const QUEUED = new Set<string | null>([null, 'queued']);
 const FINISHED = new Set(['completed', 'cancelled']);
-
-/**
- * One run per app per minute. A routine allows 30 runs an hour, and a run
- * already going reads the whole queue, so a second wake right behind the first
- * would spend a run to find the same items. In memory, so per instance: a bound
- * on a flood, not a guarantee.
- */
-const WAKE_COOLDOWN_MS = 60_000;
-const lastWake = new Map<string, number>();
-
-function claimWake(key: string, now: number): boolean {
-  const at = lastWake.get(key);
-  if (at !== undefined && now - at < WAKE_COOLDOWN_MS) return false;
-  lastWake.set(key, now);
-  if (lastWake.size > 256) {
-    for (const [k, t] of lastWake) if (now - t >= WAKE_COOLDOWN_MS) lastWake.delete(k);
-  }
-  return true;
-}
 
 export async function POST(req: Request): Promise<Response> {
   if (!isSameOrigin(req)) return jsonError(403, 'forbidden');

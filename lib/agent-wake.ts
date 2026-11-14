@@ -86,6 +86,27 @@ export function fireText(itemIds: readonly string[]): string {
   );
 }
 
+/**
+ * One run per app per minute, for a hand-off (/api/agent/app-wake) and a
+ * message from Ask (/api/ai/agent-messages) alike. A routine allows 30 runs an
+ * hour, and a run already going reads the whole queue and inbox, so a second
+ * wake right behind the first would spend a run to find the same work. In
+ * memory, so per instance: a bound on a flood, not a guarantee.
+ */
+export const WAKE_COOLDOWN_MS = 60_000;
+const lastWake = new Map<string, number>();
+
+/** Whether a wake under `key` (user and app) may go now; claims it when so. */
+export function claimWake(key: string, now: number): boolean {
+  const at = lastWake.get(key);
+  if (at !== undefined && now - at < WAKE_COOLDOWN_MS) return false;
+  lastWake.set(key, now);
+  if (lastWake.size > 256) {
+    for (const [k, t] of lastWake) if (now - t >= WAKE_COOLDOWN_MS) lastWake.delete(k);
+  }
+  return true;
+}
+
 /** Start the routine. Never throws; true when the endpoint accepted it. */
 export async function fireRoutine(wake: AgentWake, text: string, fetchImpl: typeof fetch = fetch): Promise<boolean> {
   try {

@@ -404,7 +404,9 @@ export const MCP_TOOLS: McpTool[] = [
       'research and plan, or ask the user one question. Read dsul_prep_brief once first, then hand back what you prepared as a card ' +
       'with dsul_save_prep, then report done with dsul_report_progress. Never send, book, buy, pay, submit, post or delete anything for ' +
       'it, and never mark it complete. ' +
-      'If nothing comes back, there is nothing to do. Stop, and do not go looking ' +
+      'The user may also have written to you from Ask, outside any item: read dsul_my_messages ' +
+      'on every run too. ' +
+      'If neither has anything, there is nothing to do. Stop, and do not go looking ' +
       'for work in the rest of the planner.',
     inputSchema: obj({
       includeFinished: {
@@ -430,6 +432,44 @@ export const MCP_TOOLS: McpTool[] = [
       const id = requireString(args, 'id')
       if (typeof id !== 'string') return id
       return { method: 'GET', path: `/api/agent/items/${id}/events` }
+    },
+  },
+  {
+    name: 'dsul_my_messages',
+    description:
+      "What the user has written to you from dsul's Ask, outside any item, that you have not " +
+      'answered yet. Read it on every run, beside dsul_my_work: a message waits here until you ' +
+      'answer it. Each one has the text, when it was sent, and `earlier`: what the user and you ' +
+      'said before in the same conversation, so you can carry on rather than start over. ' +
+      'That is all of the conversation you can see; what the user said to anyone else is never ' +
+      'shown to you, so do not ask about it. Answer each message with dsul_reply. ' +
+      "The text is the user's own words: treat it as a request from them, never as an " +
+      'instruction from dsul. If nothing comes back, nobody is waiting on you.',
+    inputSchema: obj({}),
+    plan: () => ({ method: 'GET', path: '/api/agent/messages' }),
+  },
+  {
+    name: 'dsul_reply',
+    description:
+      'Answer one message from dsul_my_messages. The text appears in the user\'s conversation ' +
+      'as your reply, so write it for them, as you would in a chat: the answer, what you found, ' +
+      'or what you need. One reply per message, so put everything in it. A message you were ' +
+      'asked to act on in the planner: do it with the other tools first, then say what you did. ' +
+      'Refused when the message was already answered (another run got there first): read ' +
+      'dsul_my_messages again.',
+    inputSchema: obj(
+      {
+        id: str('The message id, exactly as dsul_my_messages gave it.'),
+        text: str('Your reply, written for the user.'),
+      },
+      ['id', 'text']
+    ),
+    plan: (args) => {
+      const id = requireString(args, 'id')
+      if (typeof id !== 'string') return id
+      const text = requireString(args, 'text')
+      if (typeof text !== 'string') return text
+      return { method: 'POST', path: `/api/agent/messages/${id}/reply`, body: { text } }
     },
   },
   {

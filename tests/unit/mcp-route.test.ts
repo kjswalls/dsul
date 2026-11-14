@@ -82,6 +82,8 @@ vi.mock('@/app/api/agent/items/[id]/act/route', () => ({ POST: fake('act') }));
 vi.mock('@/app/api/agent/items/[id]/prep/route', () => ({ POST: fake('prep') }));
 vi.mock('@/app/api/agent/items/[id]/files/route', () => ({ POST: fake('files') }));
 vi.mock('@/app/api/agent/prep-brief/route', () => ({ GET: fake('prep-brief') }));
+vi.mock('@/app/api/agent/messages/route', () => ({ GET: fake('messages') }));
+vi.mock('@/app/api/agent/messages/[id]/reply/route', () => ({ POST: fake('reply') }));
 vi.mock('@/app/api/agent/projects/route', () => ({ POST: fake('create:project') }));
 vi.mock('@/app/api/agent/projects/[id]/route', () => ({ PATCH: fake('patch:project'), DELETE: fake('delete:project') }));
 vi.mock('@/app/api/agent/context/route', () => ({
@@ -492,6 +494,8 @@ describe('every tool reaches a handler', () => {
     dsul_ask_user: { id: 'i1', question: 'Which one?' },
     dsul_report_progress: { id: 'i1', status: 'working' },
     dsul_prep_brief: {},
+    dsul_my_messages: {},
+    dsul_reply: { id: 'i1', text: 'Hi' },
     dsul_save_prep: { id: 'i1', pack: { kind: 'list', items: ['eggs'] } },
     dsul_attach_file: { id: 'i1', name: 'notes.txt', data: 'aGk=' },
     dsul_get_context: {},
