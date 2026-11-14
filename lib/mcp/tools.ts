@@ -383,8 +383,9 @@ export const MCP_TOOLS: McpTool[] = [
       'do the work, then report with dsul_report_progress. An item already sitting at ' +
       "'blocked' may have been answered, so read dsul_item_activity before assuming it is " +
       'still stuck. ' +
-      "Answering sends an item back to 'queued' with your last result still on it, so a queued " +
-      'item that already carries an aiResult is one the user has answered or sent back: read ' +
+      "The user can write to you on any item you hold, also after you report done; that sends it " +
+      "back to 'queued' with your last result still on it, so a queued " +
+      'item that already carries an aiResult is one the user has answered, written to, or sent back: read ' +
       'dsul_item_activity first, carry on from their answer, and make your next report a reply ' +
       'to what they said. ' +
       "Your 'done' report ends your part, not the item: never tick off an item handed to you " +
@@ -491,6 +492,9 @@ export const MCP_TOOLS: McpTool[] = [
       'without a result, and done or failed is refused when the result only repeats the text ' +
       'already on the item. When the user has answered your question, your next report is your ' +
       'reply to them: answer what they said, never just mark the item done. ' +
+      'If the user wrote to you while you were working, the response lists their messages in ' +
+      "userReplies: answer them. A 'done' or 'failed' that crossed a message puts the item back in " +
+      'your queue for that reply. ' +
       'ALSO call it periodically on anything long, at least every ' +
       `${QUIET_HOURS} hour(s), status 'working', with a line about where you are. ` +
       'That is the only thing that tells the user you are alive: the item shows how long it ' +

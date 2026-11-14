@@ -162,3 +162,47 @@ export function buildAgentExchange(
   const working = (item.aiStatus === 'queued' || item.aiStatus === 'working') && last.kind !== 'agent'
   return { agent, entries, openQuestion, working }
 }
+
+/**
+ * The last exchange drawn for each item, so the item's conversation with the
+ * user's own model can be told what the agent said (Kirby, 2026-11-14: a box
+ * switched from Claude to the model should not be blind to Claude's findings).
+ * Filled by hooks/use-agent-exchange.ts while the item is open; memory only.
+ * The agent never sees the model's side: nothing here goes the other way.
+ */
+const remembered = new Map<string, AgentExchange>();
+const REMEMBER_MAX = 50;
+
+export function rememberExchange(itemId: string, exchange: AgentExchange | null): void {
+  remembered.delete(itemId);
+  if (!exchange) return;
+  remembered.set(itemId, exchange);
+  if (remembered.size > REMEMBER_MAX) remembered.delete(remembered.keys().next().value as string);
+}
+
+export function rememberedExchange(itemId: string): AgentExchange | null {
+  return remembered.get(itemId) ?? null;
+}
+
+/** How much of the exchange the model is told: the newest turns, each clipped. */
+const CONTEXT_TURNS = 8;
+const CONTEXT_CHARS = 1200;
+
+/**
+ * The exchange as lines for the model's context (lib/ai-context.ts), newest
+ * turns last. Empty when nothing was said. Silent markers are left out: they
+ * are the app's words, not the agent's.
+ */
+export function exchangeContextLines(exchange: AgentExchange | null): string[] {
+  if (!exchange) return [];
+  const said = exchange.entries.filter(
+    (e): e is Exclude<ExchangeEntry, { kind: 'handoff' }> => e.kind !== 'handoff' && !(e.kind === 'agent' && e.silent)
+  );
+  if (said.length === 0) return [];
+  const clip = (t: string) => (t.length > CONTEXT_CHARS ? `${t.slice(0, CONTEXT_CHARS)}…` : t);
+  return said.slice(-CONTEXT_TURNS).map((e) => {
+    if (e.kind === 'you') return `- The user, to ${exchange.agent}: ${clip(e.text)}`;
+    const how = e.kind === 'agent' && e.question ? 'asked' : e.kind === 'agent' && e.failed ? "couldn't finish" : 'reported';
+    return `- ${exchange.agent} ${how}: ${clip(e.text)}`;
+  });
+}

@@ -2,8 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef } from 'react';
 import { ChatComposer } from '@/components/ai/chat-composer';
-import { AgentRouteLine } from '@/components/ai/agent-exchange';
-import { useAgentQuestionOpen } from '@/lib/agent-question';
+import { useItemAgent } from '@/lib/agent-question';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { modelName } from '@/lib/ai-model-names';
 import { chatAssistantLabel } from '@/lib/chat-utils';
@@ -77,8 +76,8 @@ export function BoundComposer({
   const { target } = useAICapabilities();
   const pending = useRailStore((s) => s.pendingFocus);
   const awake = useContext(ComposerAwakeContext);
-  // While an agent's question is open the line under the box says who it answers.
-  const answersAgent = useAgentQuestionOpen(binding.kind === 'item' ? binding.itemId : null);
+  // While an agent holds the item, the box's own who chip says who it talks to.
+  const itemAgent = useItemAgent(binding.kind === 'item' ? binding.itemId : null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -121,9 +120,7 @@ export function BoundComposer({
         placeholder={placeholder}
       />
       {label &&
-        (binding.kind === 'item' && answersAgent ? (
-          <AgentRouteLine itemId={binding.itemId} className="px-2" />
-        ) : binding.kind === 'item' && target === 'model' ? null : (
+        (binding.kind === 'item' && (itemAgent || target === 'model') ? null : (
           <AnswererLabel className="px-2" switchable={binding.kind === 'home'} />
         ))}
     </div>
