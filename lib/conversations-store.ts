@@ -5,6 +5,8 @@ import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
 import { buildDsulContextParts } from './ai-context';
 import { exchangeContextLines, rememberedExchange } from './agent-exchange';
 import { assigneeLabel } from './chat-utils';
+import { agentAnswerer } from './agent-messages';
+import { useAskToStore } from './ask-to-store';
 import type { Item } from './planner-types';
 import { mentionedItemIds } from './chat-mentions';
 import { goalsEnabled } from './extension-gates';
@@ -180,6 +182,20 @@ export interface ConversationsState {
   newDraft(o?: { itemId?: string; title?: string }): string;
   /** `images`: pictures for the model with this message only, never stored (lib/chat-images.ts). */
   send(threadId: string, text: string, images?: ChatImage[]): Promise<void>;
+  /**
+   * A message to an agent (Claude, Cursor) instead of the user's own answerer
+   * (memory/plans/agent-chat.md): appended and saved as a question with no
+   * reply yet. `onSaved` runs once the save has landed, with the conversation
+   * the message is in and its id, which is when lib/agent-chat.ts sends it on.
+   * False when nothing was written: blank, saving off, or the thread answering.
+   */
+  sendToAgent(threadId: string, text: string, agent: string, onSaved: (conversationId: string, messageId: string) => void): boolean;
+  /**
+   * An agent's answer (an inbox row), saved into its conversation as a reply
+   * whose id is the row's, so a second device lands it once. True once it is
+   * saved, or was already there.
+   */
+  landAgentReply(row: { id: string; conversationId: string; messageId: string; agent: string; reply: string }): Promise<boolean>;
   stop(threadId: string): void;
   rename(id: string, title: string): Promise<boolean>;
   setStarred(id: string, starred: boolean): Promise<boolean>;
@@ -267,6 +283,8 @@ const inflight = new Map<SaveJob, { id: string; body: TurnRequest }>();
  */
 const waiting = new Set<SaveJob>();
 let jobSeq = 0;
+/** By message id: run once the save carrying that message lands (sendToAgent, landAgentReply). */
+const afterSaves = new Map<string, (conversationId: string) => void>();
 /** Tallies for a conversation whose first save has not landed yet. */
 const pendingTallies = new Map<string, PendingTally[]>();
 /** Deleted this generation: a late answer for one must not bring it back. */
@@ -827,6 +845,13 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
         };
       });
       flushPendingTallies(id);
+      for (const mid of ids) {
+        const after = afterSaves.get(mid);
+        if (after) {
+          afterSaves.delete(mid);
+          after(id);
+        }
+      }
       return;
     }
 
@@ -1509,6 +1534,101 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       chainSave(cur, job);
     },
 
+    sendToAgent: (rawId, text, agent, onSaved) => {
+      const trimmed = typeof text === 'string' ? text.trim() : '';
+      if (!trimmed || !agent) return false;
+      get().ensureOwner();
+      const st = stamp();
+      // The agent reads its message from the saved conversation, so an unsaved one cannot go.
+      if (get().saving === 'off' || !st.ownerId) return false;
+      const id = resolveId(rawId);
+      const existing = get().threads[id];
+      if (existing?.streaming || existing?.load === 'gone') return false;
+      const content = cleanText(trimmed, CHAT_LIMITS.userChars);
+      if (!/[^ \t\r\n]/.test(content)) return false;
+      spendJustConnected();
+
+      const summary = get().summaries[id];
+      const base = existing ?? blankThread(id, { itemId: summary?.itemId ?? null, saved: !!summary });
+      const user: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content,
+        status: 'complete',
+        errorCode: null,
+        replyTo: null,
+        answerer: null,
+        model: null,
+        createdAt: Date.now(),
+        pos: null,
+        sync: 'pending',
+      };
+      const draftTitle = base.saved || base.draftTitle ? base.draftTitle : itemTitle(base.itemId) || deriveTitle(content);
+      set((x) => ({
+        threads: { ...x.threads, [id]: { ...base, draftTitle, messages: [...base.messages, user] } },
+      }));
+      afterSaves.set(user.id, (conversationId) => {
+        if (!isStale(st)) onSaved(conversationId, user.id);
+      });
+      void get().ensureLoaded();
+      retryQueued();
+      chainSave(id, { threadId: id, messages: [toTurn(user)], tries: 0, seq: ++jobSeq, ...st });
+      return true;
+    },
+
+    landAgentReply: async (row) => {
+      get().ensureOwner();
+      const st = stamp();
+      if (!st.ownerId || get().saving === 'off') return false;
+      const id = resolveId(row.conversationId);
+      if (removed.has(id)) return false;
+      const content = cleanText(row.reply, CHAT_LIMITS.assistantChars);
+      if (!content) return false;
+      const reply: ChatMessage = {
+        id: row.id,
+        role: 'assistant',
+        content,
+        status: 'complete',
+        errorCode: null,
+        replyTo: row.messageId,
+        answerer: agentAnswerer(row.agent),
+        model: null,
+        createdAt: Date.now(),
+        pos: null,
+        sync: 'pending',
+      };
+      const thread = get().threads[id];
+      if (thread && thread.messages.some((m) => m.id === row.id)) return true;
+      if (thread && thread.saved && thread.load !== 'gone') {
+        // On screen (or held): it lands in the transcript, then saves in order.
+        updateThread(id, (t) => ({ ...t, messages: [...t.messages, reply] }));
+        return new Promise<boolean>((resolve) => {
+          afterSaves.set(reply.id, () => resolve(!isStale(st)));
+          chainSave(id, { threadId: id, messages: [toTurn(reply)], tries: 0, seq: ++jobSeq, ...st });
+          // A save that never lands resolves false on the next delivery pass instead.
+          setTimeout(() => {
+            if (afterSaves.delete(reply.id)) resolve(false);
+          }, 60_000);
+        });
+      }
+      // Not held in this browser: saved straight into the conversation, which
+      // exists (the inbox row's key requires it). It shows when it is opened.
+      try {
+        const res = await deps.api.appendTurn(id, { ownerId: st.ownerId, messages: [toTurn(reply)] });
+        if (isStale(st)) return false;
+        if (res.ok) {
+          touch(id);
+          set((x) => {
+            const next = withSummaries(x, [res.value.conversation]);
+            return { ...next, list: placeInList(x.list, next.summaries, res.value.conversation) };
+          });
+        }
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+
     stop: (rawId) => {
       const id = resolveId(rawId);
       controllers.get(id)?.abort();
@@ -1785,6 +1905,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       queue = [];
       inflight.clear();
       waiting.clear();
+      afterSaves.clear();
       pendingTallies.clear();
       removed.clear();
       attempted.clear();
@@ -1860,6 +1981,7 @@ export function clearChatState(): void {
   useRailStore.getState().reset();
   useProposalStore.getState().dismiss();
   useChatReceipts.getState().reset();
+  useAskToStore.getState().reset();
   resetBrowserContext();
   useOpenClawBrowserStore.getState().reset();
   sweepLegacyTranscripts();

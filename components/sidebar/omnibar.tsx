@@ -57,6 +57,8 @@ import {
 import { useCommandUsageStore } from '@/lib/command-usage-store';
 import { useShortcutBindings } from '@/lib/keyboard-shortcuts-store';
 import { useCommandContext } from '@/hooks/use-command-context';
+import { useAskToStore } from '@/lib/ask-to-store';
+import { useAgentsStore } from '@/lib/agents-store';
 
 /**
  * The omnibar: search, quick-add, /commands and chat from one input. Prefixes:
@@ -281,7 +283,13 @@ export function Omnibar({
   // (`askInvite`), `?` is setup's door instead, and Ctrl+K's AI row is "Set
   // up AI" (or "Fix AI" while a saved key needs attention, `askFix`).
   const { canChat, answererName, askInvite, askFix } = useAICapabilities();
-  const askLabel = `Ask ${answererName ?? 'AI'}`;
+  // `?` starts from Ask home, so it writes to whoever home's To chip names
+  // (lib/ask-to-store.ts): "Ask Claude" when that is a connected app.
+  const homeTo = useAskToStore((st) => st.home);
+  const homeToName = useAgentsStore((st) =>
+    homeTo ? (st.agents.find((a) => a.assignee.toLowerCase() === homeTo.toLowerCase())?.name ?? null) : null
+  );
+  const askLabel = `Ask ${homeToName ?? answererName ?? 'AI'}`;
   const usage = useCommandUsageStore((s) => s.usage);
   const bindings = useShortcutBindings();
 

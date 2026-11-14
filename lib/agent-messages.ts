@@ -32,7 +32,7 @@ export const AGENT_HISTORY_CHARS = 2_000;
 const ANSWERER_PREFIX = 'agent:';
 
 /** The stored answerer of a reply an agent wrote: `agent:<name>`. */
-export function agentAnswerer(agent: string): string {
+export function agentAnswerer(agent: string): `agent:${string}` {
   return `${ANSWERER_PREFIX}${agent}`;
 }
 
