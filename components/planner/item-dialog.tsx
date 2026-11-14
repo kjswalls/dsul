@@ -715,6 +715,9 @@ function PanelBody({ panel, rail, children }: { panel: boolean; rail: boolean; c
  * gate flipping never re-parents what is inside (see PanelBody); folded, the
  * content is `inert`, so nothing hidden takes focus or a tap.
  */
+/** The Lift's travel time, folding the item panel for its chat (see leadSwap). */
+const RAIL_LIFT_MS = 260;
+
 function FoldRegion({
   open,
   active = true,
@@ -734,13 +737,21 @@ function FoldRegion({
       className={cn(
         // Rows only, never opacity: the details hold lime marks, and the lime
         // is never faded through a parent (CLAUDE.md). The clip hides them.
-        active && 'grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none',
+        active && 'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none',
         active && (open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')
       )}
     >
       {/* -mx-1/px-1: room for a focus ring at the clipped edge. */}
       <div className={active ? '-mx-1 min-h-0 overflow-hidden px-1' : undefined} inert={!open}>
-        {children}
+        {/* The Lift: the details rise a little as their rows close. */}
+        <div
+          className={cn(
+            active && 'transition-transform duration-300 ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none',
+            active && !open && '-translate-y-2.5'
+          )}
+        >
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -3239,7 +3250,7 @@ function ItemDialogInner({
               type="button"
               data-testid="item-dialog-reschedule"
               aria-label="Reschedule"
-              className="mr-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[7px] border border-border bg-surface-2 pr-1 pl-1.5 text-foreground shadow-sm transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:bg-accent"
+              className="mr-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[7px] border border-border pr-1 pl-1.5 text-foreground transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:bg-accent"
             >
               <CalendarClock className="size-3.5" aria-hidden />
               <ChevronDown className="size-3 text-muted-foreground" aria-hidden />
@@ -3511,7 +3522,9 @@ function ItemDialogInner({
       ariaLabel={`Type: ${activeConfig.label}. Change type`}
       testId="item-dialog-type-switch"
       alwaysChevron
-      className="font-medium"
+      // In the rail's top row the type is a quiet label until hovered, so
+      // Reschedule is the row's one boxed control (option B of the 2026-11-07 mocks).
+      className={actionsInRail ? 'border-transparent bg-transparent px-1.5 text-[13px] font-medium' : 'font-medium'}
       contentClassName="w-72"
     >
       {(close) => (
@@ -3650,6 +3663,20 @@ function ItemDialogInner({
   const fold = useCallback(() => {
     if (editItemId) setFoldedFor(editItemId);
   }, [editItemId]);
+  // Unfolding, the folded title stays mounted while it lifts out of the row
+  // (the Lift, below), then goes. Adjusted during render, React's pattern for
+  // state that follows a change.
+  const [foldLeaving, setFoldLeaving] = useState(false);
+  const [foldSeen, setFoldSeen] = useState(folded);
+  if (foldSeen !== folded) {
+    setFoldSeen(folded);
+    setFoldLeaving(!folded);
+  }
+  useEffect(() => {
+    if (!foldLeaving) return;
+    const t = window.setTimeout(() => setFoldLeaving(false), RAIL_LIFT_MS + 80);
+    return () => window.clearTimeout(t);
+  }, [foldLeaving]);
 
   // Rename into the panel (lib/item-rename.ts: F2 with no row under the
   // pointer, or Rename on a surface with no editable row): unfold, then select
@@ -3722,10 +3749,12 @@ function ItemDialogInner({
   // The tick: beside the title, or on the folded strip while the chat has the
   // panel (one at a time, so there is only ever one). Its own element, never
   // inside anything dimmed: the lime is never faded.
-  const tickBox =
+  // The folded line's tick is a size smaller than the title's, so it sits on
+  // the header's grid: centred under ‹, the title then starting under the type.
+  const tickBoxAt = (size: string) =>
     railTick && editItem ? (
       <RailDoneCheck
-        className="size-[18px]"
+        className={size}
         done={isDoneOn(editItem, railTick.dateStr)}
         partial={railTarget > 1 ? Math.min(railCount, railTarget) / railTarget : 0}
         label={ITEM_VERBS.tick.label(editItem, railTick)}
@@ -3739,6 +3768,71 @@ function ItemDialogInner({
         }}
       />
     ) : null;
+  const tickBox = tickBoxAt('size-[18px]');
+
+  // Folded, the item's tick and title take the header row itself (Kirby's
+  // pick D1, 2026-11-08): ‹, tick, title, then ⋯ ↗ ✕. The type and Reschedule
+  // step aside until the details open; the day and time ride the tooltip.
+  // A tap on the title opens the details again.
+  const foldedLead =
+    foldable && (folded || foldLeaving) && editItem && activeDraft ? (
+      <div data-testid="item-rail-region" className="flex min-w-0 flex-1 items-center gap-2">
+        {tickBoxAt('size-4')}
+        <ItemRail
+          className="mx-0 w-auto min-w-0 flex-1 flex-nowrap"
+          shimmer={folded}
+          title={activeDraft.title}
+          chips={[]}
+          hint={[activeDraft.container === 'none' ? null : activeDraft.container, ...railChips.map((c) => c.label)]
+            .filter(Boolean)
+            .join(' · ')}
+          onExpand={(e) => {
+            setFoldedFor(null);
+            // The line leaves the row under the pointer, so focus moves to the
+            // title, and the body goes back to its top: scrolled to the chat,
+            // the details would open above the fold.
+            const body = e.currentTarget
+              .closest('[data-testid="item-dialog"]')
+              ?.querySelector<HTMLElement>('[data-rail-body]');
+            requestAnimationFrame(() => {
+              if (body) body.scrollTop = 0;
+              document.getElementById(titleId)?.focus({ preventScroll: true });
+            });
+          }}
+        />
+      </div>
+    ) : null;
+
+  // The Lift (Kirby's pick, 2026-11-08, mock at
+  // /mnt/project-files/item-panel-rail/rail-motion.html): folding, the type
+  // rises out of the row as the tick and title rise into it, and back again
+  // on the way out. The two trade places by sliding inside a clip, never by
+  // fading: the type's square and a ticked box are lime, and lime is never
+  // faded through a parent (CLAUDE.md). The words arriving catch one pass of
+  // light (`rail-shimmer`, Kirby's ask). Whichever layer is away is inert.
+  const liftLayer = 'absolute inset-0 flex min-w-0 items-center px-1.5 transition-transform ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none';
+  const leadSwap = foldable ? (
+    <div className="relative -mx-1.5 -my-1 h-10 min-w-0 flex-1 overflow-hidden" data-rail-lift="">
+      <div
+        inert={folded}
+        className={cn(liftLayer, folded ? '-translate-y-full' : 'translate-y-0 delay-[60ms]')}
+        style={{ transitionDuration: `${RAIL_LIFT_MS}ms` }}
+      >
+        <span key={folded ? 'away' : 'back'} className={cn('flex min-w-0', !folded && foldLeaving && 'rail-shimmer')}>
+          {typeSwitch}
+        </span>
+      </div>
+      <div
+        inert={!folded}
+        className={cn(liftLayer, folded ? 'translate-y-0 delay-[60ms]' : 'translate-y-full')}
+        style={{ transitionDuration: `${RAIL_LIFT_MS}ms` }}
+      >
+        {foldedLead}
+      </div>
+    </div>
+  ) : (
+    typeSwitch
+  );
 
   // The capture modal's deck (Kirby's pick in the keycap round, 2026-11-05):
   // on the desktop modal the body holds only words (type, title, notes), and a
@@ -3854,13 +3948,29 @@ function ItemDialogInner({
               // One top row (the item panel beta, 2026-11-06): the type chip
               // leads after an icon-only ‹, and Reschedule, ⋯, open as page
               // and ✕ end it, so the body carries no second header row.
-              lead={actionsInRail ? typeSwitch : undefined}
+              lead={actionsInRail ? leadSwap : undefined}
+              divided={folded}
               actions={
                 actionsInRail && editItem ? (
                   <>
-                    {rescheduleMenu}
+                    {rescheduleMenu &&
+                      (foldable ? (
+                        // Folded, Reschedule gives its room to the title: its
+                        // column closes as it fades (no lime in it to dim).
+                        <span
+                          inert={folded}
+                          className={cn(
+                            'grid transition-[grid-template-columns,opacity] ease-[cubic-bezier(.2,.8,.2,1)] motion-reduce:transition-none',
+                            folded ? 'grid-cols-[0fr] opacity-0' : 'grid-cols-[1fr] opacity-100'
+                          )}
+                          style={{ transitionDuration: `${RAIL_LIFT_MS}ms` }}
+                        >
+                          <span className="flex min-w-0 overflow-hidden">{rescheduleMenu}</span>
+                        </span>
+                      ) : (
+                        rescheduleMenu
+                      ))}
                     {attachInMenu && attachPicker.input}
-                    {rescheduleMenu && <span className="mx-1 h-4 w-px bg-border" aria-hidden />}
                     {moreMenu}
                     {openPageButton}
                   </>
@@ -3873,35 +3983,6 @@ function ItemDialogInner({
               }}
               closeTestId="item-dialog-close"
             />
-          )}
-          {/* The details, folded to their facts line, while the chat has the
-              panel. Outside the body like the header, so it stays put while
-              the chat scrolls. */}
-          {foldable && editItem && activeDraft && (
-            <FoldRegion open={folded} testId="item-rail-region">
-              <div className="flex items-center gap-2.5 border-b border-border px-5 pb-2">
-                {folded && tickBox}
-                <ItemRail
-                  className="mx-0 w-auto flex-1"
-                  title={activeDraft.title}
-                  container={activeDraft.container === 'none' ? undefined : activeDraft.container}
-                  chips={railChips}
-                  onExpand={(e) => {
-                    setFoldedFor(null);
-                    // The line goes inert under the pointer, so focus moves to
-                    // the title, and the body goes back to its top: scrolled
-                    // to the chat, the details would open above the fold.
-                    const body = e.currentTarget
-                      .closest('[data-testid="item-dialog"]')
-                      ?.querySelector<HTMLElement>('[data-rail-body]');
-                    requestAnimationFrame(() => {
-                      if (body) body.scrollTop = 0;
-                      document.getElementById(titleId)?.focus({ preventScroll: true });
-                    });
-                  }}
-                />
-              </div>
-            </FoldRegion>
           )}
           <PanelBody panel={presentation === 'panel'} rail={!!railChrome}>
           {/* The visible heading is the title field itself; Radix still needs a

@@ -3,6 +3,7 @@
 import type { MouseEvent, ReactNode } from "react";
 import {
   Calendar,
+  ChevronDown,
   Clock,
   ListChecks,
   Repeat,
@@ -39,6 +40,8 @@ export function ItemRail({
   container,
   chips,
   onExpand,
+  hint,
+  shimmer = false,
   className,
 }: {
   /** The item's name, first on the line; also names it for a screen reader. */
@@ -47,6 +50,11 @@ export function ItemRail({
   container?: string;
   chips: readonly RailChip[];
   onExpand: (e: MouseEvent<HTMLButtonElement>) => void;
+  /** Its facts in words, as the line's tooltip, when it draws no chips (the
+   *  one-row fold, Kirby's pick D1 on 2026-11-08, has room for the title only). */
+  hint?: string;
+  /** One pass of light across the title as it arrives (the panel's fold). */
+  shimmer?: boolean;
   className?: string;
 }) {
   return (
@@ -54,14 +62,15 @@ export function ItemRail({
       type="button"
       data-testid="item-rail"
       onClick={onExpand}
+      title={hint || undefined}
       aria-expanded={false}
       aria-label={`Show details for ${title || "this item"}`}
       className={cn(
-        "-mx-1.5 flex w-[calc(100%+0.75rem)] min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 rounded-md px-1.5 py-0.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        "group/rail -mx-1.5 flex w-[calc(100%+0.75rem)] min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 rounded-md px-1.5 py-0.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         className,
       )}
     >
-      <span data-rail-title="" className="min-w-0 max-w-full truncate text-sm font-medium text-foreground">
+      <span data-rail-title="" className={cn("min-w-0 max-w-full truncate text-sm font-medium text-foreground", shimmer && "rail-shimmer")}>
         {title || "Untitled"}
       </span>
       {container && (
@@ -79,7 +88,9 @@ export function ItemRail({
           {c.label}
         </span>
       ))}
-
+      {chips.length === 0 && (
+        <ChevronDown data-rail-caret="" className="size-3 shrink-0 opacity-0 transition-opacity group-hover/rail:opacity-100 group-focus-visible/rail:opacity-100" aria-hidden />
+      )}
     </button>
   );
 }
