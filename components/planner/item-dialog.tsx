@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useBraindumpArrows } from '@/hooks/use-braindump-arrows';
 import { addDays, format, parseISO, startOfDay } from 'date-fns';
 import {
   CalendarClock,
@@ -24,7 +25,6 @@ import {
   Pause as PauseIcon,
   Play as PlayIcon,
   AlignLeft,
-  ArrowLeftToLine,
   ChevronDown,
   History as HistoryIcon,
   Maximize2,
@@ -885,6 +885,7 @@ function ItemDialogInner({
     addGoal,
   } = usePlannerStore();
   const away = useAwayStore((s) => s.periods);
+  const { toBraindump } = useBraindumpArrows();
   /**
    * The two extension gates this dialog answers to.
    *
@@ -3176,7 +3177,7 @@ function ItemDialogInner({
         label: nextDayLabel(paneNextDay, paneToday),
         detail: formatTargetDay(paneNextDay),
       });
-    if (canPaneBraindump) paneActions.push({ id: 'item-dialog-unschedule', icon: ArrowLeftToLine, label: 'Move to Braindump' });
+    if (canPaneBraindump) paneActions.push({ id: 'item-dialog-unschedule', icon: toBraindump, label: 'Move to Braindump' });
     if (canSkipToday) paneActions.push({ id: 'item-dialog-skip', icon: SkipForward, label: 'Skip today' });
     // Pause lives here too, beside the other "not now" verbs. Never the
     // destructive tone: setting something aside is a plan, not a failure.

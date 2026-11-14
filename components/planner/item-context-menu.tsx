@@ -4,7 +4,6 @@ import { Fragment, createContext, useContext, useEffect, useState, type ReactEle
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
-  ArrowLeftToLine,
   Bot,
   CalendarClock,
   CalendarDays,
@@ -65,6 +64,7 @@ import {
   type PaneKey,
 } from '@/components/shell/bulk-edit-menu';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useBraindumpArrows } from '@/hooks/use-braindump-arrows';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useCommandContext } from '@/hooks/use-command-context';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -347,6 +347,7 @@ function SingleBody({
   openHref?: boolean;
   renameInPlace?: boolean;
 }) {
+  const { toBraindump: ToBraindump } = useBraindumpArrows();
   const router = useRouter();
   const selectedDate = usePlannerStore((s) => s.selectedDate);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
@@ -465,7 +466,7 @@ function SingleBody({
     );
   }
   if (can('braindump')) {
-    when.push(<Row key="bd" icon={<ArrowLeftToLine className="size-3.5" />} label={label('braindump')} testId="item-menu-braindump" onSelect={run('braindump')} />);
+    when.push(<Row key="bd" icon={<ToBraindump className="size-3.5" />} label={label('braindump')} testId="item-menu-braindump" onSelect={run('braindump')} />);
   }
   if (can('leaveProjectBlock')) {
     when.push(<Row key="block" icon={<Unlink className="size-3.5" />} label={label('leaveProjectBlock')} testId="item-menu-leave-block" onSelect={run('leaveProjectBlock')} />);

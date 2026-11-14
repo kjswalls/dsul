@@ -7,6 +7,7 @@ import { usePlannerLoaded } from '@/lib/planner-ready';
 import { useMorningStore } from '@/lib/morning-store';
 import { useOverdueInputs } from '@/hooks/use-overdue-today';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useBraindumpArrows } from '@/hooks/use-braindump-arrows';
 import { addDaysToDateStr, milestoneItemIds } from '@/lib/goals';
 import { ghostFoldStartsCollapsed, ghostWeekday, selectGhostRows } from '@/lib/ghost-rows';
 import { toDateOnly } from '@/lib/overdue';
@@ -335,6 +336,7 @@ function GhostRow({
   onLetGo,
   onOpenSheet,
 }: GhostRowProps) {
+  const { toBraindump: ToBraindump } = useBraindumpArrows();
   const getProjectColor = usePlannerStore((s) => s.getProjectColor);
   const day = ghostDay(t);
   const keepOk = canKeep(t);
@@ -361,7 +363,7 @@ function GhostRow({
         />
       )}
       {sidebarOk && (
-        <ItemMenuRow icon={<ArrowLeftToLine className="size-3.5" />} label="Send to sidebar" testId="ghost-menu-sidebar" onSelect={onSidebar} />
+        <ItemMenuRow icon={<ToBraindump className="size-3.5" />} label="Send to sidebar" testId="ghost-menu-sidebar" onSelect={onSidebar} />
       )}
       {letGoOk && (
         <ItemMenuRow icon={<X className="size-3.5" />} label="Let it go" detail="Kept in history" testId="ghost-menu-let-go" onSelect={onLetGo} />
@@ -440,7 +442,7 @@ function GhostRow({
                   />
                 )}
                 {sidebarOk && (
-                  <RowControl icon={ArrowLeftToLine} label="Send to sidebar" testId="ghost-sidebar" onClick={onSidebar} />
+                  <RowControl icon={ToBraindump} label="Send to sidebar" testId="ghost-sidebar" onClick={onSidebar} />
                 )}
                 {letGoOk && (
                   <RowControl icon={X} label="Let it go" detail="Kept in history" testId="ghost-let-go" onClick={onLetGo} />
