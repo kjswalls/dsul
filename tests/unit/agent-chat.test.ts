@@ -43,6 +43,9 @@ beforeEach(() => {
     vi.fn(async (url: string, init?: RequestInit) => {
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
       posts.push({ url, body });
+      // As the route: `pending=1` is answered and not yet delivered.
+      if (url === '/api/ai/agent-messages?pending=1')
+        return Response.json({ messages: inbox.filter((m) => m.status === 'answered' && !m.delivered) });
       if (url.startsWith('/api/ai/agent-messages?')) return Response.json({ messages: inbox });
       if (url === '/api/ai/agent-messages') return sendOk ? Response.json({ message: {}, woken: true }) : new Response('{}', { status: 503 });
       if (url === '/api/ai/agent-messages/delivered') return Response.json({ marked: body?.ids?.length ?? 0 });
@@ -191,5 +194,14 @@ describe('answers coming back', () => {
     await syncConversation('c1');
     expect(useAskToStore.getState().waiting.u1).toEqual({ threadId: 'c1', agent: 'Claude' });
     expect(posts.some((p) => p.url === '/api/ai/agent-messages/delivered')).toBe(false);
+  });
+
+  it('stops waiting when another device already landed the answer', async () => {
+    useAskToStore.getState().markWaiting('u1', { threadId: 'c1', agent: 'Claude' });
+    // Not pending any more (delivered elsewhere), so only the conversation's own read finds it.
+    inbox = [row({ delivered: true })];
+    await deliverAgentReplies();
+    expect(useAskToStore.getState().waiting.u1).toBeUndefined();
+    expect(posts.some((p) => p.url === '/api/ai/agent-messages?conversationId=c1')).toBe(true);
   });
 });

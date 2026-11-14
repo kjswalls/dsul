@@ -127,6 +127,10 @@ export function deliverAgentReplies(): Promise<void> {
   running = (async () => {
     const rows = await readRows('pending=1');
     if (rows) await deliver(rows);
+    // What another tab or device already landed is not pending any more, so
+    // a message still marked waiting here is checked in its own conversation.
+    const threads = new Set(Object.values(useAskToStore.getState().waiting).map((w) => w.threadId));
+    for (const id of [...threads].slice(0, 10)) await syncRows(id);
   })().finally(() => {
     running = null;
   });
@@ -138,11 +142,17 @@ export function deliverAgentReplies(): Promise<void> {
  * Claude" survives a reload) and any answer to save.
  */
 export async function syncConversation(conversationId: string): Promise<void> {
+  await syncRows(conversationId);
+}
+
+async function syncRows(conversationId: string): Promise<void> {
   const rows = await readRows(`conversationId=${encodeURIComponent(conversationId)}`);
   if (!rows) return;
   const ask = useAskToStore.getState();
   for (const row of rows) {
     if (row.status === 'waiting') ask.markWaiting(row.messageId, { threadId: row.conversationId, agent: row.agent });
+    // Answered, here or elsewhere: nothing waits on it any more.
+    else if (row.status === 'answered' && row.delivered) ask.clearWaiting(row.messageId);
   }
   await deliver(rows.filter((r) => r.status === 'answered' && !r.delivered));
 }
