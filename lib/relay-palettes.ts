@@ -24,6 +24,7 @@
 export type RelayLightPaletteKey =
   | 'relay'
   | 'aurora'
+  | 'night'
   | 'quiet'
   | 'gray'
   | 'ink'
@@ -66,11 +67,30 @@ export const RELAY_LIGHT_PALETTES: Record<RelayLightPaletteKey, RelayLightPalett
       'oklch(0.62 0.12 145)',
     ],
   },
+  night: {
+    label: 'Night',
+    kind: 'multi',
+    description:
+      'The dark field\u2019s own mix, in its order and weights (lime three times, a softer lime, orange, honey, teal, indigo, moss), each lifted a step so the mid-tones read clean on paper. The sidebar dock paints it in light, so the field matches dark mode (Kirby, 2026-11-14).',
+    // Dark mode's readPalette order: primary x3, accent-8, afternoon, accent-6,
+    // accent-2, accent-3, accent-1 — keep the two in step.
+    colors: [
+      'oklch(0.88 0.21 126)',
+      'oklch(0.88 0.21 126)',
+      'oklch(0.88 0.21 126)',
+      'oklch(0.84 0.17 126)',
+      'oklch(0.76 0.14 55)',
+      'oklch(0.82 0.13 85)',
+      'oklch(0.76 0.12 190)',
+      'oklch(0.68 0.14 265)',
+      'oklch(0.76 0.14 140)',
+    ],
+  },
   aurora: {
     label: 'Aurora',
     kind: 'multi',
     description:
-      'Mostly lime, mint and teal (the day done aurora and the crest on the app icon), a touch brighter than Relay so it reads on paper, with orange and indigo as the odd spark. The sidebar dock paints it in light.',
+      'Mostly lime, mint and teal (the day done aurora and the crest on the app icon), a touch brighter than Relay so it reads on paper, with orange and indigo as the odd spark. The sidebar dock painted it in light until 2026-11-14.',
     colors: [
       'oklch(0.88 0.22 128)',
       'oklch(0.88 0.22 128)',
