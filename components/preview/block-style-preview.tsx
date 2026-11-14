@@ -39,12 +39,14 @@ export function BlockStylePreview() {
     if (style === 'today') root.removeAttribute('data-blk');
     else root.setAttribute('data-blk', style);
   }, [style]);
-  if (!style) return null;
+  // Automated browsers get the block styles but no switcher: a fixed pill
+  // over the bottom of the page would sit on top of what the e2e suite clicks.
+  if (!style || (typeof navigator !== 'undefined' && navigator.webdriver)) return null;
   return (
     <div
       role="radiogroup"
       aria-label="Schedule block style (preview)"
-      className="titlebar-hole fixed bottom-3 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-[var(--surface-2)] p-1 text-[12px] shadow-[var(--shadow-elev-md)]"
+      className="titlebar-hole fixed bottom-3 max-sm:bottom-24 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-border bg-[var(--surface-2)] p-1 text-[12px] shadow-[var(--shadow-elev-md)]"
     >
       <span className="px-2 text-muted-foreground">Blocks</span>
       {STYLES.map((s) => (
