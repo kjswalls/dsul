@@ -37,6 +37,7 @@ import type { ItemEvent } from '@/lib/db';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { UNNAMED_AGENT, type ItemFile } from '@/lib/item-files';
 import { noteLength, type ItemNote } from '@/lib/item-notes';
+import type { Answerer } from '@/lib/conversation-types';
 
 export type TimelineActor = 'you' | 'ai' | 'agent' | 'recipe';
 
@@ -380,7 +381,7 @@ export type TimelineFilter = 'all' | 'talk' | 'changes';
 export interface TimelineMessage {
   role: 'user' | 'assistant';
   createdAt: number;
-  answerer: 'model' | 'openclaw' | null;
+  answerer: Answerer | null;
 }
 
 function dayLabel(at: Date, now: Date): string {
@@ -413,7 +414,7 @@ export function buildTimeline(
       if (!m.createdAt) continue;
       const k = dayKey(new Date(m.createdAt));
       const talk = byDay.get(k);
-      const withWhom = m.answerer === 'openclaw' ? 'agent' : 'ai';
+      const withWhom = m.answerer === 'openclaw' || (m.answerer?.startsWith('agent:') ?? false) ? 'agent' : 'ai';
       if (talk) {
         talk.messages += 1;
         talk.at = Math.min(talk.at, m.createdAt);

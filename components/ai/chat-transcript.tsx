@@ -29,6 +29,8 @@ import { chatAssistantName, stripReasoningTags } from '@/lib/chat-utils';
 import { clockTime } from '@/lib/format-chat-timestamp';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import type { Answerer } from '@/lib/conversation-types';
+import { agentOfAnswerer } from '@/lib/agent-messages';
+import { assigneeLabel } from '@/lib/chat-utils';
 import { parseAnswers, parseOptions, questionStates, stripOptionDirectives } from '@/lib/chat-options';
 
 /**
@@ -67,6 +69,8 @@ import { parseAnswers, parseOptions, questionStates, stripOptionDirectives } fro
 
 /** "Your model answers from here" / "OpenClaw answers from here". */
 export function answererDividerCopy(answerer: Answerer): string {
+  const agent = agentOfAnswerer(answerer);
+  if (agent) return `${assigneeLabel(agent)} answers from here`;
   return answerer === 'openclaw' ? 'OpenClaw answers from here' : 'Your model answers from here';
 }
 
