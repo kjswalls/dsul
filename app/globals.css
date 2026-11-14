@@ -5887,3 +5887,76 @@ body {
   backdrop-filter: blur(2px) saturate(1.12);
   -webkit-backdrop-filter: blur(2px) saturate(1.12);
 }
+
+/* ── PREVIEW ONLY: keycap schedule blocks ────────────────────────────────────
+   Four versions of the keycap block, switched by components/preview/
+   block-style-preview.tsx, which stamps data-blk on <html> (no attribute =
+   today's block). A paper face on a skirt in the block's own colour (--blk-acc,
+   set on the block wrapper), the same build as the keycap buttons. Unlayered,
+   so these beat the pane's utility classes. Once one is picked it moves into
+   the --sched-* tokens and this block goes. */
+:root[data-blk] .sched-lamp { display: none; }
+:root[data-blk] [data-testid='schedule-block'] [data-slot='pane'] {
+  --k-face: linear-gradient(var(--surface-2), color-mix(in oklab, var(--foreground) 2.5%, var(--surface-2)));
+  --k-face-hover: linear-gradient(var(--surface-2), color-mix(in oklab, var(--foreground) 1%, var(--surface-2)));
+  --k-rim: color-mix(in oklab, var(--foreground) 10%, var(--surface-2));
+  --k-skirt-w: 1.5px;
+  --k-skirt: var(--blk-acc);
+  --k-cast: 0 3px 8px -4px oklch(0 0 0 / 8%);
+  --k-cast-hover: 0 6px 14px -6px oklch(0 0 0 / 14%);
+  background: var(--k-face);
+  border-color: transparent;
+  box-shadow: inset 0 0 0 1px var(--k-rim), 0 var(--k-skirt-w) 0 var(--k-skirt), var(--k-cast);
+}
+:root.dark[data-blk] [data-testid='schedule-block'] [data-slot='pane'] {
+  --k-face: linear-gradient(color-mix(in oklab, white 6%, var(--surface-2)), var(--surface-2));
+  --k-face-hover: linear-gradient(color-mix(in oklab, white 9%, var(--surface-2)), color-mix(in oklab, white 2%, var(--surface-2)));
+  --k-rim: oklch(1 0 0 / 9%);
+  --k-cast: 0 6px 14px -4px oklch(0 0 0 / 45%);
+  --k-cast-hover: 0 10px 22px -6px oklch(0 0 0 / 55%);
+}
+:root[data-blk] [data-testid='schedule-block'] [data-slot='pane']:hover {
+  background: var(--k-face-hover);
+  box-shadow: inset 0 0 0 1px var(--k-rim), 0 calc(var(--k-skirt-w) + 1px) 0 var(--k-skirt), var(--k-cast-hover);
+}
+/* Key: the version on the mock. Rim tinted by the colour, a full 2px skirt. */
+:root[data-blk='k1'] [data-testid='schedule-block'] [data-slot='pane'] {
+  --k-rim: color-mix(in oklab, var(--blk-acc) 38%, color-mix(in oklab, var(--foreground) 10%, var(--surface-2)));
+  --k-skirt-w: 2px;
+  --k-cast: 0 4px 10px -4px oklch(0 0 0 / 10%);
+}
+:root.dark[data-blk='k1'] [data-testid='schedule-block'] [data-slot='pane'] {
+  --k-rim: color-mix(in oklab, var(--blk-acc) 30%, oklch(1 0 0 / 8%));
+  --k-cast: 0 6px 14px -4px oklch(0 0 0 / 50%);
+}
+/* Slim: neutral rim, a 1.5px skirt (the base values above). */
+/* Hairline: neutral rim, a 1px skirt, no cast. */
+:root[data-blk='k3'] [data-testid='schedule-block'] [data-slot='pane'] {
+  --k-rim: color-mix(in oklab, var(--foreground) 9%, var(--surface-2));
+  --k-skirt-w: 1px;
+  --k-cast: 0 0 0 transparent;
+  --k-cast-hover: 0 3px 8px -4px oklch(0 0 0 / 10%);
+}
+:root.dark[data-blk='k3'] [data-testid='schedule-block'] [data-slot='pane'] {
+  --k-rim: oklch(1 0 0 / 8%);
+  --k-cast-hover: 0 6px 14px -6px oklch(0 0 0 / 45%);
+}
+/* Soft: neutral rim, a 2px skirt in a softened tint of the colour. */
+:root[data-blk='k4'] [data-testid='schedule-block'] [data-slot='pane'] {
+  --k-skirt-w: 2px;
+  --k-skirt: color-mix(in oklab, var(--blk-acc) 55%, var(--surface-2));
+}
+/* States, every version: done sinks flat with no skirt, selected lights the rim,
+   receded (another lane focused) keeps only a hairline. */
+:root[data-blk] [data-testid='schedule-block'][data-multiselected='true'] [data-slot='pane'] {
+  --k-rim: var(--primary);
+}
+:root[data-blk] [data-testid='schedule-block'][data-completed='true'] [data-slot='pane'],
+:root[data-blk] [data-testid='schedule-block'][data-completed='true'] [data-slot='pane']:hover {
+  background: var(--sched-pane-done);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+:root[data-blk] [data-testid='schedule-block'] [data-slot='pane'][data-receded='true'] {
+  background: var(--grp-off-pane);
+  box-shadow: var(--sched-shadow-off);
+}

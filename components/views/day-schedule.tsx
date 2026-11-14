@@ -1178,6 +1178,8 @@ export function ScheduleBlock({
         {
           top,
           '--blk-h': `${height}px`,
+          // The block's accent, for the preview block styles (globals.css, data-blk).
+          '--blk-acc': accent,
           // The registration marks' ink: neutral --ink-1 normally, lime when the
           // block is selected. This is how selection reads THROUGH a hover — the
           // pane brightness is shared, but the mark colour is not (see BlockCorners).
