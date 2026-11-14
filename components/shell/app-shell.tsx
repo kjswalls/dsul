@@ -88,6 +88,7 @@ import { useTimezoneSync } from '@/hooks/use-timezone-sync';
 import { useDeviceRegistration } from '@/hooks/use-device-registration';
 import { useLocalCueTick } from '@/hooks/use-local-cue-tick';
 import { usePlannerCatchUp } from '@/hooks/use-planner-catch-up';
+import { useAgentReplies } from '@/hooks/use-agent-replies';
 import { useDayRollover } from '@/hooks/use-day-rollover';
 import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useAwaySettle } from '@/hooks/use-away-settle';
@@ -364,6 +365,7 @@ export function AppShell() {
   useLocalCueTick();
   // Another device's changes land here when the planner is looked at again.
   usePlannerCatchUp();
+  useAgentReplies();
   // A page left open across midnight moves to the new day.
   useDayRollover();
   // Opt-in past-due decay (off by default). Mounted here, above the

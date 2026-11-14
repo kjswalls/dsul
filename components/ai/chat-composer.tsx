@@ -14,6 +14,9 @@ import type { AskSurface } from '@/lib/rail-store';
 import { chatAssistantName, chatPlaceholder, itemChatPlaceholder } from '@/lib/chat-utils';
 import { agentPlaceholder, useAgentQuestionOpen, useBoxAnswersAgent, useItemAgent } from '@/lib/agent-question';
 import { AnswererChip } from './answerer-chip';
+import { AskToChip } from './ask-to-chip';
+import { useAgentsStore } from '@/lib/agents-store';
+import { askToFor, useAskToStore } from '@/lib/ask-to-store';
 import { activeMention, insertMention, mentionChoices } from '@/lib/chat-mentions';
 import { activeSlash } from '@/lib/chat-slash';
 import { SlashCommands, type SlashCommandsHandle } from './chat-slash-commands';
@@ -190,10 +193,22 @@ export function ChatComposer({
   const answeringAgent = useBoxAnswersAgent(binding.kind === 'item' ? binding.itemId : null);
   const itemAgent = useItemAgent(binding.kind === 'item' ? binding.itemId : null);
   const questionOpen = useAgentQuestionOpen(binding.kind === 'item' ? binding.itemId : null);
-  const displayName = answeringAgent ?? chatAssistantName(target);
+  // Ask's own box may write to a connected app instead (components/ai/ask-to-chip.tsx).
+  const hasAgents = useAgentsStore((s) => s.agents.length > 0);
+  const agentsLoaded = useAgentsStore((s) => s.loaded);
+  useEffect(() => {
+    if (binding.kind !== 'item' && !agentsLoaded) void useAgentsStore.getState().load();
+  }, [binding.kind, agentsLoaded]);
+  useAskToStore((s) => (threadId === null ? s.home : s.byThread[threadId]));
+  const boundMessages = useConversationsStore((s) => (threadId ? s.threads[threadId]?.messages : undefined));
+  const askTo = binding.kind === 'item' || !hasAgents ? null : askToFor(threadId, boundMessages ?? []);
+  const askToName = useAgentsStore((s) =>
+    askTo ? (s.agents.find((a) => a.assignee.toLowerCase() === askTo.toLowerCase())?.name ?? askTo) : null
+  );
+  const displayName = answeringAgent ?? askToName ?? chatAssistantName(target);
   // A box bound to an item says so: it looks like every other box.
   const placeholder =
-    (answeringAgent ? agentPlaceholder(answeringAgent, questionOpen) : placeholderOverride) ??
+    (answeringAgent ? agentPlaceholder(answeringAgent, questionOpen) : askToName ? `Message ${askToName}…` : placeholderOverride) ??
     (binding.kind === 'item' ? itemChatPlaceholder(target) : chatPlaceholder(target));
   const hasText = input.trim().length > 0;
 
@@ -701,6 +716,8 @@ export function ChatComposer({
         <div className="flex min-w-0 items-center gap-1">
           {itemAgent && binding.kind === 'item' ? (
             <AnswererChip itemId={binding.itemId} target={target} disabled={isLoading} />
+          ) : binding.kind !== 'item' && hasAgents ? (
+            <AskToChip threadId={threadId} target={target} disabled={isLoading} />
           ) : (
             target === 'model' && <ChatModelChip disabled={isLoading} />
           )}

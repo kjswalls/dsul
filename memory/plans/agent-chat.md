@@ -35,16 +35,25 @@ A message from Ask home has no item, so it needs a home of its own. Built in two
 - 089 widens both answerer CHECKs to take `agent:<name>`.
 - OpenClaw has no inbox: it answers Ask live, as it always has.
 
-### PR B: the To picker (not built yet)
+### PR B: the To picker (built)
 
-- One chip on the right of Ask home's box, the rail's box, the phone's dock and Ctrl+K's
-  `?`, listing your model, OpenClaw (when it answers chat) and each connected app
-  (`/api/ai/agents`), with its speed ("~1 min" with a wake, "when opened" without).
-- Picking an app points the current conversation at it (memory only, per conversation);
-  it never resets Ask the way `chooseChatTarget` does, so a conversation can mix
-  answerers, each reply labelled with who wrote it.
-- While a message waits: "Sent to Claude" under it, and the browser polls the
-  conversation's rows (on focus, and every 20s while it is open and something waits).
+- `AskToChip` (components/ai/ask-to-chip.tsx) on the right of every non-item box (Ask
+  home, the rail, the phone's Ask, the dock's and Ctrl+K's `?`), drawn only once the
+  account has a connected app (`/api/ai/agents`): your model (or OpenClaw), then each app
+  with its speed ("~1 min" with a wake, "when opened" without). While it shows, it takes
+  the model chip's place; the model is changed in Settings → AI.
+- The pick lives in `lib/ask-to-store.ts`, memory only: `home` for a box with no
+  conversation (carried onto the one the first message starts) and `byThread` per
+  conversation. `askToFor` falls back to whoever the conversation last talked to. It never
+  resets Ask the way `chooseChatTarget` does, so a conversation can mix answerers, each
+  reply labelled with who wrote it (a divider before an agent's first reply).
+- `sendFrom` routes a message to an app through `lib/agent-chat.ts`: saved first
+  (conversations-store `sendToAgent`, saving must be on), then handed on by ids. "Sent to
+  Claude" sits under it while it waits, "Not sent to Claude" if the inbox refused it.
+- `hooks/use-agent-replies.ts` (app shell) looks for answers on start and on every return
+  to the page, every 20s while a message waits and the page is visible, and reads a
+  conversation's own rows when it is opened. `landAgentReply` saves each answer.
+- Pictures are not sent to an app.
 
 ## The boundary (load-bearing)
 
@@ -54,4 +63,4 @@ A message from Ask home has no item, so it needs a home of its own. Built in two
 - What the user says to their own model, or to another agent, never reaches an agent.
 - Deleting a conversation deletes its inbox rows (composite FK cascade). What the agent
   kept on its side is outside dsul, as OpenClaw's session memory is. The delete confirm
-  should say so once PR B shows agent replies (as it does for OpenClaw).
+  says so ("Claude may keep its own copy."), as it does for OpenClaw.

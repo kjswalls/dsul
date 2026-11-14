@@ -23,6 +23,8 @@ import { useViewStore } from './view-store';
 import { chatPlaceholder, itemChatPlaceholder } from './chat-utils';
 import type { Item, Task } from './planner-types';
 import type { ChatImage } from './chat-images';
+import { askToFor, useAskToStore } from './ask-to-store';
+import { sendToAgent } from './agent-chat';
 
 export { bindingKey, type ComposerBinding } from './rail-store';
 
@@ -581,6 +583,16 @@ export async function sendFrom(
       const wantsFocus = o.focus || rail.pendingFocus?.target === 'composer' || focusIsInRail();
       rail.push(o.surface ?? 'desktop', push);
       if (wantsFocus && push.kind === 'conversation') rail.focusComposer({ kind: 'conversation', id: push.id });
+    }
+    // Written to an agent (Claude, Cursor) from Ask's To chip: saved as a
+    // question, handed to its inbox, answered when it next runs
+    // (lib/agent-chat.ts). Home's pick travels onto the conversation it starts.
+    const agent =
+      binding.kind === 'home' ? askToFor(null) : binding.kind === 'conversation' ? askToFor(threadId, thread?.messages) : null;
+    if (agent) {
+      if (binding.kind === 'home') useAskToStore.getState().setFor(threadId, agent);
+      took = sendToAgent(threadId, text, agent);
+      return took;
     }
     // send's synchronous half appends both messages and marks the thread
     // streaming before it first awaits; a send whose context build threw
