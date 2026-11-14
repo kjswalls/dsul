@@ -4,7 +4,7 @@ import { GhostFold } from '@/components/planner/ghost-fold';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { ItemContextMenu } from '@/components/planner/item-context-menu';
-import { ArrowLeftToLine, Redo2, SkipForward, Undo2 } from 'lucide-react';
+import { Redo2, SkipForward, Undo2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
@@ -43,6 +43,7 @@ import { canMoveToNextDay, canReschedule as canRescheduleItem, canSendToBraindum
 import { RowControl, RowControlGroup } from '@/components/primitives/row-control';
 import { RescheduleControl } from '@/components/primitives/reschedule-control';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useBraindumpArrows } from '@/hooks/use-braindump-arrows';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useAwayStore } from '@/lib/away-store';
 import { openEditFor } from '@/lib/ui-store';
@@ -612,6 +613,7 @@ export function ScheduleBlock({
   const away = useAwayStore((s) => s.periods);
   const timeFormatStr = useTimeFormat();
   const isMobile = useIsMobile();
+  const arrows = useBraindumpArrows();
   // Raw goals, not the display list: this gates a write (lib/row-moves.ts).
   const milestoneIds = useMemo(() => milestoneItemIds(goals ?? []), [goals]);
   // Multi-select membership for this block. Modifier-click selects; a plain
@@ -1107,7 +1109,7 @@ export function ScheduleBlock({
       )}
       {canBraindump && (
         <RowControl
-          icon={ArrowLeftToLine}
+          icon={arrows.toBraindump}
           label="Move to Braindump"
           testId="item-unschedule-button"
           onClick={() => unscheduleTask(item.id)}

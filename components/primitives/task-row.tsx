@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, useMemo } from 'react';
-import { ArrowDown, ArrowUp, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Redo2, Undo2, MoreHorizontal,
+import { ArrowDown, ArrowUp, Trash2, Minus, Plus, SkipForward, Redo2, Undo2, MoreHorizontal,
   Flag,
   Repeat,
-  Sun,
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { ItemContextMenu, ItemMenuRow } from '@/components/planner/item-context-menu';
@@ -28,6 +27,7 @@ import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useScheduleSheet } from '@/lib/schedule-sheet-store';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useBraindumpArrows } from '@/hooks/use-braindump-arrows';
 import { SwipeRow } from '@/components/mobile/swipe-row';
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import { suppressionLabel, suppressionReason } from '@/lib/active';
@@ -127,6 +127,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
   const away = useAwayStore((s) => s.periods);
   const confirm = useUIStore((s) => s.confirm);
   const isMobile = useIsMobile();
+  const arrows = useBraindumpArrows();
   const { item, itemType } = row;
   const isTask = itemType === 'task';
   const task = isTask ? (item as Task) : null;
@@ -993,7 +994,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
                 )}
                 {canBraindump && (
                   <RowControl
-                    icon={ArrowLeftToLine}
+                    icon={arrows.toBraindump}
                     label="Move to Braindump"
                     testId="item-unschedule-button"
                     onClick={() => unscheduleTask(item.id)}
@@ -1080,11 +1081,11 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
               <RowControlGroup>
                 {/* The braindump's one-tap carry, as Move to tomorrow is the
                     day rows': Reschedule's gate, so it shows exactly where
-                    Schedule does, and its picked day is always today. Sun is
-                    the phone's Today tab. */}
+                    Schedule does, and its picked day is always today. Its arrow
+                    is Move to Braindump's mirror (hooks/use-braindump-arrows.ts). */}
                 {canReschedule && (
                   <RowControl
-                    icon={Sun}
+                    icon={arrows.toDay}
                     label="Move to today"
                     detail={formatTargetDay(todayStr)}
                     testId="item-today-button"
