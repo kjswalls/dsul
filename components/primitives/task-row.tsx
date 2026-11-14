@@ -749,7 +749,12 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
               className={cn(
                 // Content typeface via tokens: sans = Inter Regular 11.5,
                 // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
-                'min-w-0 flex-1 font-content text-foreground',
+                // flex-initial, not flex-1: the title is only as wide as its
+                // words, so the marks after it (the goal role, the agent chip)
+                // sit beside the text. The rail's ml-auto takes the slack
+                // instead; with flex-1 here the chip landed wherever the title's
+                // box ended, mid-row in front of a task's empty rail columns.
+                'min-w-0 flex-initial font-content text-foreground',
                 // Both densities take text-content: the week views render compact
                 // rows and the day view default ones, and a title that changed size
                 // between the two would break the token's whole purpose.
@@ -899,7 +904,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
             enough that the between-item gap clearly outranks the within-item one. */}
         <div
           className={cn(
-            'relative z-10 flex flex-shrink-0 items-center gap-3',
+            // ml-auto: the rail holds the right edge whatever the title's width.
+            'relative z-10 ml-auto flex flex-shrink-0 items-center gap-3',
             completed && !suppressCompletedLook && 'opacity-60'
           )}
           onClick={(e) => e.stopPropagation()}
