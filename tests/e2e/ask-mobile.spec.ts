@@ -78,7 +78,8 @@ test.describe('Ask on the phone @mobile', () => {
       await expect(home).toBeVisible();
 
       // 3. The item, from its Needs-you card: pushed inline over Ask, never a
-      //    drawer, with the dock's box now about the item. Three cards show
+      //    drawer, with the dock's box now about the item (and, since OpenClaw
+      //    holds it with a question open, talking to OpenClaw). Three cards show
       //    before "Show N more", and the account is shared.
       const waiting = tab.locator(`[data-testid="needs-you-card"][data-item-id="${id}"]`);
       const more = tab.getByTestId('needs-you-more');
@@ -91,7 +92,7 @@ test.describe('Ask on the phone @mobile', () => {
       await expect(page.getByTestId('item-dialog')).not.toHaveAttribute('role', 'dialog');
       await expect(page.getByTestId('chat-dock-input')).toHaveAttribute(
         'placeholder',
-        'Ask about this item…'
+        'Answer OpenClaw…'
       );
       await tab.getByRole('button', { name: 'Back to Ask' }).click();
       await expect(inline).toHaveCount(0);

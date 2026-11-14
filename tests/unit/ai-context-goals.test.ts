@@ -38,7 +38,13 @@ const goal = (over: Partial<Goal> = {}): Goal =>
     ...over,
   }) as Goal;
 
-const build = (over: { items: Item[]; goals?: Goal[]; seasons?: Season[]; focusItemId?: string }) =>
+const build = (over: {
+  items: Item[];
+  goals?: Goal[];
+  seasons?: Season[];
+  focusItemId?: string;
+  focusAgentLines?: string[];
+}) =>
   buildDsulContext({ projects: [], userTimezone: TZ, ...over });
 
 describe('the Long-term goals section', () => {
@@ -177,5 +183,23 @@ describe('the focused item names what it serves', () => {
     const out = build({ items: [task('t1', 'Buy milk')], focusItemId: 't1' });
     expect(out).not.toContain('- Serves:');
     expect(out).not.toContain('Long-term goals');
+  });
+});
+
+describe('the focused item an agent holds', () => {
+  it('tells the model what the agent and the user said, and that the agent cannot see this chat', () => {
+    const out = build({
+      items: [task('t1', 'Research gyms')],
+      focusItemId: 't1',
+      focusAgentLines: ['- Claude reported: Three gyms near you'],
+    });
+    expect(out).toContain('### Said between the user and the agent holding this item');
+    expect(out).toContain('- Claude reported: Three gyms near you');
+    expect(out).toMatch(/the agent does not see this conversation/);
+  });
+
+  it('adds nothing without lines', () => {
+    const out = build({ items: [task('t1', 'Research gyms')], focusItemId: 't1', focusAgentLines: [] });
+    expect(out).not.toContain('Said between');
   });
 });

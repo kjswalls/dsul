@@ -19,7 +19,7 @@ import { useAICapabilities } from '@/lib/ai-connection-store';
 import type { Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { AgentExchangeView, AgentRouteLine } from '@/components/ai/agent-exchange';
-import { useBoxAnswersAgent } from '@/lib/agent-question';
+import { agentPlaceholder, useBoxAnswersAgent } from '@/lib/agent-question';
 import { useAgentExchange } from '@/hooks/use-agent-exchange';
 import { usePlannerStore } from '@/lib/planner-store';
 import { getItemEventsAvailable } from '@/lib/db';
@@ -280,7 +280,9 @@ export function ItemConversation({
     );
   }
 
-  const placeholder = answeringAgent ? `Answer ${answeringAgent}…` : itemChatPlaceholder(target);
+  const placeholder = answeringAgent
+    ? agentPlaceholder(answeringAgent, (live as { aiStatus?: string }).aiStatus === 'blocked')
+    : itemChatPlaceholder(target);
 
   return (
     <div className={cn('flex min-h-0 flex-col gap-1.5', className)} data-testid="item-thread">

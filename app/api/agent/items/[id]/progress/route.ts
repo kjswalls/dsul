@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { repliesSince } from '@/lib/agent-replies-server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
 import { updateItem } from '@/lib/db'
 import { getItemTypeConfig } from '@/lib/item-registry'
@@ -136,6 +137,36 @@ export async function POST(
       )
     } catch {
       return NextResponse.json({ error: 'Could not update the item' }, { status: 500 })
+    }
+
+    // The user can write to the agent while its run is going, and that does
+    // not re-queue the item (lib/agent-question.ts `messageAgent`). So the
+    // run hears it here: anything written since its last report. A run that
+    // just finished, or stopped, is put back in its queue, so the message is
+    // answered rather than left under a report that never saw it.
+    if (owner.ai_status === 'working') {
+      const userReplies = await repliesSince(serviceClient, userId, id, owner.ai_status_at as string | null)
+      if (userReplies.length > 0) {
+        let requeued = false
+        if (aiStatus === 'done' || aiStatus === 'failed') {
+          try {
+            await updateItem(id, owner.type as string, { aiStatus: 'queued' }, userId, serviceClient)
+            requeued = true
+          } catch {
+            // The report stands; the messages are still on the trail.
+          }
+        }
+        return NextResponse.json({
+          itemId: id,
+          aiStatus: requeued ? 'queued' : aiStatus,
+          userReplies,
+          note: requeued
+            ? 'The user wrote to you while you worked (userReplies). Your report is saved, and the item is ' +
+              'back in your queue: reply to what they said with dsul_report_progress.'
+            : 'The user wrote to you while you worked (userReplies). Take it into account, and answer it ' +
+              'in your next report.',
+        })
+      }
     }
 
     return NextResponse.json({ itemId: id, aiStatus })

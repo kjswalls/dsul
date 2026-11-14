@@ -3,6 +3,9 @@ import { usePlannerStore } from './planner-store';
 import { useAwayStore } from './away-store';
 import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
 import { buildDsulContextParts } from './ai-context';
+import { exchangeContextLines, rememberedExchange } from './agent-exchange';
+import { assigneeLabel } from './chat-utils';
+import type { Item } from './planner-types';
 import { mentionedItemIds } from './chat-mentions';
 import { goalsEnabled } from './extension-gates';
 import { isPlannerPreviewing, whenPreviewEnds } from './planner-ready';
@@ -532,8 +535,23 @@ function plannerContext(
     focusItemId,
     userTimezone,
     mentionedItemIds: mentionedItemIds(message, items),
+    focusAgentLines: focusItemId ? agentLinesFor(items.find((i) => i.id === focusItemId)) : undefined,
   });
   return { context: today, contextBeyond: beyond, typeNouns: itemTypes.map((t) => t.labelPlural.toLowerCase()) };
+}
+
+/**
+ * What the agent holding an item and the user said, for the item's
+ * conversation with the model: the exchange drawn while the item was open, or
+ * at least the agent's last report when it was not.
+ */
+function agentLinesFor(item: Item | undefined): string[] | undefined {
+  const held = item as { id: string; assignee?: string; aiResult?: string } | undefined;
+  if (!held?.assignee) return undefined;
+  const lines = exchangeContextLines(rememberedExchange(held.id));
+  if (lines.length > 0) return lines;
+  const last = held.aiResult?.trim();
+  return last ? [`- ${assigneeLabel(held.assignee)} reported: ${last.slice(0, 1200)}`] : undefined;
 }
 
 /**
