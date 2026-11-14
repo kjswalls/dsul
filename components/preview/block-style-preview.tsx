@@ -18,13 +18,13 @@ const STYLES = [
   { id: 'k4', label: 'Soft' },
 ] as const;
 type StyleId = (typeof STYLES)[number]['id'];
-const KEY = 'dsul.preview.blockStyle';
 const DEFAULT: StyleId = 'k2';
 
 function read(): StyleId {
   try {
-    const q = new URLSearchParams(window.location.search).get('blk');
-    const v = q ?? window.localStorage.getItem(KEY);
+    // Query only, nothing stored: browser storage belongs to lib/local-state's
+    // registry (tests/unit/local-state.test.ts), and a preview has no business there.
+    const v = new URLSearchParams(window.location.search).get('blk');
     if (STYLES.some((s) => s.id === v)) return v as StyleId;
   } catch {}
   return DEFAULT;
@@ -38,9 +38,6 @@ export function BlockStylePreview() {
     const root = document.documentElement;
     if (style === 'today') root.removeAttribute('data-blk');
     else root.setAttribute('data-blk', style);
-    try {
-      window.localStorage.setItem(KEY, style);
-    } catch {}
   }, [style]);
   if (!style) return null;
   return (
