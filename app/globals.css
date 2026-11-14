@@ -3366,7 +3366,7 @@ button[data-ai-chip]:focus-visible {
    cluster and must not fold with them. Hidden, never faded: these are lime
    marks, and lime never goes through an opacity. */
 [data-row-ai-fold]:is(:hover, :has(:focus-visible), [data-row-ai-fold='held'])
-  > :is([data-ai-chip], [data-agent-chip]) {
+  > :is([data-ai-chip], [data-agent-chip], [data-agent-finished]) {
   visibility: hidden;
 }
 [data-row-ai-dot] {

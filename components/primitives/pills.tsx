@@ -766,11 +766,22 @@ export function AgentPill({
     if (workingOnly) return null;
     const who = assigneeLabel(item.assignee);
     if (dot) return <AiDotTip tone="ready" detail={`${who} finished this. Check it, then tick it off.`} />;
+    // At rest it is the hover dot's own square, beside the title (Kirby's
+    // pick C, 2026-11-13): the words "Claude finished" floated mid-row, so
+    // they moved into the tooltip. The square steps aside for the hover dot
+    // like the chips do (globals.css `[data-row-ai-fold]`).
+    const detail = `${who} finished this. Check it, then tick it off.`;
     return (
-      <RailTooltip label="Agent" detail={`${who} finished this. Check it, then tick it off.`}>
-        <AiChip tone="ready" className={className} data-agent-finished="">
-          {who} finished
-        </AiChip>
+      <RailTooltip label="Agent" detail={detail}>
+        <span
+          data-agent-finished=""
+          data-testid="item-agent-finished"
+          className={cn('flex flex-shrink-0 items-center', className)}
+        >
+          <AiDot tone="ready" />
+          {/* The tooltip never fires on touch and never reaches a screen reader. */}
+          <span className="sr-only">{detail}</span>
+        </span>
       </RailTooltip>
     );
   }
