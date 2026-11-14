@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MessageSquarePlus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { DECK_DIALOG } from '@/components/ui/deck-dialog';
+import { SERIF_NOTES_CLASS, SERIF_TITLE_CLASS } from '@/components/planner/surface';
 import { toast } from 'sonner';
 
 type ReportType = 'bug' | 'feature';
@@ -73,116 +75,98 @@ export function BugReportDialog({ open, onOpenChange }: BugReportDialogProps) {
     }
   };
 
+  const isBug = type === 'bug';
+  const segment = (value: ReportType, label: string) => (
+    <button
+      type="button"
+      aria-pressed={type === value}
+      onClick={() => setType(value)}
+      className={cn(
+        'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+        type === value
+          ? 'bg-background text-foreground shadow-sm'
+          : 'text-muted-foreground hover:text-foreground'
+      )}
+    >
+      {label}
+    </button>
+  );
+
+  // Written like the add dialog (the dialog restyle's round 2, 2026-11-07):
+  // the title is the serif line you type straight into, the description sits
+  // under it like Notes, and the deck holds the steps chip and the keys.
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md border-border">
-        <DialogHeader>
-          <DialogTitle className="text-foreground flex items-center gap-2">
-            <MessageSquarePlus className="h-5 w-5" />
-            Share feedback 🐛
-          </DialogTitle>
-          <DialogDescription className="sr-only">
-            Report a bug or request a feature.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className={DECK_DIALOG.content}>
+        <div className={DECK_DIALOG.body}>
+          <DialogHeader className="text-left">
+            <DialogTitle className={DECK_DIALOG.title}>Share feedback</DialogTitle>
+            <DialogDescription className="sr-only">
+              Report a bug or request a feature.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-4">
-          {/* Type toggle */}
-          <div className="flex gap-1 p-1 rounded-lg bg-muted w-fit">
-            <button
-              onClick={() => setType('bug')}
-              className={cn(
-                'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
-                type === 'bug'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              Bug report
-            </button>
-            <button
-              onClick={() => setType('feature')}
-              className={cn(
-                'px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
-                type === 'feature'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              Feature request
-            </button>
+          <div className="bg-muted flex w-fit gap-0.5 rounded-lg p-0.5">
+            {segment('bug', 'Bug report')}
+            {segment('feature', 'Feature request')}
           </div>
 
-          {/* Title */}
-          <div className="space-y-1.5">
-            <Label htmlFor="report-title" className="text-sm">
-              Title <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="report-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={type === 'bug' ? 'What went wrong?' : 'What would you like to see?'}
-              className="text-sm"
-            />
-          </div>
+          <Input
+            id="report-title"
+            aria-label="Title"
+            autoFocus
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={isBug ? 'What went wrong?' : 'What would you like to see?'}
+            className={SERIF_TITLE_CLASS}
+          />
 
-          {/* Description */}
-          <div className="space-y-1.5">
-            <Label htmlFor="report-description" className="text-sm">
-              Description
-            </Label>
-            <Textarea
-              id="report-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={
-                type === 'bug'
-                  ? 'Describe the bug and what you expected to happen...'
-                  : 'Describe the feature and why it would be useful...'
-              }
-              className="text-sm min-h-[80px] resize-none"
-            />
-          </div>
+          <Textarea
+            id="report-description"
+            aria-label="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder={
+              isBug
+                ? 'Describe the bug and what you expected to happen'
+                : 'Describe the feature and why it would be useful'
+            }
+            rows={3}
+            className={SERIF_NOTES_CLASS}
+          />
 
-          {/* Steps to reproduce — bug only */}
-          {type === 'bug' && (
-            <div className="space-y-1.5">
-              {!showSteps ? (
-                <button
-                  onClick={() => setShowSteps(true)}
-                  className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
-                >
-                  + Add steps to reproduce
-                </button>
-              ) : (
-                <>
-                  <Label htmlFor="report-steps" className="text-sm">
-                    Steps to reproduce
-                  </Label>
-                  <Textarea
-                    id="report-steps"
-                    value={steps}
-                    onChange={(e) => setSteps(e.target.value)}
-                    placeholder="1. Go to...&#10;2. Click on...&#10;3. See error"
-                    className="text-sm min-h-[80px] resize-none"
-                  />
-                </>
-              )}
+          {isBug && showSteps && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="report-steps" className="text-muted-foreground text-xs font-medium">
+                Steps to reproduce
+              </Label>
+              <Textarea
+                id="report-steps"
+                autoFocus
+                value={steps}
+                onChange={(e) => setSteps(e.target.value)}
+                placeholder="1. Go to...&#10;2. Click on...&#10;3. See error"
+                rows={3}
+                className={SERIF_NOTES_CLASS}
+              />
             </div>
           )}
         </div>
 
-        <div className="flex justify-end gap-2 pt-2">
+        <div data-dialog-deck className={DECK_DIALOG.deck}>
+          <div className={DECK_DIALOG.deckLead}>
+            {isBug && !showSteps && (
+              <button type="button" onClick={() => setShowSteps(true)} className={DECK_DIALOG.chip}>
+                <Plus aria-hidden />
+                Steps to reproduce
+              </button>
+            )}
+          </div>
           <Button variant="outline" size="sm" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            size="sm"
-            onClick={handleSubmit}
-            disabled={!title.trim() || loading}
-          >
-            {loading ? 'Sending…' : type === 'bug' ? 'Send bug report' : 'Send feature request'}
+          <Button size="sm" onClick={handleSubmit} disabled={!title.trim() || loading}>
+            {loading ? 'Sending…' : 'Send'}
           </Button>
         </div>
       </DialogContent>

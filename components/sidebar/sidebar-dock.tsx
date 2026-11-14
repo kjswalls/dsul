@@ -217,18 +217,32 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
         className="relative flex min-h-0 flex-col rounded-[10px] bg-surface-3 px-[10px] pt-[18px] pb-[14px] shadow-[var(--shadow-elev-bar)]"
       >
         {RELAY.dock && (
-          <RelayField
-            className="absolute inset-0 z-0 rounded-[10px]"
-            tone="quiet"
-            focalY={0.7}
-            pitch={20}
-            idleIntensity={0.2}
-            activeIntensity={0.6}
-            activeIntensityLight={0.4}
-            active={focused}
-            burst={burst + starts}
-            mask="radial-gradient(135% 120% at 50% 62%, black 30%, transparent 100%)"
-          />
+          <>
+            {/* Thin glass over the field (Kirby, 2026-11-08 and 2026-11-10;
+                mocks /mnt/project-files/day-done/dock.html): in dark the full
+                relay mix (or the theme's own) under a 2px frost; in light the
+                aurora's lime, mint and teal with orange and indigo sparks,
+                brighter so the ink-on-paper tiles read, under 1px. The field is
+                turned up to make up for what the glass takes. */}
+            <RelayField
+              className="absolute inset-0 z-0 rounded-[10px]"
+              lightPalette="aurora"
+              focalY={0.7}
+              pitch={20}
+              idleIntensity={0.34}
+              activeIntensity={1}
+              idleIntensityLight={0.45}
+              activeIntensityLight={0.85}
+              active={focused}
+              burst={burst + starts}
+              mask="radial-gradient(135% 120% at 50% 62%, black 30%, transparent 100%)"
+            />
+            <div
+              data-dock-glass=""
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-0 rounded-[10px]"
+            />
+          </>
         )}
         {showCatchUpHost && (
           <div

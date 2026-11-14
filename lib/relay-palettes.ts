@@ -23,6 +23,7 @@
 
 export type RelayLightPaletteKey =
   | 'relay'
+  | 'aurora'
   | 'quiet'
   | 'gray'
   | 'ink'
@@ -63,6 +64,22 @@ export const RELAY_LIGHT_PALETTES: Record<RelayLightPaletteKey, RelayLightPalett
       'oklch(0.64 0.1 195)',
       'oklch(0.58 0.13 268)',
       'oklch(0.62 0.12 145)',
+    ],
+  },
+  aurora: {
+    label: 'Aurora',
+    kind: 'multi',
+    description:
+      'Mostly lime, mint and teal (the day done aurora and the crest on the app icon), a touch brighter than Relay so it reads on paper, with orange and indigo as the odd spark. The sidebar dock paints it in light.',
+    colors: [
+      'oklch(0.88 0.22 128)',
+      'oklch(0.88 0.22 128)',
+      'oklch(0.88 0.22 128)',
+      'oklch(0.84 0.2 140)',
+      'oklch(0.8 0.16 160)',
+      'oklch(0.76 0.13 190)',
+      'oklch(0.7 0.13 50)',
+      'oklch(0.58 0.13 268)',
     ],
   },
   quiet: {
@@ -216,3 +233,4 @@ export const QUIET_LIGHT_PALETTE: RelayLightPaletteKey = 'quiet';
 export function relayLightColors(key: RelayLightPaletteKey = DEFAULT_LIGHT_PALETTE): string[] {
   return (RELAY_LIGHT_PALETTES[key] ?? RELAY_LIGHT_PALETTES[DEFAULT_LIGHT_PALETTE]).colors;
 }
+

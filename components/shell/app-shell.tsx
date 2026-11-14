@@ -52,7 +52,7 @@ import { takeConnectReturn } from '@/lib/connect-return';
 import { watchKeptQuestion } from '@/lib/ask-pending';
 import { flushSettings } from '@/lib/settings-service';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
-import { ITEM_TYPES } from '@/lib/item-registry';
+import { deleteConfirmRequest } from '@/lib/item-verbs';
 import { useStreaksEnabled } from '@/lib/extension-gates';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { NUDGE_RITUALS_INTRO, NUDGE_STREAKS_ON, ritualsNudgeReady } from '@/lib/nudges/registry';
@@ -100,6 +100,7 @@ import { watchOnboardingAfterLoad } from '@/lib/onboarding-watch';
 import type { MobileSurface } from '@/lib/mobile-nav-store';
 import { BOOT_SIDEBAR_VAR } from '@/lib/shell-prepaint';
 import { cueSound } from '@/lib/sounds/cue';
+import { DayDoneAurora } from '@/components/celebrate/day-done-aurora';
 
 /**
  * The first-run toasts, "Streaks are on" and the rituals intro, with their own
@@ -779,14 +780,9 @@ export function AppShell() {
         ? tasks.find((t) => t.id === id)
         : habits.find((h) => h.id === id);
     if (!item) return;
-    const config = ITEM_TYPES[type];
-    confirm({
-      title: `Delete ${config.label}?`,
-      description: config.form.deleteDescription(item.title),
-      confirmLabel: 'Delete',
-      destructive: true,
-      onConfirm: () => (type === 'task' ? deleteTask(item.id) : deleteHabit(item.id)),
-    });
+    confirm(
+      deleteConfirmRequest(item, type, () => (type === 'task' ? deleteTask(item.id) : deleteHabit(item.id)))
+    );
   }, []);
 
   // Every other binding is owned by its command in lib/commands/registry.ts.
@@ -972,6 +968,8 @@ export function AppShell() {
       />
 
       <ConfirmDialog />
+
+      <DayDoneAurora />
 
       {/* An AppShell-level sibling rather than a DesktopShell child, so
           without this it floats over the Zen room: the bulk bar appears over it

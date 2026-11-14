@@ -9,7 +9,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import { Button, ButtonKey } from '@/components/ui/button';
+import { DECK_DIALOG } from '@/components/ui/deck-dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -102,104 +103,104 @@ export function VacationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="border-border sm:max-w-md" data-testid="vacation-dialog">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-foreground">
-            <Palmtree className="h-5 w-5" aria-hidden />
-            {title}
-          </DialogTitle>
-          <DialogDescription>
-            Pauses your habits and dated tasks while you’re away, then brings them back gently.
-          </DialogDescription>
-        </DialogHeader>
-
+      <DialogContent className={DECK_DIALOG.content} data-testid="vacation-dialog">
         <form
-          className="space-y-4"
+          className="flex min-h-0 flex-col"
           onSubmit={(e) => {
             e.preventDefault();
             submit();
           }}
         >
-          <div className="space-y-1.5">
-            <Label htmlFor="vacation-back-on" className="text-sm">
-              Back on
-            </Label>
-            <Input
-              id="vacation-back-on"
-              type="date"
-              value={backOn}
-              min={addDays(todayStr, 1)}
-              onChange={(e) => setBackOn(e.target.value)}
-              className="w-44 text-sm"
-              data-testid="vacation-back-on"
-            />
+          <div className={cn(DECK_DIALOG.body, 'gap-4')}>
+            <DialogHeader className="gap-2 text-left">
+              <DialogTitle className={DECK_DIALOG.title}>{title}</DialogTitle>
+              <DialogDescription>
+                Pauses your habits and dated tasks while you’re away, then brings them back gently.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1.5">
+              <Label htmlFor="vacation-back-on" className="text-sm">
+                Back on
+              </Label>
+              <Input
+                id="vacation-back-on"
+                type="date"
+                value={backOn}
+                min={addDays(todayStr, 1)}
+                onChange={(e) => setBackOn(e.target.value)}
+                className="w-44 text-sm"
+                data-testid="vacation-back-on"
+              />
+            </div>
+
+            <p className="text-sm text-foreground" data-testid="vacation-keep-sentence">
+              {sentence}
+              {!trip && ' It comes back gently after.'}
+            </p>
+
+            {picking ? (
+              <div className="space-y-2" data-testid="vacation-keep-picker">
+                <div>
+                  <p className="text-sm font-medium text-foreground">What keeps going on vacation</p>
+                  {!trip && (
+                    <p className="text-xs text-muted-foreground">
+                      Picked from what you’ve done every day this month.
+                    </p>
+                  )}
+                </div>
+                <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
+                  {routines.map((r) => (
+                    <KeepRow
+                      key={`r:${r.id}`}
+                      id={`keep-r-${r.id}`}
+                      label={r.name}
+                      hint="Routine"
+                      checked={keep.routineIds.includes(r.id)}
+                      onChange={(on) => toggle('routineIds', r.id, on)}
+                    />
+                  ))}
+                  {choices.map((i) => (
+                    <KeepRow
+                      key={i.id}
+                      id={`keep-${i.id}`}
+                      label={i.title}
+                      checked={keep.itemIds.includes(i.id)}
+                      onChange={(on) => toggle('itemIds', i.id, on)}
+                    />
+                  ))}
+                  {choices.length === 0 && routines.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No habits yet. Everything rests.</p>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Anything you add while you’re away keeps going on its own.
+                </p>
+              </div>
+            ) : null}
+
+            {staked.length > 0 && (
+              <p className="text-xs text-muted-foreground" data-testid="vacation-beeminder">
+                {staked.length === 1 ? `${staked[0]} is` : `${staked.length} paused habits are`} on Beeminder, which
+                needs 7 days’ notice for a break. Schedule one there, or keep {staked.length === 1 ? 'it' : 'them'} going.
+              </p>
+            )}
           </div>
 
-          <p className="text-sm text-foreground" data-testid="vacation-keep-sentence">
-            {sentence}
-            {!trip && ' It comes back gently after.'}
-          </p>
-
-          {picking ? (
-            <div className="space-y-2" data-testid="vacation-keep-picker">
-              <div>
-                <p className="text-sm font-medium text-foreground">What keeps going on vacation</p>
-                {!trip && (
-                  <p className="text-xs text-muted-foreground">
-                    Picked from what you’ve done every day this month.
-                  </p>
-                )}
-              </div>
-              <div className="max-h-56 space-y-1 overflow-y-auto pr-1">
-                {routines.map((r) => (
-                  <KeepRow
-                    key={`r:${r.id}`}
-                    id={`keep-r-${r.id}`}
-                    label={r.name}
-                    hint="Routine"
-                    checked={keep.routineIds.includes(r.id)}
-                    onChange={(on) => toggle('routineIds', r.id, on)}
-                  />
-                ))}
-                {choices.map((i) => (
-                  <KeepRow
-                    key={i.id}
-                    id={`keep-${i.id}`}
-                    label={i.title}
-                    checked={keep.itemIds.includes(i.id)}
-                    onChange={(on) => toggle('itemIds', i.id, on)}
-                  />
-                ))}
-                {choices.length === 0 && routines.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No habits yet. Everything rests.</p>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Anything you add while you’re away keeps going on its own.
-              </p>
+          {/* The deck, as the add dialog's: the picker's chip on the left where
+              that dialog keeps its property chips, the keys on the right. */}
+          <div data-dialog-deck className={DECK_DIALOG.deck}>
+            <div className={DECK_DIALOG.deckLead}>
+              <button
+                type="button"
+                onClick={() => setPicking((p) => !p)}
+                aria-expanded={picking}
+                className={DECK_DIALOG.chip}
+                data-testid="vacation-change-paused"
+              >
+                <Palmtree aria-hidden />
+                Change what’s paused
+              </button>
             </div>
-          ) : null}
-
-          {staked.length > 0 && (
-            <p className="text-xs text-muted-foreground" data-testid="vacation-beeminder">
-              {staked.length === 1 ? `${staked[0]} is` : `${staked.length} paused habits are`} on Beeminder, which
-              needs 7 days’ notice for a break. Schedule one there, or keep {staked.length === 1 ? 'it' : 'them'} going.
-            </p>
-          )}
-
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => setPicking((p) => !p)}
-              aria-expanded={picking}
-              className={cn(
-                'rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground',
-                picking && 'text-foreground',
-              )}
-              data-testid="vacation-change-paused"
-            >
-              Change what’s paused
-            </button>
             <div className="flex gap-2">
               {trip && (
                 <Button
@@ -216,6 +217,7 @@ export function VacationDialog({
               )}
               <Button type="submit" disabled={!validDay || (!!trip && !changed)} data-testid="vacation-submit">
                 {trip ? 'Save' : 'Start vacation'}
+                <ButtonKey />
               </Button>
             </div>
           </div>

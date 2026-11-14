@@ -10,6 +10,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { DECK_DIALOG } from '@/components/ui/deck-dialog';
+import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { ACCOUNT_COPY, accountLine, confirms, consequenceLines, doneMessage } from '@/lib/account-copy';
 import {
@@ -245,11 +247,11 @@ export function DeleteAccountDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
-        // Capped and scrolled, never clipped: with every consequence line it
-        // is taller than a phone, a 768px laptop or the desktop app at its
-        // 600px minimum, and the buttons must stay reachable. A plain overflow
-        // container, not <ScrollArea>, which ignores max-h.
-        className="border-border sm:max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto"
+        // Capped, never clipped: with every consequence line it is taller than
+        // a phone, a 768px laptop or the desktop app at its 600px minimum, so
+        // the body scrolls (a plain overflow container, not <ScrollArea>, which
+        // ignores max-h) and the deck stays pinned under it, buttons reachable.
+        className={cn(DECK_DIALOG.content, 'flex max-h-[calc(100dvh-2rem)] flex-col')}
         data-testid="delete-account-dialog"
         showCloseButton={!deleting && !leaving}
         // Reading starts at the top, not in the field Radix would pick: a
@@ -261,32 +263,107 @@ export function DeleteAccountDialog({
           (e.currentTarget as HTMLElement | null)?.focus();
         }}
       >
-        <DialogHeader>
-          <DialogTitle className="text-foreground">
-            {/* Once the account is gone the question is answered. */}
-            {phase.kind === 'done' ? ACCOUNT_COPY.deleteLabel : ACCOUNT_COPY.title}
-          </DialogTitle>
-          {line && (
-            <p className="text-foreground text-sm font-medium" data-testid="delete-account-account">
-              {line}
-            </p>
-          )}
-          {phase.kind !== 'done' && (
-            <DialogDescription className="text-sm leading-relaxed">{ACCOUNT_COPY.lead}</DialogDescription>
-          )}
-        </DialogHeader>
+        <form
+          className="flex min-h-0 flex-1 flex-col"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (phase.kind !== 'done') void remove();
+          }}
+        >
+          <div className={cn(DECK_DIALOG.body, 'gap-4 overflow-y-auto')}>
+            <DialogHeader className="text-left">
+              <DialogTitle className={DECK_DIALOG.title}>
+                {/* Once the account is gone the question is answered. */}
+                {phase.kind === 'done' ? ACCOUNT_COPY.deleteLabel : ACCOUNT_COPY.title}
+              </DialogTitle>
+              {line && (
+                <p className="text-foreground text-sm font-medium" data-testid="delete-account-account">
+                  {line}
+                </p>
+              )}
+              {phase.kind !== 'done' && (
+                <DialogDescription className="text-sm leading-relaxed">{ACCOUNT_COPY.lead}</DialogDescription>
+              )}
+            </DialogHeader>
 
-        {phase.kind === 'done' ? (
-          <div className="flex flex-col gap-4">
-            {/* The dialog's description now, so it is read with the dialog. */}
-            <DialogDescription asChild>
-              <p role="status" className="text-foreground text-sm leading-relaxed" data-testid="delete-account-done">
-                {phase.message}
-              </p>
-            </DialogDescription>
-            <div className="flex justify-end">
+            {phase.kind === 'done' ? (
+              // The dialog's description now, so it is read with the dialog.
+              <DialogDescription asChild>
+                <p role="status" className="text-foreground text-sm leading-relaxed" data-testid="delete-account-done">
+                  {phase.message}
+                </p>
+              </DialogDescription>
+            ) : (
+              <>
+                {phase.kind === 'loading' && (
+                  <div role="status" className="text-muted-foreground flex items-center" aria-busy="true">
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                    <span className="sr-only">Loading…</span>
+                  </div>
+                )}
+
+                {phase.kind === 'unreachable' && (
+                  <div className="flex flex-col items-start gap-2">
+                    <p role="alert" className="text-destructive text-sm" data-testid="delete-account-error">
+                      {ACCOUNT_COPY.unreachable}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setPhase({ kind: 'loading' });
+                        load();
+                      }}
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                )}
+
+                {lines.length > 0 && (
+                  <ul className="text-foreground flex list-disc flex-col gap-2 pl-5 text-sm leading-relaxed">
+                    {lines.map((text) => (
+                      <li key={text}>{text}</li>
+                    ))}
+                  </ul>
+                )}
+
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor={fieldId} className="text-sm font-medium">
+                    {ACCOUNT_COPY.confirmLabel}
+                  </label>
+                  <Input
+                    id={fieldId}
+                    value={typed}
+                    onChange={(e) => setTyped(e.target.value)}
+                    placeholder={ACCOUNT_CONFIRM_WORD}
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    disabled={deleting}
+                    data-testid="delete-account-confirm"
+                    className="text-sm"
+                  />
+                </div>
+
+                {problem && (
+                  <p role="alert" className="text-destructive text-sm" data-testid="delete-account-error">
+                    {problem}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Kept serious on purpose (the restyle's round 2): the shell and the
+              deck, no flourish. */}
+          <div data-dialog-deck className={DECK_DIALOG.deck}>
+            {phase.kind === 'done' ? (
               <Button
                 ref={doneRef}
+                type="button"
                 size="sm"
                 onClick={() => void leave()}
                 disabled={leaving}
@@ -294,97 +371,30 @@ export function DeleteAccountDialog({
               >
                 {ACCOUNT_COPY.doneLabel}
               </Button>
-            </div>
-          </div>
-        ) : (
-          <form
-            className="flex flex-col gap-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void remove();
-            }}
-          >
-            {phase.kind === 'loading' && (
-              <div role="status" className="text-muted-foreground flex items-center" aria-busy="true">
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-                <span className="sr-only">Loading…</span>
-              </div>
-            )}
-
-            {phase.kind === 'unreachable' && (
-              <div className="flex flex-col items-start gap-2">
-                <p role="alert" className="text-destructive text-sm" data-testid="delete-account-error">
-                  {ACCOUNT_COPY.unreachable}
-                </p>
+            ) : (
+              <>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    setPhase({ kind: 'loading' });
-                    load();
-                  }}
+                  onClick={() => handleOpenChange(false)}
+                  disabled={deleting}
                 >
-                  Try again
+                  Cancel
                 </Button>
-              </div>
+                <Button
+                  type="submit"
+                  variant="destructive"
+                  size="sm"
+                  disabled={!canDelete}
+                  data-testid="delete-account-submit"
+                >
+                  {deleting ? ACCOUNT_COPY.deletingLabel : ACCOUNT_COPY.deleteLabel}
+                </Button>
+              </>
             )}
-
-            {lines.length > 0 && (
-              <ul className="text-foreground flex list-disc flex-col gap-2 pl-5 text-sm leading-relaxed">
-                {lines.map((text) => (
-                  <li key={text}>{text}</li>
-                ))}
-              </ul>
-            )}
-
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor={fieldId} className="text-sm font-medium">
-                {ACCOUNT_COPY.confirmLabel}
-              </label>
-              <Input
-                id={fieldId}
-                value={typed}
-                onChange={(e) => setTyped(e.target.value)}
-                placeholder={ACCOUNT_CONFIRM_WORD}
-                autoComplete="off"
-                autoCapitalize="characters"
-                autoCorrect="off"
-                spellCheck={false}
-                disabled={deleting}
-                data-testid="delete-account-confirm"
-                className="text-sm"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => handleOpenChange(false)}
-                disabled={deleting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant="destructive"
-                size="sm"
-                disabled={!canDelete}
-                data-testid="delete-account-submit"
-              >
-                {deleting ? ACCOUNT_COPY.deletingLabel : ACCOUNT_COPY.deleteLabel}
-              </Button>
-            </div>
-
-            {problem && (
-              <p role="alert" className="text-destructive text-sm" data-testid="delete-account-error">
-                {problem}
-              </p>
-            )}
-          </form>
-        )}
+          </div>
+        </form>
       </DialogContent>
     </Dialog>
   );

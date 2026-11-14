@@ -1,15 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useReducer } from 'react';
+import { useEffect, useReducer } from 'react';
 
 import { iconHrefFor, type AppIcon } from '@/lib/app-icons';
 import { useToday } from '@/lib/collections';
-import { isDayCleared } from '@/lib/day-done';
 import { useLookStore } from '@/lib/look-store';
-import { usePlannerStore } from '@/lib/planner-store';
-import { useAwayStore } from '@/lib/away-store';
-import { selectPlannerSettled } from '@/lib/planner-ready';
 import { useNowMinutes } from '@/lib/use-now-minutes';
+import { useTodayDone } from '@/hooks/use-today-done';
 
 /** Saved on each icon link the first time it is touched: the href Next rendered. */
 const ORIGINAL_HREF = 'data-dsul-href';
@@ -35,14 +32,8 @@ const ORIGINAL_HREF = 'data-dsul-href';
  */
 export function FaviconSync() {
   const appIcon = useLookStore((s) => s.appIcon);
-  const items = usePlannerStore((s) => s.items);
-  const routines = usePlannerStore((s) => s.routines);
-  const seasons = usePlannerStore((s) => s.seasons);
-  const away = useAwayStore((s) => s.periods);
-  // A failed load counts as settled (lib/planner-ready.ts), but its store is
-  // not the account's items, so it is not read as today's.
-  const loaded = usePlannerStore((s) => selectPlannerSettled(s) && s.loadFailedUserId !== s.userId);
-  const { todayStr, tz } = useToday();
+  const { tz } = useToday();
+  const dayDone = useTodayDone() !== null;
 
   // `today` is recomputed every render (useToday), so all an idle tab needs to
   // fall back to Aurora at midnight is a render: once a minute while it runs,
@@ -58,10 +49,6 @@ export function FaviconSync() {
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
-  const dayDone = useMemo(
-    () => loaded && isDayCleared(items, todayStr, { userTimezone: tz, routines, seasons, away }),
-    [loaded, items, todayStr, tz, routines, seasons, away]
-  );
   const variant: AppIcon = appIcon === 'lime' || dayDone ? 'lime' : 'aurora';
 
   useEffect(() => {

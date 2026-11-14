@@ -23,6 +23,7 @@ import { RowRenameInput } from '@/components/primitives/row-rename-input';
 import { isRenaming, startRename, useRenameStore } from '@/lib/item-rename';
 import { useGoalsForDisplay, useStreaksEnabled } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
+import { deleteConfirmRequest } from '@/lib/item-verbs';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useScheduleSheet } from '@/lib/schedule-sheet-store';
@@ -372,14 +373,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
   };
 
   const handleDelete = () => {
-    // Registry copy so custom-type rows say "Delete Goal?", not "Delete Task?".
-    confirm({
-      title: `Delete ${typeConfig.label}?`,
-      description: typeConfig.form.deleteDescription(item.title),
-      confirmLabel: 'Delete',
-      destructive: true,
-      onConfirm: () => (isTask ? deleteTask(item.id) : deleteHabit(item.id)),
-    });
+    // Registry copy so custom-type rows say "Delete goal?", not "Delete task?".
+    confirm(
+      deleteConfirmRequest(item, typeName, () => (isTask ? deleteTask(item.id) : deleteHabit(item.id)))
+    );
   };
 
   // A plain click both SELECTS this row (replacing the selection) and opens it

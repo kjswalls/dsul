@@ -335,6 +335,7 @@ describe('settings manifest — persistence contract', () => {
       'look.buckets',
       'look.markStyle',
       'look.showPaused',
+      'look.celebrate',
       'beacon.provider',
       'beacon.instructions',
       'beacon.apiKey',

@@ -151,6 +151,8 @@ interface ViewStore {
   canvasFilters: ViewFilters;
   typeMode: TypeMode;
   scheduleMarkStyle: ScheduleMarkStyle;
+  /** The aurora when the last thing on today is ticked (components/celebrate/day-done-aurora.tsx). Device-local. */
+  celebrateDayDone: boolean;
   /**
    * How many day columns the week views try to fit across the canvas — the
    * value behind the week scale control. Stored as a day COUNT, not a pixel
@@ -246,6 +248,7 @@ interface ViewStore {
   renameContainerRef: (from: string, to: string) => void;
   setTypeMode: (mode: TypeMode) => void;
   setScheduleMarkStyle: (style: ScheduleMarkStyle) => void;
+  setCelebrateDayDone: (on: boolean) => void;
   /** `null` hands the choice back to the width-derived default. */
   setWeekDaysVisible: (days: number | null) => void;
   /** Move along the ladder by `delta` stops; +1 is one step wider. */
@@ -318,6 +321,7 @@ const INERT_DEFAULTS = {
   braindumpSortBy: 'default',
   typeMode: 'sans',
   scheduleMarkStyle: 'nodes',
+  celebrateDayDone: true,
   weekDaysVisible: null,
   bucketStyle: 'spine',
   collapsedBuckets: [],
@@ -396,6 +400,7 @@ export const useViewStore = create<ViewStore>()(
       },
       setTypeMode: (typeMode) => set({ typeMode }),
       setScheduleMarkStyle: (scheduleMarkStyle) => set({ scheduleMarkStyle }),
+      setCelebrateDayDone: (celebrateDayDone) => set({ celebrateDayDone }),
       // Clamped on the way IN, so nothing downstream has to defend against a
       // hand-edited localStorage value or a stale ladder. `null` passes through
       // untouched — it is the "never adjusted" state, not a bad number.

@@ -98,7 +98,15 @@ import { RailHeader } from '@/components/ai/rail/rail-header';
 import { BoundComposer } from '@/components/ai/bound-composer';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { ItemRail, RailDoneCheck, type RailChip } from '@/components/planner/item-rail';
-import { ITEM_VERBS, isDoneOn, occurrenceOn, type VerbContext } from '@/lib/item-verbs';
+import {
+  ITEM_VERBS,
+  deleteConfirmPreview,
+  deleteConfirmTitle,
+  isDoneOn,
+  occurrenceOn,
+  type VerbContext,
+} from '@/lib/item-verbs';
+import { ConfirmDeckNote, ConfirmItemRow } from '@/components/shell/confirm-dialog';
 import { AttachFileButton, usePicker } from '@/components/planner/item-files';
 import { useItemFilesStore } from '@/lib/item-files-store';
 import { useConversationsStore } from '@/lib/conversations-store';
@@ -1010,6 +1018,8 @@ function ItemDialogInner({
     ? (items.find((i) => i.id === latched.id) ?? latched)
     : null;
   const editConfig = editItem ? getItemTypeConfig(itemTypeName(editItem)) : null;
+  // The delete confirm draws the item it takes, as the shared confirm does.
+  const deletePreview = editItem ? deleteConfirmPreview(editItem, itemTypeName(editItem)) : null;
 
   // Resolved at TODAY, not selectedDate — pausing is dateless (plan decision 3),
   // and `editItem` is re-read from the store every render, so this flips the
@@ -4333,12 +4343,14 @@ function ItemDialogInner({
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent data-testid="item-dialog-delete-confirm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {editConfig?.label ?? 'Item'}?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle>{deleteConfirmTitle(editConfig?.label ?? 'Item')}</AlertDialogTitle>
+            <AlertDialogDescription className={deletePreview ? 'sr-only' : undefined}>
               {editConfig?.form.deleteDescription(editItem?.title ?? '')}
             </AlertDialogDescription>
+            {deletePreview && <ConfirmItemRow preview={deletePreview} />}
           </AlertDialogHeader>
           <AlertDialogFooter>
+            {deletePreview && <ConfirmDeckNote note={deletePreview.note} />}
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               data-testid="item-dialog-delete-confirm-accept"

@@ -3,16 +3,13 @@
 import { useEffect } from 'react';
 
 import { useConversationsStore } from '@/lib/conversations-store';
-import { isDayCleared } from '@/lib/day-done';
+import { readTodayDone } from '@/lib/day-done-moment';
 import { useDoStuffStore } from '@/lib/do-stuff';
 import { EXT_SOUNDS, resolveEnabled } from '@/lib/extension-registry';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { subscribeModEvents } from '@/lib/mod-events';
-import { usePlannerStore } from '@/lib/planner-store';
-import { toDateStr } from '@/lib/recurrence';
 import { askOpenOf, useSidebarStore } from '@/lib/sidebar-store';
 import { cueSound } from '@/lib/sounds/cue';
-import { useAwayStore } from '@/lib/away-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useViewStore } from '@/lib/view-store';
 
@@ -66,16 +63,9 @@ export function SoundCues() {
       subscribeModEvents((e) => {
         if (e.kind === 'item.completed') {
           cueSound('complete', BUS);
-          const planner = usePlannerStore.getState();
-          const tz = planner.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-          const today = toDateStr(new Date(), tz);
+          const { today, count } = readTodayDone();
           if (e.date !== today || dayDoneOn === today) return;
-          const cleared = isDayCleared(planner.items, today, {
-            userTimezone: tz,
-            routines: planner.routines,
-            seasons: planner.seasons,
-            away: useAwayStore.getState().periods,
-          });
+          const cleared = count !== null;
           if (cleared) {
             dayDoneOn = today;
             // After the tick's own sound, not over it.

@@ -91,7 +91,7 @@ const PENDING_WAIT_MS = 3000;
 const ROW_SECTIONS: Partial<Record<string, readonly { title: string; ids: readonly string[] }[]>> = {
   look: [
     { title: 'Planner', ids: ['look.typeface', 'look.buckets', 'look.showCompleted', 'look.atlasFar'] },
-    { title: 'App', ids: ['look.appIcon', 'look.animations'] },
+    { title: 'App', ids: ['look.appIcon', 'look.animations', 'look.celebrate'] },
   ],
 };
 
