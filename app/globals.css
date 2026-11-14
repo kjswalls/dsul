@@ -1796,8 +1796,10 @@ body {
    Under the pointer the key rises (Kirby's "A Rise", 2026-11-07, mocks at
    /mnt/project-files/keycap-hover/): up 1px, the skirt grows to 3px, the
    cast lengthens (--shadow-key-lifted) and the face brightens (--key-wash,
-   less shade in light, more foreground in dark). It eases in over 260ms and
-   settles back a little slower; a press is quick. Reduced motion keeps the
+   less shade in light, more foreground in dark). It eases in over 160ms and
+   settles back over 200ms on a plain ease-out, never --ease-out-soft: that
+   curve's long tail read as floaty on the sign-in page's tall full-width
+   keys (Kirby, 2026-11-14). A press is quick. Reduced motion keeps the
    lift and drops the easing.
 
    .key-main stands on a LIME skirt: --primary itself, a flat edge, never
@@ -1821,11 +1823,13 @@ body {
     0 2px 0 var(--key-skirt),
     var(--key-ring),
     var(--shadow-key-rest);
+  /* A plain ease-out with a short tail (see above). */
+  --key-ease: cubic-bezier(0.25, 0.6, 0.4, 1);
   /* Settling back: a touch slower than the rise, so leaving reads as calm. */
   transition:
-    translate 320ms var(--ease-out-soft),
-    box-shadow 320ms var(--ease-out-soft),
-    --key-wash 320ms var(--ease-out-soft),
+    translate 200ms var(--key-ease),
+    box-shadow 200ms var(--key-ease),
+    --key-wash 200ms var(--key-ease),
     background-color 150ms var(--ease-out-soft),
     color 150ms var(--ease-out-soft);
 }
@@ -1860,7 +1864,7 @@ body {
       0 3px 0 var(--key-skirt),
       var(--key-ring),
       var(--shadow-key-lifted);
-    transition-duration: 260ms, 260ms, 260ms, 150ms, 150ms;
+    transition-duration: 160ms, 160ms, 160ms, 150ms, 150ms;
   }
   :where(.dark) .key:hover:not(:disabled, [aria-disabled='true']) {
     --key-wash: 3%;
