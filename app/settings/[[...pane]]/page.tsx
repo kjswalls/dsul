@@ -10,7 +10,7 @@ import { useTheme } from 'next-themes';
 import { SettingsShell } from '@/components/settings/settings-shell';
 import { SETTINGS_PAGE_WIDTH } from '@/components/settings/page-width';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
-import { Button } from '@/components/ui/button';
+import { Button, ButtonKey } from '@/components/ui/button';
 
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
@@ -153,6 +153,21 @@ function SettingsSkeleton({ userId }: { userId: string | null }) {
     const t = window.setTimeout(() => setStuck(true), 5000);
     return () => window.clearTimeout(t);
   }, []);
+  // Enter reloads once the notice is up, so the ↵ printed on Reload is true
+  // without focusing the key (a focused key wears a ring that reads as a lit
+  // rim, which is AI's alone). A focused link or button keeps its own Enter.
+  useEffect(() => {
+    if (!stuck) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.defaultPrevented || e.isComposing) return;
+      const t = e.target as HTMLElement | null;
+      if (t && t !== document.body && t.closest('a,button,input,textarea,select,[contenteditable]')) return;
+      e.preventDefault();
+      window.location.reload();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [stuck]);
 
   return (
     <main
@@ -208,22 +223,43 @@ function SettingsSkeleton({ userId }: { userId: string | null }) {
           Supabase as one), and so does the provider for a page the server let
           through. This is for a stored session the browser could not refresh,
           or a cookie the proxy could not decode and so let through; the
-          provider keeps both here on purpose (see its mount check). */}
-      <p role="status" aria-live="polite" className="text-muted-foreground min-h-5 text-sm">
-        {stuck ? 'Still loading your settings.' : ''}
-      </p>
-      {stuck && (
-        <div className="flex gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link href="/">Open dsul</Link>
-          </Button>
-          {!userId && (
-            <Button asChild variant="outline" size="sm">
-              <Link href="/login?redirect=/settings">Sign in</Link>
-            </Button>
-          )}
-        </div>
-      )}
+          provider keeps both here on purpose (see its mount check). Also for a
+          slow database: the settings read is asked once per load, so a reload
+          is the real retry.
+
+          Drawn as one settings card row (title and line on the left, keys on
+          the right), the same shape as every row the page is about to show,
+          so the stuck state reads as part of the page rather than a stray
+          line of text over a lone button. The live region is always mounted
+          so the message is announced when it appears. */}
+      <div role="status" aria-live="polite" data-testid="settings-stuck">
+        {stuck && (
+          <div className="bg-card border-border flex flex-col gap-3 rounded-[calc(var(--radius)*0.75)] border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+            <div className="min-w-0">
+              <p className="text-foreground text-sm">Taking longer than usual</p>
+              <p className="text-muted-foreground mt-[3px] text-xs">
+                {userId
+                  ? "Your settings haven't come through yet. Reloading usually fixes it."
+                  : "dsul can't confirm you're signed in. Sign in again, or reload to retry."}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button asChild variant="outline">
+                <Link href="/">Back to planner</Link>
+              </Button>
+              {!userId && (
+                <Button asChild variant="outline">
+                  <Link href="/login?redirect=/settings">Sign in</Link>
+                </Button>
+              )}
+              <Button onClick={() => window.location.reload()}>
+                Reload
+                <ButtonKey />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
       </div>
     </main>
   );
