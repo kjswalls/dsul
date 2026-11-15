@@ -1218,6 +1218,7 @@ export function ScheduleBlock({
           them as the same slot. */}
       <span
         aria-hidden
+        data-slot="rail"
         className="absolute w-[2px] rounded-[1px]"
         style={{ left: L?.railX ?? 5, top: -PANE_OFFSET, height: spanH, background: railColor }}
       />
@@ -1228,6 +1229,7 @@ export function ScheduleBlock({
           tile beside its pane (see beadX), and the start-tie above links them. */}
       <span
         aria-hidden
+        data-slot="bead"
         className="absolute h-[6px] w-[6px] rounded-full"
         style={{
           left: L?.beadX ?? 3,

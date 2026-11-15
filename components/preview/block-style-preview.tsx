@@ -18,7 +18,7 @@ const STYLES = [
   { id: 'k4', label: 'Soft' },
 ] as const;
 type StyleId = (typeof STYLES)[number]['id'];
-const DEFAULT: StyleId = 'k2';
+const DEFAULT: StyleId = 'k4';
 
 function read(): StyleId {
   try {
