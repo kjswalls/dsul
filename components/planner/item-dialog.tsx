@@ -742,8 +742,9 @@ function FoldRegion({
         active && (open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')
       )}
     >
-      {/* -mx-1/px-1: room for a focus ring at the clipped edge. */}
-      <div className={active ? '-mx-1 min-h-0 overflow-hidden px-1' : undefined} inert={!open}>
+      {/* -mx-5/px-5: room at the clipped edges for a focus ring, and for the
+          subtask rows' drag grip, which sits in the rail body's 20px gutter. */}
+      <div className={active ? '-mx-5 min-h-0 overflow-hidden px-5' : undefined} inert={!open}>
         {/* The Lift: the details rise a little as their rows close. */}
         <div
           className={cn(
