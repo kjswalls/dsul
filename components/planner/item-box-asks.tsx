@@ -41,8 +41,8 @@ import { cn } from '@/lib/utils';
  * while an agent holds it, and on a finished one-off (no ask is eligible).
  * Everything stays under right-click › AI.
  *
- * Quiet: ink text, no border and no colour at rest; a hairline and a wash
- * only under the pointer. The lit rim is the Ask key's, so none here.
+ * Quiet: ink text, no border and no colour at rest; a thin dashed underline
+ * under the words when pointed at or focused (`ChipLabel`). The lit rim is the Ask key's, so none here.
  */
 
 /** The asks a chip may carry, in order. 'ask' is the box itself. */
@@ -51,10 +51,10 @@ const MAX_CHIPS = 3;
 
 const ICON: Record<ItemAskId, ReactNode> = {
   ask: null,
-  breakdown: <Split className="size-3.5" aria-hidden />,
-  start: <ArrowRight className="size-3.5" aria-hidden />,
-  findTime: <CalendarClock className="size-3.5" aria-hidden />,
-  keep: <Sprout className="size-3.5" aria-hidden />,
+  breakdown: <Split className="size-3" aria-hidden />,
+  start: <ArrowRight className="size-3" aria-hidden />,
+  findTime: <CalendarClock className="size-3" aria-hidden />,
+  keep: <Sprout className="size-3" aria-hidden />,
 };
 
 const LABEL: Partial<Record<ItemAskId, string>> = {
@@ -63,11 +63,29 @@ const LABEL: Partial<Record<ItemAskId, string>> = {
 };
 
 export const quietChip = cn(
-  'text-muted-foreground inline-flex h-7 items-center gap-1.5 rounded-full border border-transparent px-2.5 text-xs font-medium transition-colors',
-  'hover:text-foreground hover:border-border hover:bg-muted data-[state=open]:text-foreground data-[state=open]:border-border data-[state=open]:bg-muted',
-  'focus-visible:border-border focus-visible:text-foreground focus-visible:outline-none',
+  'group/chip text-muted-foreground inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-medium transition-colors',
+  'hover:text-foreground data-[state=open]:text-foreground focus-visible:text-foreground focus-visible:outline-none',
   'disabled:opacity-50'
 );
+
+/**
+ * The chip's words, with a thin dashed underline that shows under the
+ * pointer, an open menu or keyboard focus (Kirby, 2026-11-15): no box, no
+ * wash. Drawn on the words alone, so the icon and the chevron stay clean.
+ */
+function ChipLabel({ children }: { children: ReactNode }) {
+  return (
+    <span
+      className={cn(
+        'underline decoration-transparent decoration-dashed decoration-1 underline-offset-4 transition-[text-decoration-color]',
+        'group-hover/chip:decoration-current group-focus-visible/chip:decoration-current group-data-[state=open]/chip:decoration-current',
+        'group-disabled/chip:decoration-transparent'
+      )}
+    >
+      {children}
+    </span>
+  );
+}
 
 export function ItemBoxAsks({ item }: { item: Item }) {
   const live = usePlannerStore((s) => s.items.find((i) => i.id === item.id)) ?? item;
@@ -128,7 +146,7 @@ export function ItemBoxAsks({ item }: { item: Item }) {
   };
 
   return (
-    <div className="-ml-2.5 flex flex-wrap gap-0.5" data-sub-input data-testid="item-box-asks">
+    <div className="-ml-2 flex flex-wrap gap-0.5" data-sub-input data-testid="item-box-asks">
       {shown.map((ask) => (
         <button
           key={ask.id}
@@ -139,7 +157,7 @@ export function ItemBoxAsks({ item }: { item: Item }) {
           className={quietChip}
         >
           {ICON[ask.id]}
-          {LABEL[ask.id] ?? ask.label(live, ctx)}
+          <ChipLabel>{LABEL[ask.id] ?? ask.label(live, ctx)}</ChipLabel>
         </button>
       ))}
       {handOff &&
@@ -151,13 +169,13 @@ export function ItemBoxAsks({ item }: { item: Item }) {
             className={quietChip}
           >
             <AgentFace name={targets[0].name} size="sm" />
-            Hand off to {targets[0].name}
+            <ChipLabel>Hand off to {targets[0].name}</ChipLabel>
           </button>
         ) : (
           <DropdownMenu>
             <DropdownMenuTrigger data-testid="assign-agent" className={quietChip}>
-              Hand off
-              <ChevronDown className="size-3" aria-hidden />
+              <ChipLabel>Hand off</ChipLabel>
+              <ChevronDown className="size-2.5" aria-hidden />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="min-w-40">
               {targets.map((t) => (
