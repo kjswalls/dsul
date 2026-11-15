@@ -92,6 +92,8 @@ export function SubtaskRow({
           data-testid="subtask-row"
           data-subtask-id={child.id}
           data-subtask-open={canMove ? '' : undefined}
+          // Ticked or unticked, it slides to its new place (hooks/use-sink-hold.ts).
+          data-sink-row=""
           onKeyDown={onKeyDown}
           // F2 over a subtask renames it in place, as over a planner row
           // (rename_hovered reads this ref; so do E and Backspace).

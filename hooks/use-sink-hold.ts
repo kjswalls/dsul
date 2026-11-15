@@ -201,7 +201,10 @@ function pendingSignature(committed: Map<string, boolean>, observed: Map<string,
 function measure(root: HTMLElement | null): Map<Element, DOMRect> | null {
   if (!root) return null;
   const rects = new Map<Element, DOMRect>();
-  root.querySelectorAll('[data-item-id]').forEach((el) => {
+  // `[data-sink-row]` alone: a box with no item id of its own that moves with
+  // the rows (the subtask list's add row and done fold), or a row that keeps
+  // its id elsewhere (a subtask).
+  root.querySelectorAll('[data-item-id], [data-sink-row]').forEach((el) => {
     // The row's outermost box: on mobile TaskRow sits inside SwipeRow's
     // overflow-hidden strip, which would clip a row slid out of it.
     const box = el.closest('[data-sink-row]') ?? el;

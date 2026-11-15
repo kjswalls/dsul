@@ -98,6 +98,7 @@ vi.mock('@/components/mobile/setup-tab', () => ({
 import { MobileShell } from '@/components/shell/mobile-shell';
 import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
 import { ItemDetailSections } from '@/components/planner/item-detail-sections';
+import { SINK_HOLD_MS } from '@/hooks/use-sink-hold';
 import ItemPage from '@/app/item/[id]/page';
 import { mobileTabOrder, useMobileNavStore, type MobileTab } from '@/lib/mobile-nav-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
@@ -708,6 +709,44 @@ describe('the item panel', () => {
     reorderItems.mockClear();
     fireEvent.keyDown(screen.getAllByTestId('subtask-title')[2], { key: 'ArrowDown', altKey: true });
     expect(reorderItems).not.toHaveBeenCalled();
+  });
+
+  it('holds a ticked subtask in place, then sinks it into the done list and opens the fold', () => {
+    vi.useFakeTimers();
+    try {
+      seed();
+      const sub = (id: string, title: string, order: number) =>
+        ({ ...TASK, id, title, order, parentItemId: 'item-1', status: 'pending' }) as TaskItem;
+      const toggleTaskStatus = vi.fn((id: string) => {
+        usePlannerStore.setState({
+          items: usePlannerStore
+            .getState()
+            .items.map((i) => (i.id === id ? ({ ...i, status: 'completed' } as TaskItem) : i)),
+        });
+      });
+      usePlannerStore.setState({ items: [TASK, sub('s-a', 'First', 1), sub('s-b', 'Second', 2)], toggleTaskStatus });
+      render(<ItemDetailSections item={TASK} conversation="inline" />);
+
+      fireEvent.click(screen.getAllByRole('button', { name: 'Mark done' })[0]);
+      // Ticked, but still where it was clicked; no fold yet.
+      expect(screen.getAllByTestId('subtask-title').map((el) => el.textContent)).toEqual(['First', 'Second']);
+      expect(screen.queryByTestId('subtask-done-fold')).toBeNull();
+
+      act(() => {
+        vi.advanceTimersByTime(SINK_HOLD_MS + 10);
+      });
+      const fold = screen.getByTestId('subtask-done-fold');
+      expect(fold).toHaveAttribute('aria-expanded', 'true');
+      expect(fold).toHaveTextContent('1 done');
+      expect(screen.getAllByTestId('subtask-title').map((el) => el.textContent)).toEqual(['Second', 'First']);
+
+      // Folded away by hand, it stays folded.
+      fireEvent.click(fold);
+      expect(screen.getByTestId('subtask-done-fold')).toHaveAttribute('aria-expanded', 'false');
+      expect(screen.getAllByTestId('subtask-title').map((el) => el.textContent)).toEqual(['Second']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('asks once to finish the task after its last subtask is ticked, and never ticks it unasked', () => {
