@@ -9,6 +9,7 @@ import {
   WORDMARK_TEXT,
   readNextFlavorIndex,
   takeNextFlavor,
+  unrollTimings,
 } from '@/lib/wordmark-flavors';
 
 /**
@@ -39,6 +40,58 @@ describe('wordmark phrase', () => {
     expect(WORDMARK_FLAVORS).toHaveLength(12);
     expect(new Set(WORDMARK_FLAVORS).size).toBe(12);
     expect(WORDMARK_FLAVORS[0]).toBe('classic');
+  });
+});
+
+describe('unroll timings', () => {
+  // The edge's position at time t, read back off the per-letter slices.
+  const bezierY = (ease: string, u: number) => {
+    const [, y1, , y2] = ease.match(/-?\d*\.?\d+/g)!.map(Number);
+    // x handles at thirds make x(s) = s, so y is a plain cubic in u.
+    return 3 * (1 - u) ** 2 * u * y1 + 3 * (1 - u) * u ** 2 * y2 + u ** 3;
+  };
+  const edgeAt = (widths: number[], t: number, dir: 'in' | 'out') => {
+    const total = widths.reduce((a, b) => a + b, 0);
+    return unrollTimings(widths).reduce((sum, timing, i) => {
+      const p = timing[dir];
+      const u = p.duration === 0 ? (t >= p.delay ? 1 : 0) : Math.min(1, Math.max(0, (t - p.delay) / p.duration));
+      return sum + (widths[i] / total) * bezierY(p.ease, u);
+    }, 0);
+  };
+  const widths = [7.8, 3.2, 4.5, 7.8, 4.9, 4.9, 3.2, 7.8, 3.3, 11.6, 3.3, 4.5, 7.6, 8];
+
+  it('covers the run once, left to right, with no gaps or overlaps', () => {
+    const timings = unrollTimings(widths);
+    expect(timings[0].in.delay).toBe(0);
+    for (let i = 1; i < timings.length; i++) {
+      const prev = timings[i - 1].in;
+      expect(timings[i].in.delay).toBeCloseTo(prev.delay + prev.duration, 9);
+    }
+    const last = timings.at(-1)!.in;
+    expect(last.delay + last.duration).toBeCloseTo(1, 9);
+    // Closing starts at the far end and finishes on the first letter.
+    expect(timings.at(-1)!.out.delay).toBe(0);
+    expect(timings[0].out.delay + timings[0].out.duration).toBeCloseTo(1, 9);
+  });
+
+  it('moves the edge on one quadratic ease-out, opening and closing', () => {
+    for (let t = 0; t <= 1; t += 0.05) {
+      expect(edgeAt(widths, t, 'in')).toBeCloseTo(1 - (1 - t) ** 2, 3);
+      expect(edgeAt(widths, t, 'out')).toBeCloseTo(1 - (1 - t) ** 2, 3);
+    }
+  });
+
+  it('gives a wide letter more of the run than a narrow one', () => {
+    const [i, m] = [1, 9].map((k) => unrollTimings(widths)[k].in.duration);
+    expect(m).toBeGreaterThan(i);
+  });
+
+  it('splits evenly when nothing has been laid out', () => {
+    const timings = unrollTimings([0, 0, 0, 0]);
+    expect(timings).toHaveLength(4);
+    const last = timings.at(-1)!.in;
+    expect(last.delay + last.duration).toBeCloseTo(1, 9);
+    for (const t of timings) expect(t.in.duration).toBeGreaterThan(0);
   });
 });
 
