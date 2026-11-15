@@ -93,3 +93,75 @@ export function takeNextFlavor(): WordmarkFlavor {
   }
   return WORDMARK_FLAVORS[i];
 }
+
+/** One growing letter's slice of the unroll: when and how it moves, as fractions of the whole run. */
+export interface FillPhase {
+  delay: number;
+  duration: number;
+  /** The piece of the whole curve this slice covers, as a CSS timing function. */
+  ease: string;
+}
+
+export interface FillTiming {
+  /** Opening: when this letter starts to grow, for how long, on which piece of the curve. */
+  in: FillPhase;
+  /** Closing: the same, run from the far end back to the initials. */
+  out: FillPhase;
+}
+
+/** The whole word's curve, a quadratic ease-out: how far it has reached at time `t`. */
+const reachAt = (t: number) => 1 - (1 - t) ** 2;
+/** Its slope at time `t`. */
+const slopeAt = (t: number) => 2 * (1 - t);
+/** Its inverse: when the word reaches `x` of its width. */
+const timeAt = (x: number) => 1 - Math.sqrt(Math.max(0, 1 - x));
+
+const r4 = (n: number) => Math.round(n * 10000) / 10000;
+
+/**
+ * The slice of the curve between distances `from` and `to`. A slice of a
+ * quadratic is a quadratic, and a cubic-bezier whose x handles sit at thirds
+ * draws any polynomial up to a cubic exactly, so each letter's timing
+ * function is that slice with no approximation: the edge's speed carries
+ * straight from one letter into the next.
+ */
+function phase(from: number, to: number): FillPhase {
+  const t0 = timeAt(from);
+  const t1 = timeAt(to);
+  const dt = t1 - t0;
+  const dx = reachAt(t1) - reachAt(t0);
+  if (dt <= 0 || dx <= 0) return { delay: t0, duration: 0, ease: 'linear' };
+  const v0 = (slopeAt(t0) * dt) / dx;
+  const v1 = (slopeAt(t1) * dt) / dx;
+  return {
+    delay: t0,
+    duration: dt,
+    ease: `cubic-bezier(0.3333, ${r4(v0 / 3)}, 0.6667, ${r4(1 - v1 / 3)})`,
+  };
+}
+
+/**
+ * Turns the growing letters' natural widths into one smooth unroll.
+ *
+ * Each letter used to grow its own box toward a fixed 1.2em cap on an equal
+ * stagger, so a narrow "i" filled its box in a frame and a wide "m" took
+ * several, and the word grew in uneven lurches that stopped dead on the last
+ * letter. Here the whole phrase is one ease-out over its total width: each
+ * letter takes the stretch of time in which the word's edge crosses it, on
+ * that stretch's piece of the curve, so the edge moves at one continuous,
+ * slowing speed from the first letter to the last. Closing runs the same
+ * curve from the far end. Zero widths (a page with no layout yet) fall back
+ * to equal shares.
+ */
+export function unrollTimings(widths: readonly number[]): FillTiming[] {
+  const usable = widths.map((w) => (Number.isFinite(w) && w > 0 ? w : 0));
+  const total = usable.reduce((a, b) => a + b, 0);
+  const share = total > 0 ? usable.map((w) => w / total) : usable.map(() => 1 / usable.length);
+  let start = 0;
+  return share.map((s, i) => {
+    const end = i === share.length - 1 ? 1 : Math.min(1, start + s);
+    const timing = { in: phase(start, end), out: phase(1 - end, 1 - start) };
+    start = end;
+    return timing;
+  });
+}

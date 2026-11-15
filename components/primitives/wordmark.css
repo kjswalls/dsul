@@ -3,9 +3,12 @@
  * lib/wordmark-flavors.ts).
  *
  * At rest only the four initials show; every other letter is a .wordmark-fill
- * held at max-width 0. [data-open] grows them in, staggered by --wm-fi so the
- * phrase unrolls left to right, while each letter's color flashes --wm-shine
- * staggered by --wm-i: that is the shimmer. Closing reverses the stagger.
+ * held at max-width 0. [data-open] grows each to its own measured width
+ * (--wm-w), on the delay and duration the component worked out from all the
+ * widths (unrollTimings in lib/wordmark-flavors.ts), so the phrase unrolls
+ * left to right as one ease-out over --wm-unroll, while each letter's color
+ * flashes --wm-shine staggered by --wm-i: that is the shimmer. Closing runs
+ * the same curve back from the far end over --wm-unroll-out.
  * Each flavor is a block keyed off [data-flavor] below.
  *
  * The dot is the accent. It is its own element in every flavor and nothing
@@ -25,8 +28,8 @@
   --wm-highlight: var(--primary);
   --wm-highlight-ink: var(--primary-foreground);
   --wm-highlight-top: 0.42em;
-  --wm-stagger: 16ms;
-  --wm-reveal: 220ms;
+  --wm-unroll: 380ms;
+  --wm-unroll-out: 280ms;
   --wm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
   position: relative;
   display: inline-flex;
@@ -121,19 +124,44 @@
     transform: translateY(calc(var(--wm-size) * -0.08)) scale(1.25);
   }
 }
+/* No ease of their own: each letter's delay, duration and timing function
+   are its slice of one curve laid across the letters by width, so the word's
+   edge never lurches. */
 .wordmark-fill {
   max-width: 0;
   opacity: 0;
   overflow: hidden;
-  transition:
-    max-width var(--wm-reveal) var(--wm-ease),
-    opacity calc(var(--wm-reveal) * 0.8) linear;
-  transition-delay: calc((var(--wm-fill-count) - 1 - var(--wm-fi)) * 7ms);
+  transition-property: max-width, opacity;
+  transition-timing-function: var(--wm-out-ease, linear), linear;
+  transition-duration: calc(var(--wm-out-dur, 0) * var(--wm-unroll-out));
+  transition-delay: calc(var(--wm-out-delay, 0) * var(--wm-unroll-out));
 }
 .wordmark[data-open] .wordmark-fill {
-  max-width: 1.2em;
+  /* 1.2em only before a first measure, which every open takes. */
+  max-width: var(--wm-w, 1.2em);
   opacity: 1;
-  transition-delay: calc(var(--wm-fi) * var(--wm-stagger));
+  transition-duration:
+    calc(var(--wm-in-dur, 0) * var(--wm-unroll)),
+    max(calc(var(--wm-in-dur, 0) * var(--wm-unroll)), 90ms);
+  transition-delay: calc(var(--wm-in-delay, 0) * var(--wm-unroll));
+  transition-timing-function: var(--wm-in-ease, linear), linear;
+}
+/* The off-screen copy the component measures the letters on: full width,
+   still, and square to the page, so a tilted word reads its true widths. */
+.wordmark[data-measuring] {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+.wordmark[data-measuring],
+.wordmark[data-measuring] *,
+.wordmark[data-measuring] *::before {
+  transition: none !important;
+  animation: none !important;
+  transform: none !important;
+}
+.wordmark[data-measuring] .wordmark-fill {
+  max-width: none;
 }
 /* Once every letter is in, let glows and shadows spill past their boxes. */
 .wordmark[data-settled] .wordmark-fill {
@@ -184,7 +212,7 @@
 
 /* 2 · pixel: hard steps like an 8-bit dialog box; the dot is a square pixel. */
 .wordmark[data-flavor='pixel'] {
-  --wm-stagger: 30ms;
+  --wm-unroll: 520ms;
   font:
     400 calc(var(--wm-size) * 0.92) / 1 var(--font-wm-pixel),
     monospace;
@@ -234,6 +262,10 @@
 }
 .wordmark[data-flavor='terminal'] .wordmark-fill {
   transition-duration: 0s, 0s;
+}
+/* Typing keeps an even beat, one key per --wm-stagger, not the eased unroll. */
+.wordmark[data-flavor='terminal'][data-open] .wordmark-fill {
+  transition-delay: calc(var(--wm-fi) * var(--wm-stagger));
 }
 .wordmark[data-flavor='terminal'] .wordmark-word::before {
   content: '>';
@@ -444,8 +476,8 @@
 
 /* 8 · serif: Instrument Serif italic, slow and airy; the dot drifts down. */
 .wordmark[data-flavor='serif'] {
-  --wm-stagger: 20ms;
-  --wm-reveal: 320ms;
+  --wm-unroll: 520ms;
+  --wm-unroll-out: 360ms;
   font:
     italic 400 calc(var(--wm-size) * 1.45) / 1 var(--font-wm-serif),
     Georgia,
@@ -561,7 +593,7 @@
 /* 11 · scramble: Space Mono letters decode left to right (the component
    swaps the glyphs); the dot is a diamond that spins once. */
 .wordmark[data-flavor='scramble'] {
-  --wm-stagger: 10ms;
+  --wm-unroll: 320ms;
   font:
     700 calc(var(--wm-size) * 0.95) / 1 var(--font-wm-code),
     ui-monospace,
