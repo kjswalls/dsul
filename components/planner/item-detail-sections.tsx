@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
-import { ChevronRight, Pencil, Plus, Split, X } from 'lucide-react';
+import { ChevronRight, Plus, Split, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { RelayRow } from '@/components/ai/ai-work-badge';
 import { Input } from '@/components/ui/input';
@@ -36,10 +36,11 @@ import { EDIT_COPY } from '@/lib/item-edit';
 import { toast } from 'sonner';
 import type { Item, TaskItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
-import { ItemTick, animateItemCheck } from '@/components/primitives/item-check';
-import { RowRenameInput } from '@/components/primitives/row-rename-input';
+import { isRecurring } from '@/lib/recurrence';
+import { animateItemCheck } from '@/components/primitives/item-check';
 import { hoveredItem, setHoveredItemRef } from '@/lib/hovered-item';
-import { isRenaming, startRename, useRenameStore } from '@/lib/item-rename';
+import { SubtaskRow, type SubtaskDragHandlers, type SubtaskMove } from '@/components/planner/subtask-row';
+import { moveToSlot, slotAt, sortSubtasks, stepTo, SUBTASK_COPY } from '@/lib/subtasks';
 
 /**
  * The item detail sections — what the dialog never had room for. One component
@@ -77,7 +78,7 @@ function SubtasksSection({
   /** "Break it down" is a chip above the item's box instead (ItemBoxAsks). */
   asksElsewhere: boolean;
 }) {
-  const { items, addTask, addTasksBulk, deleteTask, toggleTaskStatus } = usePlannerStore();
+  const { items, addTask, addTasksBulk, deleteTask, toggleTaskStatus, updateTask, reorderItems } = usePlannerStore();
   const [title, setTitle] = useState('');
   // The finished ones fold under "N done" (the panel tidy, round 3), held per
   // item so the next item opens folded.
@@ -114,8 +115,9 @@ function SubtasksSection({
 
   // Live children — the edit dialog holds a SNAPSHOT of the parent, but the
   // subtask list must reflect toggles immediately.
-  const children = items.filter(
-    (i): i is TaskItem => i.type !== 'habit' && i.parentItemId === item.id
+  // In the user's order (`items.order`, lib/subtasks.ts), which a drag writes.
+  const children = sortSubtasks(
+    items.filter((i): i is TaskItem => i.type !== 'habit' && i.parentItemId === item.id)
   );
 
   // A panel that closes under the pointer gets no mouseleave: drop the ref so
@@ -169,68 +171,148 @@ function SubtasksSection({
   const offered =
     offerSetup && !breakable && offerNudge.active && canOfferBreakDown(item, askInvite);
 
-  const renderRow = (child: TaskItem) => (
-    <div
-      key={child.id}
-      className="group flex items-center gap-2"
-      data-testid="subtask-row"
-      // F2 over a subtask renames it in place, as over a planner row
-      // (rename_hovered reads this ref; so do E and Backspace).
-      onMouseEnter={() => setHoveredItemRef(child.id, 'task')}
-      onMouseLeave={() => setHoveredItemRef(null, null)}
-    >
-      <button
-        type="button"
-        onClick={(e) => {
-          animateItemCheck(e.currentTarget, child.status === 'completed');
-          toggleTaskStatus(child.id);
-        }}
-        aria-label={child.status === 'completed' ? 'Mark not done' : 'Mark done'}
-        className={cn(
-          'relative flex size-4 shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow]',
-          'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-          child.status === 'completed'
-            ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]'
-            : 'inset-ring-muted-foreground/45 hover:inset-ring-muted-foreground'
-        )}
-      >
-        {child.status === 'completed' && <ItemTick />}
-      </button>
-      <SubtaskTitle child={child} />
-      <button
-        type="button"
-        onClick={() => deleteTask(child.id)}
-        aria-label={`Delete subtask ${child.title}`}
-        className="text-muted-foreground hover:text-destructive opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-      >
-        <X className="size-3.5" />
-      </button>
-    </div>
-  );
+  // ── Moving a row: the grip, Alt+↑/↓ and the menu all end in one write ──
+  const openIds = openRows.map((c) => c.id);
+  const commitOrder = (sequence: string[] | null, label: string) => {
+    if (sequence) reorderItems(sequence, label);
+  };
+  const moveRow = (id: string, where: SubtaskMove) =>
+    commitOrder(stepTo(openIds, id, where), where === 'up' || where === 'top' ? 'Move up' : 'Move down');
+
+  const listRef = useRef<HTMLDivElement>(null);
+  // Where every open row was when the drag began. Nothing moves while the row
+  // is held (it stays in place, faded, and the lime line shows where it will
+  // land), so one measurement serves the whole drag.
+  const measured = useRef<{
+    ids: string[];
+    middles: number[];
+    edges: number[];
+    top: number;
+    /** The gap the held row would land in now (null: back where it was). */
+    slot: number | null;
+  } | null>(null);
+  const [drag, setDrag] = useState<{
+    id: string;
+    slot: number | null;
+    /** The insertion line's y in the list, while the row would land somewhere new. */
+    lineY: number | null;
+  } | null>(null);
+
+  const measure = () => {
+    const list = listRef.current;
+    if (!list) return null;
+    const els = Array.from(list.querySelectorAll<HTMLElement>('[data-subtask-open]'));
+    const rects = els.map((el) => el.getBoundingClientRect());
+    return {
+      ids: els.map((el) => el.dataset.subtaskId ?? ''),
+      middles: rects.map((r) => r.top + r.height / 2),
+      // The y of every gap: above each row, then below the last.
+      edges: [...rects.map((r) => r.top), rects.length ? rects[rects.length - 1].bottom : 0],
+      top: list.getBoundingClientRect().top,
+      slot: null,
+    };
+  };
+
+  // Escape puts a held row back where it was.
+  useEffect(() => {
+    if (!drag) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      measured.current = null;
+      setDrag(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [drag]);
+
+  const dragHandlersFor = (id: string): SubtaskDragHandlers => ({
+    onPointerDown: (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      measured.current = measure();
+      setDrag({ id, slot: null, lineY: null });
+    },
+    onPointerMove: (e) => {
+      const m = measured.current;
+      if (!m) return;
+      const at = slotAt(m.middles, e.clientY);
+      const slot = moveToSlot(m.ids, id, at) ? at : null;
+      m.slot = slot;
+      setDrag((d) =>
+        d && d.id === id
+          ? { ...d, slot, lineY: slot === null ? null : m.edges[slot] - m.top }
+          : d
+      );
+    },
+    onPointerUp: () => {
+      const m = measured.current;
+      measured.current = null;
+      setDrag(null);
+      if (m && m.slot !== null) commitOrder(moveToSlot(m.ids, id, m.slot), 'Reorder subtasks');
+    },
+    onPointerCancel: () => {
+      measured.current = null;
+      setDrag(null);
+    },
+  });
+  const lineY = drag?.lineY ?? null;
+
+  // ── "Last one done. Finish the task too?" ──
+  // Asked once, right after the user ticks the last open subtask HERE. It
+  // never ticks the task itself, and a recurring parent (done per day, not
+  // once) is never asked.
+  const [finishOfferFor, setFinishOfferFor] = useState<string | null>(null);
+  const liveParent = items.find((i) => i.id === item.id);
+  const parentOpen =
+    !!liveParent && liveParent.type !== 'habit' && !isRecurring(liveParent as TaskItem) && (liveParent as TaskItem).status !== 'completed';
+  const showFinishOffer = finishOfferFor === item.id && openRows.length === 0 && done > 0 && parentOpen;
+
+  const toggleRow = (child: TaskItem, box: HTMLElement | null) => {
+    const finishing = child.status !== 'completed';
+    if (box) animateItemCheck(box, !finishing);
+    toggleTaskStatus(child.id);
+    if (finishing && openRows.length === 1 && openRows[0].id === child.id) setFinishOfferFor(item.id);
+  };
+
+  /** Out of the list and into the planner as a task of its own: its day if it has one, else the braindump. */
+  const promote = (child: TaskItem) => {
+    updateTask(child.id, { parentItemId: undefined }, { label: 'Make it its own task' });
+    toast(child.startDate ? SUBTASK_COPY.promoted : SUBTASK_COPY.promotedToBraindump);
+  };
+
+  const renderRow = (child: TaskItem) => {
+    const at = openIds.indexOf(child.id);
+    const open = at >= 0;
+    return (
+      <SubtaskRow
+        key={child.id}
+        child={child}
+        onToggle={(box) => toggleRow(child, box)}
+        onDelete={() => deleteTask(child.id)}
+        onPromote={() => promote(child)}
+        move={(where) => moveRow(child.id, where)}
+        canMove={open ? { up: at > 0, down: at < openIds.length - 1 } : null}
+        // A pointer and two rows to move between; never on a phone.
+        drag={open && !isMobile && openIds.length > 1 ? dragHandlersFor(child.id) : null}
+        dragging={drag?.id === child.id}
+      />
+    );
+  };
 
   return (
-    <div ref={sectionRef} className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-2.5">
+    <div ref={sectionRef} className="flex flex-col">
+      <div className="mb-1.5 flex items-center gap-2">
         <SectionLabel>Subtasks</SectionLabel>
         {children.length > 0 && (
-          <>
-            {/* How far along, as a hairline: graphite, never lime, and its own
-                element so nothing around it dims it. */}
-            <span
-              aria-hidden
-              className="bg-border/70 h-[3px] min-w-6 flex-1 overflow-hidden rounded-full"
-              data-testid="subtask-progress"
-            >
-              <span
-                className="bg-foreground block h-full rounded-full transition-[width] duration-200"
-                style={{ width: `${Math.round((done / children.length) * 100)}%` }}
-              />
-            </span>
-            <span className="text-muted-foreground font-mono text-[10px] tabular-nums" data-testid="subtask-count">
-              {done}/{children.length}
-            </span>
-          </>
+          <span className="text-muted-foreground font-mono text-[10px] tabular-nums" data-testid="subtask-count">
+            {done}/{children.length}
+          </span>
         )}
+        <span className="flex-1" />
         {breakable && !drafts && !asksElsewhere && (
           <button
             onClick={() => requestProposal('breakdown', undefined, item.id)}
@@ -270,10 +352,24 @@ function SubtasksSection({
         )}
       </div>
 
-      {openRows.map(renderRow)}
+      <div ref={listRef} className="relative flex flex-col" data-testid="subtask-list">
+        {openRows.map(renderRow)}
+        {lineY !== null && (
+          // Where the held row would land: the planner's own insertion line
+          // (components/primitives/reorder-section.tsx).
+          <div
+            aria-hidden
+            data-testid="subtask-drop-line"
+            className="pointer-events-none absolute -inset-x-0.5 z-20 h-0.5 -translate-y-1/2 rounded-full bg-primary"
+            style={{ top: lineY }}
+          >
+            <span className="absolute -left-1 top-1/2 size-2 -translate-y-1/2 rounded-full bg-primary" />
+          </div>
+        )}
+      </div>
       {/* What the AI drafted: rows not kept yet, after the kept ones. */}
       <DraftedSteps item={item} />
-      <div className="flex items-center gap-2">
+      <div className="-mx-1.5 flex items-center gap-2.5 rounded-md px-1.5 py-[5px]">
         <Plus className="text-muted-foreground size-4 shrink-0" />
         <input
           value={title}
@@ -281,7 +377,7 @@ function SubtasksSection({
           placeholder={EDIT_COPY.subtaskPlaceholder}
           data-sub-input
           data-testid="subtask-add-input"
-          className="placeholder:text-muted-foreground -mx-1 min-w-0 flex-1 bg-transparent px-1 text-sm outline-none"
+          className="placeholder:text-muted-foreground -mx-1 min-w-0 flex-1 bg-transparent px-1 text-sm leading-5 outline-none"
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return;
             e.preventDefault();
@@ -315,56 +411,40 @@ function SubtasksSection({
           onClick={() => setDoneOpenFor(doneOpen ? null : item.id)}
           aria-expanded={doneOpen}
           data-testid="subtask-done-fold"
-          className="text-muted-foreground hover:text-foreground -ml-0.5 flex w-fit items-center gap-1.5 rounded-sm py-0.5 text-xs transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
+          className="text-muted-foreground hover:text-foreground mt-1 -ml-0.5 flex w-fit items-center gap-1.5 rounded-sm py-0.5 text-xs transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
         >
           <ChevronRight className={cn('size-3.5 transition-transform', doneOpen && 'rotate-90')} aria-hidden />
           {openRows.length === 0 ? `All ${done} done` : `${done} done`}
         </button>
       )}
-      {doneOpen && doneRows.map(renderRow)}
-    </div>
-  );
-}
-
-/**
- * A subtask's title, renamed in place (lib/item-rename.ts) with the planner
- * rows' field. One click is enough here, unlike a row's double-click: a row's
- * click opens the panel, but a subtask's title does nothing else, and a click
- * is the only way in on a phone, where a double tap zooms. A soft tint and a
- * pencil on hover say it is a field, as on the panel's own title.
- */
-function SubtaskTitle({ child }: { child: TaskItem }) {
-  // Any target with no day (F2 over the row, or the click below) is this one.
-  const renaming = useRenameStore((s) => isRenaming(s, child.id, ''));
-  const completed = child.status === 'completed';
-  if (renaming) {
-    return <RowRenameInput itemId={child.id} title={child.title} className="font-sans text-sm" />;
-  }
-  return (
-    <span
-      role="button"
-      tabIndex={0}
-      aria-label={`Rename subtask ${child.title}`}
-      data-testid="subtask-title"
-      onClick={() => startRename(child.id)}
-      onKeyDown={(e) => {
-        if (e.key !== 'Enter' && e.key !== 'F2') return;
-        e.preventDefault();
-        e.stopPropagation();
-        startRename(child.id);
-      }}
-      className={cn(
-        'group/subtitle relative -mx-1 min-w-0 flex-1 cursor-text truncate rounded-[3px] px-1 pr-5 text-sm transition-colors hover:bg-accent',
-        'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-        completed && 'text-muted-foreground line-through'
+      {doneOpen && <div className="mt-1 flex flex-col">{doneRows.map(renderRow)}</div>}
+      {showFinishOffer && (
+        <div
+          className="border-border text-muted-foreground mt-2.5 flex items-center gap-2 rounded-lg border py-1.5 pr-1.5 pl-3 text-[13px]"
+          data-testid="subtask-finish-offer"
+        >
+          <span className="min-w-0 flex-1">{SUBTASK_COPY.finishOffer}</span>
+          <button
+            type="button"
+            onClick={() => setFinishOfferFor(null)}
+            className="hover:text-foreground rounded-md px-2 py-1 text-xs font-medium transition-colors"
+          >
+            Not yet
+          </button>
+          <button
+            type="button"
+            data-testid="subtask-finish-parent"
+            onClick={() => {
+              setFinishOfferFor(null);
+              toggleTaskStatus(item.id, 'completed');
+            }}
+            className="bg-foreground text-background rounded-md px-2.5 py-1 text-xs font-medium transition-opacity hover:opacity-90"
+          >
+            Mark done
+          </button>
+        </div>
       )}
-    >
-      {child.title}
-      <Pencil
-        aria-hidden="true"
-        className="text-muted-foreground pointer-events-none absolute top-1/2 right-1 size-3 -translate-y-1/2 opacity-0 transition-opacity group-hover/subtitle:opacity-100"
-      />
-    </span>
+    </div>
   );
 }
 

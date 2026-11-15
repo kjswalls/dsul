@@ -687,6 +687,53 @@ describe('the item panel', () => {
     expect(screen.getByTestId('subtask-title')).toHaveTextContent('Call them');
   });
 
+  it('lists subtasks in their order, and Alt+Down moves one through reorderItems', () => {
+    seed();
+    const reorderItems = vi.fn();
+    const sub = (id: string, title: string, order: number) =>
+      ({ ...TASK, id, title, order, parentItemId: 'item-1' }) as TaskItem;
+    usePlannerStore.setState({
+      items: [TASK, sub('s-b', 'Second', 2), sub('s-a', 'First', 1), sub('s-c', 'Third', 3)],
+      reorderItems,
+    });
+    render(<ItemDetailSections item={TASK} conversation="inline" />);
+
+    const titles = screen.getAllByTestId('subtask-title').map((el) => el.textContent);
+    expect(titles).toEqual(['First', 'Second', 'Third']);
+
+    fireEvent.keyDown(screen.getAllByTestId('subtask-title')[0], { key: 'ArrowDown', altKey: true });
+    expect(reorderItems).toHaveBeenCalledWith(['s-b', 's-a', 's-c'], 'Move down');
+
+    // The last row has nowhere further down to go.
+    reorderItems.mockClear();
+    fireEvent.keyDown(screen.getAllByTestId('subtask-title')[2], { key: 'ArrowDown', altKey: true });
+    expect(reorderItems).not.toHaveBeenCalled();
+  });
+
+  it('asks once to finish the task after its last subtask is ticked, and never ticks it unasked', () => {
+    seed();
+    const child = { ...TASK, id: 'sub-1', title: 'Call them', parentItemId: 'item-1', status: 'pending' } as TaskItem;
+    const toggleTaskStatus = vi.fn((id: string) => {
+      usePlannerStore.setState({
+        items: usePlannerStore
+          .getState()
+          .items.map((i) => (i.id === id ? ({ ...i, status: 'completed' } as TaskItem) : i)),
+      });
+    });
+    usePlannerStore.setState({ items: [TASK, child], toggleTaskStatus });
+    render(<ItemDetailSections item={TASK} conversation="inline" />);
+
+    expect(screen.queryByTestId('subtask-finish-offer')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Mark done' }));
+    expect(toggleTaskStatus).toHaveBeenCalledTimes(1);
+    expect(toggleTaskStatus).toHaveBeenCalledWith('sub-1');
+    expect(screen.getByTestId('subtask-finish-offer')).toHaveTextContent('Last one done. Finish the task too?');
+
+    fireEvent.click(screen.getByTestId('subtask-finish-parent'));
+    expect(toggleTaskStatus).toHaveBeenLastCalledWith('item-1', 'completed');
+    expect(screen.queryByTestId('subtask-finish-offer')).toBeNull();
+  });
+
   it('reads a stored beacon assignee as AI, in the chip and in the timeline', async () => {
     seed();
     events.rows = [
