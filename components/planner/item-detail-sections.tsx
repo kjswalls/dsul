@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
 import { ChevronRight, Split, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
@@ -20,6 +20,7 @@ import { openSetup } from '@/lib/open-chat';
 import { NUDGE_BREAK_IT_DOWN_OFFER } from '@/lib/nudges/registry';
 import { useOneTimeNudge } from '@/hooks/use-one-time-nudge';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useSinkHold } from '@/hooks/use-sink-hold';
 import { DraftedSteps, useStepDraftsShowing } from '@/components/planner/drafted-steps';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { ItemFilesSection } from '@/components/planner/item-files';
@@ -142,9 +143,25 @@ function SubtasksSection({
     setTitle('');
   };
 
-  const doneRows = children.filter((c) => c.status === 'completed');
-  const openRows = children.filter((c) => c.status !== 'completed');
-  const done = doneRows.length;
+  // A row ticked here keeps its place for a moment, then slides into the done
+  // list, the planner lists' sink (hooks/use-sink-hold.ts). The count and the
+  // box are live; only where the row sits waits.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const setListEl = useCallback((el: HTMLDivElement | null) => {
+    listRef.current = el;
+  }, []);
+  const { completedAs, rootRef: sinkRootRef } = useSinkHold(setListEl);
+  const sunk = (c: TaskItem) => completedAs({ itemType: 'task', item: c }, null);
+  const doneRows = children.filter(sunk);
+  const openRows = children.filter((c) => !sunk(c));
+  const liveOpen = children.filter((c) => c.status !== 'completed');
+  const done = children.length - liveOpen.length;
+
+  // Rows ticked here. The fold opens as one lands in the done list, so the
+  // row you ticked is seen arriving rather than vanishing into a closed fold.
+  // Folding it away clears them, and it stays folded until the next tick.
+  const [sinking, setSinking] = useState<ReadonlySet<string>>(() => new Set());
+  const showDone = doneOpen || doneRows.some((c) => sinking.has(c.id));
 
   /**
    * "This is too big" is the moment the assistant is most useful and the moment
@@ -181,7 +198,6 @@ function SubtasksSection({
   const moveRow = (id: string, where: SubtaskMove) =>
     commitOrder(stepTo(openIds, id, where), where === 'up' || where === 'top' ? 'Move up' : 'Move down');
 
-  const listRef = useRef<HTMLDivElement>(null);
   // Where every open row was when the drag began. Nothing moves while the row
   // is held (it stays in place, faded, and the lime line shows where it will
   // land), so one measurement serves the whole drag.
@@ -271,13 +287,23 @@ function SubtasksSection({
   const liveParent = items.find((i) => i.id === item.id);
   const parentOpen =
     !!liveParent && liveParent.type !== 'habit' && !isRecurring(liveParent as TaskItem) && (liveParent as TaskItem).status !== 'completed';
-  const showFinishOffer = finishOfferFor === item.id && openRows.length === 0 && done > 0 && parentOpen;
+  const showFinishOffer = finishOfferFor === item.id && liveOpen.length === 0 && done > 0 && parentOpen;
 
   const toggleRow = (child: TaskItem, box: HTMLElement | null) => {
     const finishing = child.status !== 'completed';
     if (box) animateItemCheck(box, !finishing);
     toggleTaskStatus(child.id);
-    if (finishing && openRows.length === 1 && openRows[0].id === child.id) setFinishOfferFor(item.id);
+    // Unticked from a fold that opened for a landing: keep it open while the
+    // row waits out its hold and slides back up, rather than shutting it on
+    // a row that is still drawn there.
+    if (!finishing && showDone) setDoneOpenFor(item.id);
+    setSinking((prev) => {
+      const next = new Set(prev);
+      if (finishing) next.add(child.id);
+      else next.delete(child.id);
+      return next;
+    });
+    if (finishing && liveOpen.length === 1 && liveOpen[0].id === child.id) setFinishOfferFor(item.id);
   };
 
   /** Out of the list and into the planner as a task of its own: its day if it has one, else the braindump. */
@@ -354,8 +380,87 @@ function SubtasksSection({
         )}
       </div>
 
-      <div ref={listRef} className="relative flex flex-col" data-testid="subtask-list">
+      {/* One parent for every row, the add row and the fold, so a row that
+          sinks or comes back up is the same element and can slide there. */}
+      <div ref={sinkRootRef} className="relative flex flex-col" data-testid="subtask-list">
         {openRows.map(renderRow)}
+        {/* What the AI drafted: rows not kept yet, after the kept ones. */}
+        <DraftedSteps item={item} />
+        <QuickAddRow className="-mx-1.5 gap-[9px] px-1.5 py-[5px]" data-testid="subtask-add" data-sink-row="">
+          <QuickAddBox
+            aria-label="Add subtask"
+            title="Add subtask"
+            onClick={() => (title.trim() ? addSubtask() : addInputRef.current?.focus())}
+          />
+          <input
+            ref={addInputRef}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={EDIT_COPY.subtaskPlaceholder}
+            data-sub-input
+            data-testid="subtask-add-input"
+            className={cn(QUICK_ADD_INPUT, '-mx-1 px-1 text-sm leading-5')}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                addSubtask();
+              } else if (e.key === 'Escape') {
+                // Ours: clear what is typed, else leave the field. Never the
+                // panel's Escape while there is text to drop.
+                e.preventDefault();
+                e.stopPropagation();
+                if (title) setTitle('');
+                else e.currentTarget.blur();
+              }
+            }}
+            // A multi-line paste commits inline — every line becomes a subtask
+            // of THIS parent, one set(), one ⌘Z. No bulk-add dialog hop here:
+            // the dialog knows nothing of parents, and the rows land visibly in
+            // the list right below the field.
+            onPaste={(e) => {
+              const pasted = e.clipboardData.getData('text/plain');
+              if (!isBulkPaste(pasted)) return;
+              e.preventDefault();
+              const { titles, truncated } = splitBulkLinesWithMeta(pasted);
+              addTasksBulk(
+                'task',
+                titles.map((line) => ({ title: line, parentItemId: item.id }))
+              );
+              // The parser's contract: a capped tail is surfaced, never silent.
+              // This surface has no dialog to say it in, so the toast does.
+              if (truncated) {
+                toast(EDIT_COPY.subtaskPasteCapped);
+              }
+              setTitle('');
+            }}
+          />
+          {title.trim() && <QuickAddEnter label="Add subtask" onClick={addSubtask} />}
+        </QuickAddRow>
+        {doneRows.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              if (!showDone) return setDoneOpenFor(item.id);
+              setDoneOpenFor(null);
+              setSinking(new Set());
+            }}
+            aria-expanded={showDone}
+            data-testid="subtask-done-fold"
+            data-sink-row=""
+            className="text-muted-foreground hover:text-foreground mt-1 -ml-0.5 flex w-fit items-center gap-1.5 rounded-sm py-0.5 text-xs transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
+          >
+            <ChevronRight className={cn('size-3.5 transition-transform', showDone && 'rotate-90')} aria-hidden />
+            {openRows.length === 0 ? `All ${doneRows.length} done` : `${doneRows.length} done`}
+          </button>
+        )}
+        {showDone && (
+          <>
+            <div aria-hidden className="h-1 shrink-0" />
+            {doneRows.map(renderRow)}
+          </>
+        )}
         {lineY !== null && (
           // Where the held row would land: the planner's own insertion line
           // (components/primitives/reorder-section.tsx).
@@ -369,73 +474,6 @@ function SubtasksSection({
           </div>
         )}
       </div>
-      {/* What the AI drafted: rows not kept yet, after the kept ones. */}
-      <DraftedSteps item={item} />
-      <QuickAddRow className="-mx-1.5 gap-[9px] px-1.5 py-[5px]" data-testid="subtask-add">
-        <QuickAddBox
-          aria-label="Add subtask"
-          title="Add subtask"
-          onClick={() => (title.trim() ? addSubtask() : addInputRef.current?.focus())}
-        />
-        <input
-          ref={addInputRef}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder={EDIT_COPY.subtaskPlaceholder}
-          data-sub-input
-          data-testid="subtask-add-input"
-          className={cn(QUICK_ADD_INPUT, '-mx-1 px-1 text-sm leading-5')}
-          onKeyDown={(e) => {
-            if (e.nativeEvent.isComposing) return;
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              e.stopPropagation();
-              addSubtask();
-            } else if (e.key === 'Escape') {
-              // Ours: clear what is typed, else leave the field. Never the
-              // panel's Escape while there is text to drop.
-              e.preventDefault();
-              e.stopPropagation();
-              if (title) setTitle('');
-              else e.currentTarget.blur();
-            }
-          }}
-          // A multi-line paste commits inline — every line becomes a subtask
-          // of THIS parent, one set(), one ⌘Z. No bulk-add dialog hop here:
-          // the dialog knows nothing of parents, and the rows land visibly in
-          // the list right below the field.
-          onPaste={(e) => {
-            const pasted = e.clipboardData.getData('text/plain');
-            if (!isBulkPaste(pasted)) return;
-            e.preventDefault();
-            const { titles, truncated } = splitBulkLinesWithMeta(pasted);
-            addTasksBulk(
-              'task',
-              titles.map((line) => ({ title: line, parentItemId: item.id }))
-            );
-            // The parser's contract: a capped tail is surfaced, never silent.
-            // This surface has no dialog to say it in, so the toast does.
-            if (truncated) {
-              toast(EDIT_COPY.subtaskPasteCapped);
-            }
-            setTitle('');
-          }}
-        />
-        {title.trim() && <QuickAddEnter label="Add subtask" onClick={addSubtask} />}
-      </QuickAddRow>
-      {done > 0 && (
-        <button
-          type="button"
-          onClick={() => setDoneOpenFor(doneOpen ? null : item.id)}
-          aria-expanded={doneOpen}
-          data-testid="subtask-done-fold"
-          className="text-muted-foreground hover:text-foreground mt-1 -ml-0.5 flex w-fit items-center gap-1.5 rounded-sm py-0.5 text-xs transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
-        >
-          <ChevronRight className={cn('size-3.5 transition-transform', doneOpen && 'rotate-90')} aria-hidden />
-          {openRows.length === 0 ? `All ${done} done` : `${done} done`}
-        </button>
-      )}
-      {doneOpen && <div className="mt-1 flex flex-col">{doneRows.map(renderRow)}</div>}
       {showFinishOffer && (
         <div
           className="border-border text-muted-foreground mt-2.5 flex items-center gap-2 rounded-lg border py-1.5 pr-1.5 pl-3 text-[13px]"
