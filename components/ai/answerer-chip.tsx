@@ -107,11 +107,14 @@ export function AnswererChip({
 }
 
 /** The agent's initial on the dark disc the timeline gives an agent. */
-function AgentFace({ name }: { name: string }) {
+export function AgentFace({ name, size = 'md' }: { name: string; size?: 'sm' | 'md' }) {
   return (
     <span
       aria-hidden
-      className="bg-foreground text-background grid size-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold"
+      className={cn(
+        'bg-foreground text-background grid shrink-0 place-items-center rounded-full font-semibold',
+        size === 'sm' ? 'size-4 text-[9px]' : 'size-5 text-[10px]'
+      )}
     >
       {name.trim().charAt(0).toUpperCase() || 'A'}
     </span>

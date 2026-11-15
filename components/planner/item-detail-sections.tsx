@@ -74,7 +74,7 @@ function SubtasksSection({
 }: {
   item: Item;
   offerSetup: boolean;
-  /** "Break it down" is a chip above the item's box instead (ItemBoxAsks). */
+  /** "Break it down" is a chip above the item's box instead (components/planner/item-box-asks.tsx). */
   asksElsewhere: boolean;
 }) {
   const { items, addTask, addTasksBulk, deleteTask, toggleTaskStatus } = usePlannerStore();
@@ -385,7 +385,7 @@ function AgentSection({
 }: {
   item: Item;
   inConversation: boolean;
-  /** "Give to OpenClaw" is a chip above the item's box instead (ItemBoxAsks). */
+  /** "Give to OpenClaw" is a chip above the item's box instead (components/planner/item-box-asks.tsx). */
   asksElsewhere?: boolean;
   /** The agent's status is drawn under the item's title instead (ItemDialog's `AgentStatus`). */
   statusElsewhere?: boolean;
@@ -627,62 +627,6 @@ function AgentReply({ item }: { item: TaskItem }) {
  */
 export { AgentReply as AgentReplyForTest };
 
-// ── Asks above the box ───────────────────────────────────────────────────────
-
-/**
- * The item's two standing asks as chips over its pinned box, where the docked
- * panel's chat starts (the panel tidy, round 3): "Break it down" (the same gate
- * and request as the Subtasks section's button, which steps aside) and "Give
- * to OpenClaw" (the Agent section's Assign, likewise). Nothing when neither
- * applies, so a finished or delegated item shows no row.
- */
-export function ItemBoxAsks({ item }: { item: Item }) {
-  const live = usePlannerStore((s) => s.items.find((i) => i.id === item.id)) ?? item;
-  const updateTask = usePlannerStore((s) => s.updateTask);
-  const { canPropose, canDelegate } = useAICapabilities();
-  const requestProposal = useProposalStore((s) => s.request);
-  const proposalBusy = useProposalStore(
-    (s) => s.status === 'loading' && s.lastRequest?.surface === `item:${item.id}`
-  );
-  const drafts = useStepDraftsShowing(item.id, item.title);
-  const config = getItemTypeConfig(itemTypeName(live));
-  const breakable = config.subtasks && canBreakDown(live, canPropose) && !drafts;
-  const givable = config.agentAssignable && canDelegate && !(live as TaskItem).assignee;
-  if (!breakable && !givable) return null;
-  const chip = cn(
-    'inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs text-foreground/85',
-    'hover-wash transition-colors disabled:opacity-50',
-    'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
-  );
-  return (
-    <div className="flex flex-wrap gap-1.5" data-sub-input data-testid="item-box-asks">
-      {breakable && (
-        <button
-          type="button"
-          onClick={() => requestProposal('breakdown', undefined, item.id)}
-          disabled={proposalBusy}
-          data-testid="break-it-down"
-          className={chip}
-        >
-          <Split className="text-ai size-3.5" />
-          Break it down
-        </button>
-      )}
-      {givable && (
-        <button
-          type="button"
-          onClick={() => updateTask(item.id, { assignee: 'openclaw', aiStatus: 'queued' })}
-          data-testid="assign-agent"
-          className={chip}
-        >
-          <AskMark tone="ink" className="size-3.5" />
-          Give to OpenClaw
-        </button>
-      )}
-    </div>
-  );
-}
-
 // ── Habit heatmap (extension: habit-heatmap) ────────────────────────────────
 
 const HEATMAP_WEEKS = 26;
@@ -772,7 +716,7 @@ export function ItemDetailSections({
   asksElsewhere = false,
 }: {
   item: Item;
-  /** The host draws Break it down and Give to OpenClaw as chips above its box (`ItemBoxAsks`). */
+  /** The host draws Break it down and Give to OpenClaw as chips above its box (components/planner/item-box-asks.tsx). */
   asksElsewhere?: boolean;
   /** The host draws the agent's status under the item's title (`AgentStatus`). */
   agentStatusElsewhere?: boolean;
