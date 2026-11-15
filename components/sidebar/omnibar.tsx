@@ -26,6 +26,7 @@ import { askFromCommandBar, openSetup } from '@/lib/open-chat';
 import { keepQuestion } from '@/lib/ask-pending';
 import { getAICapabilities, useAICapabilities } from '@/lib/ai-connection-store';
 import { groupResults, searchGoals, searchItems, type SearchGroup } from '@/lib/search';
+import type { Task } from '@/lib/planner-types';
 import { sortGoalsForDisplay } from '@/lib/goals';
 import { useGoalsEnabled } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
@@ -189,6 +190,7 @@ export function Omnibar({
 } = {}) {
   const isLauncher = variant === 'launcher';
   const {
+    items: allItems,
     tasks,
     habits,
     userTimezone,
@@ -473,10 +475,21 @@ export function Omnibar({
   }, [goalsOn, query, goals, activeCommand, isCommandMode, isAddMode, isQuestionMode]);
 
   /** Search hits as one section per item type; row caps live in groupResults. */
-  const results = useMemo<SearchGroup[]>(() => {
-    if (activeCommand || isCommandMode || isAddMode || isQuestionMode || !trimmed) return [];
-    return groupResults(searchItems(trimmed, tasks, habits));
-  }, [trimmed, activeCommand, isCommandMode, isAddMode, isQuestionMode, tasks, habits]);
+  // Subtasks sit outside the `tasks` projection, so search is handed them
+  // separately and answers a hit with its parent (lib/search.ts).
+  const subtasks = useMemo(
+    () => allItems.filter((i) => i.type !== 'habit' && !!i.parentItemId) as unknown as Task[],
+    [allItems]
+  );
+  const searchResults = useMemo(() => {
+    if (activeCommand || isCommandMode || isAddMode || isQuestionMode || !trimmed) return null;
+    return searchItems(trimmed, tasks, habits, subtasks);
+  }, [trimmed, activeCommand, isCommandMode, isAddMode, isQuestionMode, tasks, habits, subtasks]);
+  const results = useMemo<SearchGroup[]>(
+    () => (searchResults ? groupResults(searchResults) : []),
+    [searchResults]
+  );
+  const viaSubtask = searchResults?.viaSubtask;
 
   /**
    * Every command the typed free text reaches, ranked and uncapped. The flat
@@ -1258,6 +1271,16 @@ export function Omnibar({
                             >
                               {item.title}
                             </span>
+                            {/* Found through a subtask: name it, or the row
+                                reads as a miss. */}
+                            {viaSubtask?.[item.id] && (
+                              <span
+                                data-testid="omnibar-result-subtask"
+                                className="min-w-0 shrink truncate text-xs text-muted-foreground"
+                              >
+                                › {viaSubtask[item.id]}
+                              </span>
+                            )}
                             {/* Short on purpose: the panel is ~320px and the
                                 title truncates against it. */}
                             {trailing('open', paused && <CommandShortcut>Paused</CommandShortcut>)}
