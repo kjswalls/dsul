@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { GroupSection } from '@/components/primitives/group-section';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
+import { QUICK_ADD_INPUT, QuickAddBox, QuickAddEnter, QuickAddRow as QuickAddShell } from '@/components/primitives/quick-add-row';
 import { RelayField } from '@/components/primitives/relay-field';
 import { SurfaceHeader } from '@/components/primitives/surface-header';
 import { NoticeSlot } from '@/components/notices/notice-slot';
@@ -146,32 +147,25 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
     // its rows' own padding, so the plus lands in the same column as the
     // checkboxes above it.
     //
-    // -mt-2 cancels the section's gap-2 (both 8px), halving the space to the last
-    // item (the list's own pb-2 still holds ~8px) without going flush. It eats
-    // only the empty flex gap between siblings, landing exactly at the scroll
-    // port's edge — never over a row when a long list is scrolled.
-    <div
+    // -mt-2 cancels the section's gap-2 (both 8px), and the list has no bottom
+    // padding, so this row sits one row's step under the last item, like the
+    // planner's "Add to …" rows. It eats only the empty flex gap between
+    // siblings, landing exactly at the scroll port's edge — never over a row
+    // when a long list is scrolled.
+    <QuickAddShell
       data-testid="braindump-quick-add"
       data-focused={focused ? 'true' : 'false'}
       // A settle frame (lib/settle.ts), for the same reason as the paused strip:
       // it sits at the foot of a list that can change length on landing.
       data-settle-key="braindump:quickadd"
       data-settle-role="frame"
-      className={cn(
-        '-mt-2 mx-[14px] flex shrink-0 items-center gap-3 rounded-[5px] px-2 py-1.5',
-        // Match the row hover: a flat --accent wash, landed instantly (no
-        // transition), so hovering the foot of the list feels like hovering a row.
-        'hover:bg-accent'
-      )}
+      // The shared quick-add row (components/primitives/quick-add-row.tsx):
+      // the hover wash of a braindump row at rest, a raised draft row while
+      // focused. gap-[11px] after the box's -ml-px keeps the words on the
+      // rows' title column.
+      className="-mt-2 mx-[14px] shrink-0 gap-[11px] px-2 py-1.5"
     >
-      <AddIconButton
-        size="md"
-        onClick={openFull}
-        aria-label="Open the full add dialog"
-        // Brightens from its resting 80% to full foreground on focus, in step
-        // with the placeholder — the whole row lights up as one.
-        className={cn(focused && 'text-foreground')}
-      />
+      <QuickAddBox onClick={openFull} aria-label="Open the full add dialog" title="Add with all the details (⇧↵)" />
       <input
         ref={inputRef}
         value={title}
@@ -179,12 +173,16 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onKeyDown={(e) => {
+          if (e.nativeEvent.isComposing) return;
           if (e.key === 'Enter') {
             e.preventDefault();
-            commit();
+            // ⇧↵ is the + box: everything typed goes to the full add dialog.
+            if (e.shiftKey) openFull();
+            else commit();
           } else if (e.key === 'Escape') {
-            setTitle('');
-            inputRef.current?.blur();
+            // Clear what is typed; on an empty field, leave it.
+            if (title) setTitle('');
+            else inputRef.current?.blur();
           }
         }}
         // A multi-line paste is a list, and a single-line input would silently
@@ -202,12 +200,7 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
         placeholder="Add item"
         aria-label="Add item"
         data-testid="braindump-quick-add-input"
-        className={cn(
-          '-mx-1 min-w-0 flex-1 bg-transparent px-1 font-content text-content text-foreground focus:outline-none',
-          // "Add item" sits grayed like a ghost row until you focus it, then
-          // brightens to a real title's foreground — an invitation to type.
-          focused ? 'placeholder:text-foreground' : 'placeholder:text-muted-foreground'
-        )}
+        className={cn(QUICK_ADD_INPUT, '-mx-1 px-1 font-content text-content')}
       />
       {/* The field cleared, but nothing has landed yet: say where it went. */}
       {heldCount > 0 && (
@@ -218,19 +211,8 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
       {title.trim() && (
         <TypeChip type={type} onChange={setType} onOpenChange={onMenuOpenChange} testId="braindump-quick-add-type" />
       )}
-      {/* Enter affordance — the row commits on Enter, so surface a ↵ keycap
-          while it's focused to make that discoverable. Kept mounted (opacity,
-          not conditional render) so the field width doesn't jump on focus. */}
-      <kbd
-        aria-hidden
-        className={cn(
-          'pointer-events-none flex-shrink-0 rounded-xs border border-border px-1 font-mono text-[10px] text-muted-foreground transition-opacity',
-          focused ? 'opacity-100' : 'opacity-0'
-        )}
-      >
-        ↵
-      </kbd>
-    </div>
+      {title.trim() && <QuickAddEnter label="Add item" onClick={() => commit()} />}
+    </QuickAddShell>
   );
 }
 
@@ -992,7 +974,9 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           landingIds.size > 0 && !landingShown && 'drop-armed'
         )}
       >
-        <div className="px-[14px] py-2" inert={previewing}>
+        {/* No bottom padding: the quick-add row below is the list's next row,
+            one row's step under the last (as the planner's "Add to …" rows). */}
+        <div className="px-[14px] pt-2" inert={previewing}>
           {!visible ? (
             <PlannerSkeleton variant="braindump" />
           ) : doingStuff ? (

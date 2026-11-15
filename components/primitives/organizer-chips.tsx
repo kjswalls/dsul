@@ -2,7 +2,7 @@
 
 import { useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { format } from 'date-fns';
-import { ArrowRight, Check, Link2, Plus, X } from 'lucide-react';
+import { ArrowRight, Check, Link2, X } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { ChipOption, PropertyChip } from '@/components/primitives/property-chip';
 import { ColorSwatchGrid } from '@/components/primitives/color-swatch-picker';
@@ -10,6 +10,8 @@ import { ACCENT_NAMES, ACCENT_RAMP } from '@/lib/accent-colors';
 import { formatShort, parseDay, useToday } from '@/lib/collections';
 import { cn } from '@/lib/utils';
 import { useEscapeRung } from '@/components/planner/organize/escape-ladder';
+import { QUICK_ADD_INPUT, QuickAddBox, QuickAddEnter, QuickAddRow } from '@/components/primitives/quick-add-row';
+import { isBulkPaste, splitBulkLinesWithMeta } from '@/lib/bulk-add';
 
 /**
  * The chip-and-section vocabulary the organizer surfaces share — the "new"
@@ -423,9 +425,9 @@ export function LinkExistingPill({
 /**
  * The last row of a section: a muted plus and a borderless input, the same
  * 30px as the member rows above it so the list does not jog. Enter adds and
- * clears, Escape clears. The small submit button only appears with text in the
- * field — it is there for a pointer (and for e2e's `…-add` clicks), not as a
- * second place to look.
+ * clears, Escape clears. The ↵ key only appears with text in the field — it is
+ * there for a pointer (and for e2e's `…-add` clicks), not as a second place to
+ * look.
  */
 export function InlineAddRow({
   placeholder,
@@ -463,10 +465,16 @@ export function InlineAddRow({
   });
 
   return (
-    <div className={cn('flex h-[30px] items-center gap-[9px]', className)}>
-      <span className="text-muted-foreground grid w-4 shrink-0 place-items-center" aria-hidden>
-        <Plus className="size-4" />
-      </span>
+    // The shared quick-add row (components/primitives/quick-add-row.tsx), at
+    // the member rows' 30px and 13.5px. gap-2 after the box's -ml-px keeps the
+    // words on the rows' title column.
+    <QuickAddRow className={cn('-mx-1.5 h-[30px] gap-2 px-1.5', className)}>
+      <QuickAddBox
+        aria-label={placeholder.replace(/…$/, '')}
+        title={placeholder.replace(/…$/, '')}
+        disabled={disabled}
+        onClick={() => (text.trim() ? submit() : ref.current?.focus())}
+      />
       <input
         ref={ref}
         value={text}
@@ -474,7 +482,8 @@ export function InlineAddRow({
         onKeyDown={(e) => {
           // Our keystrokes: an enclosing dialog or console must not also see
           // this Enter (submit) or Escape (close).
-          if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+          if (e.nativeEvent.isComposing) return;
+          if (e.key === 'Enter') {
             e.preventDefault();
             e.stopPropagation();
             submit();
@@ -484,27 +493,24 @@ export function InlineAddRow({
             setText('');
           }
         }}
+        // A pasted list adds every line, in order.
+        onPaste={(e) => {
+          const pasted = e.clipboardData.getData('text/plain');
+          if (disabled || !isBulkPaste(pasted)) return;
+          e.preventDefault();
+          splitBulkLinesWithMeta(pasted).titles.forEach((line) => onAdd(line));
+          setText('');
+        }}
         placeholder={placeholder}
         aria-label={placeholder.replace(/…$/, '')}
         disabled={disabled}
         autoFocus={autoFocus}
         data-testid={`${testIdPrefix}-new-name`}
-        className="placeholder:text-muted-foreground text-foreground -mx-1 min-w-0 flex-1 border-0 bg-transparent px-1 text-[13.5px] outline-none disabled:opacity-50"
+        className={cn(QUICK_ADD_INPUT, '-mx-1 px-1 text-[13.5px] disabled:opacity-50')}
       />
       {text.trim() && (
-        <button
-          type="button"
-          onClick={submit}
-          disabled={disabled}
-          data-testid={`${testIdPrefix}-add`}
-          className={cn(
-            'text-muted-foreground hover:text-foreground hover-wash h-6 shrink-0 rounded-sm px-2 text-xs font-medium',
-            'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
-          )}
-        >
-          Add
-        </button>
+        <QuickAddEnter onClick={submit} disabled={disabled} data-testid={`${testIdPrefix}-add`} />
       )}
-    </div>
+    </QuickAddRow>
   );
 }
