@@ -293,6 +293,10 @@ function SubtasksSection({
     const finishing = child.status !== 'completed';
     if (box) animateItemCheck(box, !finishing);
     toggleTaskStatus(child.id);
+    // Unticked from a fold that opened for a landing: keep it open while the
+    // row waits out its hold and slides back up, rather than shutting it on
+    // a row that is still drawn there.
+    if (!finishing && showDone) setDoneOpenFor(item.id);
     setSinking((prev) => {
       const next = new Set(prev);
       if (finishing) next.add(child.id);

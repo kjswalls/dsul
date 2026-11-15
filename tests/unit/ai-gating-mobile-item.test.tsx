@@ -721,7 +721,7 @@ describe('the item panel', () => {
         usePlannerStore.setState({
           items: usePlannerStore
             .getState()
-            .items.map((i) => (i.id === id ? ({ ...i, status: 'completed' } as TaskItem) : i)),
+            .items.map((i) => (i.id === id ? ({ ...i, status: (i as TaskItem).status === 'completed' ? 'pending' : 'completed' } as TaskItem) : i)),
         });
       });
       usePlannerStore.setState({ items: [TASK, sub('s-a', 'First', 1), sub('s-b', 'Second', 2)], toggleTaskStatus });
@@ -739,6 +739,12 @@ describe('the item panel', () => {
       expect(fold).toHaveAttribute('aria-expanded', 'true');
       expect(fold).toHaveTextContent('1 done');
       expect(screen.getAllByTestId('subtask-title').map((el) => el.textContent)).toEqual(['Second', 'First']);
+
+      // Unticked in the fold that opened for it: the fold stays, the row with it.
+      fireEvent.click(screen.getByRole('button', { name: 'Mark not done' }));
+      expect(screen.getByTestId('subtask-done-fold')).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getAllByTestId('subtask-title').map((el) => el.textContent)).toEqual(['Second', 'First']);
+      fireEvent.click(screen.getAllByRole('button', { name: 'Mark done' })[1]);
 
       // Folded away by hand, it stays folded.
       fireEvent.click(fold);
