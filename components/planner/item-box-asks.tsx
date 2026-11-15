@@ -24,7 +24,7 @@ import { askAboutItem, proposeForItem } from '@/lib/open-chat';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import type { Item } from '@/lib/planner-types';
-import { cn } from '@/lib/utils';
+import { ChipLabel, quietChip } from '@/components/ai/quiet-chip';
 
 /**
  * WHAT TO SAY FIRST, over the item's pinned box: at most three chips, picked
@@ -41,8 +41,8 @@ import { cn } from '@/lib/utils';
  * while an agent holds it, and on a finished one-off (no ask is eligible).
  * Everything stays under right-click › AI.
  *
- * Quiet: ink text, no border and no colour at rest; a hairline and a wash
- * only under the pointer. The lit rim is the Ask key's, so none here.
+ * Quiet: ink text, no border and no colour at rest; a thin dashed underline
+ * under the words when pointed at or focused (`ChipLabel`). The lit rim is the Ask key's, so none here.
  */
 
 /** The asks a chip may carry, in order. 'ask' is the box itself. */
@@ -51,23 +51,16 @@ const MAX_CHIPS = 3;
 
 const ICON: Record<ItemAskId, ReactNode> = {
   ask: null,
-  breakdown: <Split className="size-3.5" aria-hidden />,
-  start: <ArrowRight className="size-3.5" aria-hidden />,
-  findTime: <CalendarClock className="size-3.5" aria-hidden />,
-  keep: <Sprout className="size-3.5" aria-hidden />,
+  breakdown: <Split className="size-3" aria-hidden />,
+  start: <ArrowRight className="size-3" aria-hidden />,
+  findTime: <CalendarClock className="size-3" aria-hidden />,
+  keep: <Sprout className="size-3" aria-hidden />,
 };
 
 const LABEL: Partial<Record<ItemAskId, string>> = {
   // Shorter than the menu's "Find a time for this": the chip sits on the item.
   findTime: 'Find a time',
 };
-
-export const quietChip = cn(
-  'text-muted-foreground inline-flex h-7 items-center gap-1.5 rounded-full border border-transparent px-2.5 text-xs font-medium transition-colors',
-  'hover:text-foreground hover:border-border hover:bg-muted data-[state=open]:text-foreground data-[state=open]:border-border data-[state=open]:bg-muted',
-  'focus-visible:border-border focus-visible:text-foreground focus-visible:outline-none',
-  'disabled:opacity-50'
-);
 
 export function ItemBoxAsks({ item }: { item: Item }) {
   const live = usePlannerStore((s) => s.items.find((i) => i.id === item.id)) ?? item;
@@ -128,7 +121,7 @@ export function ItemBoxAsks({ item }: { item: Item }) {
   };
 
   return (
-    <div className="-ml-2.5 flex flex-wrap gap-0.5" data-sub-input data-testid="item-box-asks">
+    <div className="-ml-2 flex flex-wrap gap-0.5" data-sub-input data-testid="item-box-asks">
       {shown.map((ask) => (
         <button
           key={ask.id}
@@ -139,7 +132,7 @@ export function ItemBoxAsks({ item }: { item: Item }) {
           className={quietChip}
         >
           {ICON[ask.id]}
-          {LABEL[ask.id] ?? ask.label(live, ctx)}
+          <ChipLabel>{LABEL[ask.id] ?? ask.label(live, ctx)}</ChipLabel>
         </button>
       ))}
       {handOff &&
@@ -151,13 +144,13 @@ export function ItemBoxAsks({ item }: { item: Item }) {
             className={quietChip}
           >
             <AgentFace name={targets[0].name} size="sm" />
-            Hand off to {targets[0].name}
+            <ChipLabel>Hand off to {targets[0].name}</ChipLabel>
           </button>
         ) : (
           <DropdownMenu>
             <DropdownMenuTrigger data-testid="assign-agent" className={quietChip}>
-              Hand off
-              <ChevronDown className="size-3" aria-hidden />
+              <ChipLabel>Hand off</ChipLabel>
+              <ChevronDown className="size-2.5" aria-hidden />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="min-w-40">
               {targets.map((t) => (
