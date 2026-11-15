@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
-import { ChevronRight, Plus, Split, X } from 'lucide-react';
+import { ChevronRight, Split, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { RelayRow } from '@/components/ai/ai-work-badge';
 import { Input } from '@/components/ui/input';
@@ -38,6 +38,7 @@ import type { Item, TaskItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 import { isRecurring } from '@/lib/recurrence';
 import { animateItemCheck } from '@/components/primitives/item-check';
+import { QUICK_ADD_INPUT, QuickAddBox, QuickAddEnter, QuickAddRow } from '@/components/primitives/quick-add-row';
 import { hoveredItem, setHoveredItemRef } from '@/lib/hovered-item';
 import { SubtaskRow, type SubtaskDragHandlers, type SubtaskMove } from '@/components/planner/subtask-row';
 import { moveToSlot, slotAt, sortSubtasks, stepTo, SUBTASK_COPY } from '@/lib/subtasks';
@@ -80,6 +81,7 @@ function SubtasksSection({
 }) {
   const { items, addTask, addTasksBulk, deleteTask, toggleTaskStatus, updateTask, reorderItems } = usePlannerStore();
   const [title, setTitle] = useState('');
+  const addInputRef = useRef<HTMLInputElement>(null);
   // The finished ones fold under "N done" (the panel tidy, round 3), held per
   // item so the next item opens folded.
   const [doneOpenFor, setDoneOpenFor] = useState<string | null>(null);
@@ -280,7 +282,7 @@ function SubtasksSection({
 
   /** Out of the list and into the planner as a task of its own: its day if it has one, else the braindump. */
   const promote = (child: TaskItem) => {
-    updateTask(child.id, { parentItemId: undefined }, { label: 'Make it its own task' });
+    updateTask(child.id, { parentItemId: undefined }, { label: 'Make this its own task' });
     toast(child.startDate ? SUBTASK_COPY.promoted : SUBTASK_COPY.promotedToBraindump);
   };
 
@@ -369,19 +371,34 @@ function SubtasksSection({
       </div>
       {/* What the AI drafted: rows not kept yet, after the kept ones. */}
       <DraftedSteps item={item} />
-      <div className="-mx-1.5 flex items-center gap-2.5 rounded-md px-1.5 py-[5px]">
-        <Plus className="text-muted-foreground size-4 shrink-0" />
+      <QuickAddRow className="-mx-1.5 gap-[9px] px-1.5 py-[5px]" data-testid="subtask-add">
+        <QuickAddBox
+          aria-label="Add subtask"
+          title="Add subtask"
+          onClick={() => (title.trim() ? addSubtask() : addInputRef.current?.focus())}
+        />
         <input
+          ref={addInputRef}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder={EDIT_COPY.subtaskPlaceholder}
           data-sub-input
           data-testid="subtask-add-input"
-          className="placeholder:text-muted-foreground -mx-1 min-w-0 flex-1 bg-transparent px-1 text-sm leading-5 outline-none"
+          className={cn(QUICK_ADD_INPUT, '-mx-1 px-1 text-sm leading-5')}
           onKeyDown={(e) => {
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
-            addSubtask();
+            if (e.nativeEvent.isComposing) return;
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              e.stopPropagation();
+              addSubtask();
+            } else if (e.key === 'Escape') {
+              // Ours: clear what is typed, else leave the field. Never the
+              // panel's Escape while there is text to drop.
+              e.preventDefault();
+              e.stopPropagation();
+              if (title) setTitle('');
+              else e.currentTarget.blur();
+            }
           }}
           // A multi-line paste commits inline — every line becomes a subtask
           // of THIS parent, one set(), one ⌘Z. No bulk-add dialog hop here:
@@ -404,7 +421,8 @@ function SubtasksSection({
             setTitle('');
           }}
         />
-      </div>
+        {title.trim() && <QuickAddEnter label="Add subtask" onClick={addSubtask} />}
+      </QuickAddRow>
       {done > 0 && (
         <button
           type="button"

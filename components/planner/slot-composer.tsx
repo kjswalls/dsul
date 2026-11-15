@@ -8,7 +8,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { AddIconButton } from '@/components/primitives/add-icon-button';
+import { QUICK_ADD_INPUT, QuickAddBox, QuickAddEnter, QuickAddRow } from '@/components/primitives/quick-add-row';
+import { isBulkPaste } from '@/lib/bulk-add';
+import { openBulkAdd } from '@/lib/ui-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { addAt, addableTypes, openAdded, setHoveredSlot, useSlotComposer, type SlotTarget } from '@/lib/slot-add';
@@ -85,7 +87,18 @@ export function TypeChip({
  */
 export function useComposer(
   target: SlotTarget,
-  { keepOpen, onDone, closeOnBlur = false }: { keepOpen: boolean; onDone: () => void; closeOnBlur?: boolean }
+  {
+    keepOpen,
+    onDone,
+    closeOnBlur = false,
+    escapeClears = false,
+  }: {
+    keepOpen: boolean;
+    onDone: () => void;
+    closeOnBlur?: boolean;
+    /** A quick-add row: Escape clears what is typed first, and leaves on the next. */
+    escapeClears?: boolean;
+  }
 ) {
   const [title, setTitle] = useState('');
   const [type, setType] = useState(target.type ?? 'task');
@@ -139,7 +152,10 @@ export function useComposer(
       // Ours alone: Escape also closes the item panel, and the composer is in front of it.
       e.preventDefault();
       e.stopPropagation();
-      discard();
+      // A quick-add row clears what is typed first and is left on the next
+      // Escape, like every quick-add row.
+      if (escapeClears && title) setTitle('');
+      else discard();
     }
   };
 
@@ -157,7 +173,12 @@ export function useComposer(
     if (!open) requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  return { title, setTitle, type, setType, inputRef, onKeyDown, onBlur, onMenuOpenChange, discard };
+  /** ↵'s add, for a pointer (the row's ↵ key). */
+  const commitTyped = () => {
+    if (title.trim()) commit(false);
+  };
+
+  return { title, setTitle, type, setType, inputRef, onKeyDown, onBlur, onMenuOpenChange, discard, commitTyped };
 }
 
 const kbd = 'rounded-xs border border-border px-1 font-mono text-[10px] text-muted-foreground';
@@ -263,9 +284,10 @@ export function AddRow({
 }) {
   const close = useSlotComposer((s) => s.close);
   const opened = useSlotComposer((s) => s.target?.scope === target.scope);
-  const { title, setTitle, type, setType, inputRef, onKeyDown, onBlur, onMenuOpenChange } = useComposer(target, {
+  const { title, setTitle, type, setType, inputRef, onKeyDown, onBlur, onMenuOpenChange, commitTyped } = useComposer(target, {
     keepOpen: !!persistent,
     onDone: () => !persistent && close(),
+    escapeClears: true,
   });
 
   // A transient row mounts open, so it takes focus on mount. A persistent row
@@ -282,7 +304,7 @@ export function AddRow({
   }, [opened]);
 
   return (
-    <div
+    <QuickAddRow
       data-testid="add-row"
       data-add-row={target.scope}
       data-slot-scope={target.scope}
@@ -296,16 +318,13 @@ export function AddRow({
       data-click-away-ignore=""
       onPointerEnter={() => setHoveredSlot(target)}
       onPointerLeave={() => setHoveredSlot(null)}
-      className={cn(
-        '@container/addrow group/addrow flex items-center gap-3 rounded-[5px] px-2 py-1.5 transition-colors hover:bg-accent focus-within:bg-transparent',
-        className
-      )}
+      // The shared quick-add row (components/primitives/quick-add-row.tsx).
+      // gap-[11px] after the box's -ml-px keeps the words on the rows' title column.
+      className={cn('@container/addrow group/addrow gap-[11px] px-2 py-1.5', className)}
     >
-      <AddIconButton
-        size="md"
+      <QuickAddBox
         aria-label="Add with all the details"
         title="Add with all the details (⇧↵)"
-        onPointerDown={(e) => e.preventDefault()}
         onClick={() => {
           if (title.trim()) {
             const id = addAt(target, type, title);
@@ -323,17 +342,24 @@ export function AddRow({
         onChange={(e) => setTitle(e.target.value)}
         onKeyDown={onKeyDown}
         onBlur={onBlur}
-        className="-mx-1 min-w-0 flex-1 bg-transparent px-1 font-content text-content text-foreground caret-[var(--success-text)] outline-none placeholder:text-muted-foreground"
+        onPaste={(e) => {
+          // A pasted list goes to the bulk add (which shows the split first),
+          // seeded with this row's day, as the braindump's does. One line
+          // pastes as typed.
+          const pasted = e.clipboardData.getData('text/plain');
+          if (!isBulkPaste(pasted)) return;
+          e.preventDefault();
+          openBulkAdd({ text: pasted, date: target.dateStr });
+        }}
+        className={cn(QUICK_ADD_INPUT, '-mx-1 px-1 font-content text-content')}
       />
       {/* A narrow host (a week column's strip) gives the title the room. */}
       {title.trim() && (
         <span className="hidden @min-[200px]/addrow:contents">
           <TypeChip type={type} onChange={setType} onOpenChange={onMenuOpenChange} />
-          <kbd aria-hidden className={cn('pointer-events-none flex-shrink-0', kbd)}>
-            ↵
-          </kbd>
+          <QuickAddEnter onClick={() => commitTyped()} />
         </span>
       )}
-    </div>
+    </QuickAddRow>
   );
 }

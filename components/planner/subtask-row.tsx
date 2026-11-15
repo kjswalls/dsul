@@ -1,7 +1,18 @@
 'use client';
 
 import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
-import { Pencil, X } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowDownToLine,
+  ArrowUp,
+  ArrowUpToLine,
+  Check,
+  CornerUpLeft,
+  Pencil,
+  Trash2,
+  Undo2,
+  X,
+} from 'lucide-react';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -133,9 +144,11 @@ export function SubtaskRow({
       </ContextMenuTrigger>
       <ContextMenuContent className="w-52" data-testid="subtask-menu">
         <ContextMenuItem onSelect={() => onToggle(null)}>
+          {completed ? <Undo2 className="size-3.5" /> : <Check className="size-3.5" />}
           {completed ? 'Mark not done' : 'Mark done'}
         </ContextMenuItem>
         <ContextMenuItem onSelect={() => startRename(child.id)}>
+          <Pencil className="size-3.5" />
           Rename
           <ContextMenuShortcut>F2</ContextMenuShortcut>
         </ContextMenuItem>
@@ -143,27 +156,33 @@ export function SubtaskRow({
           <>
             <ContextMenuSeparator />
             <ContextMenuItem disabled={!canMove.up} onSelect={() => move('up')}>
+              <ArrowUp className="size-3.5" />
               Move up
               <ContextMenuShortcut>Alt ↑</ContextMenuShortcut>
             </ContextMenuItem>
             <ContextMenuItem disabled={!canMove.down} onSelect={() => move('down')}>
+              <ArrowDown className="size-3.5" />
               Move down
               <ContextMenuShortcut>Alt ↓</ContextMenuShortcut>
             </ContextMenuItem>
             <ContextMenuItem disabled={!canMove.up} onSelect={() => move('top')}>
+              <ArrowUpToLine className="size-3.5" />
               Move to top
             </ContextMenuItem>
             <ContextMenuItem disabled={!canMove.down} onSelect={() => move('bottom')}>
+              <ArrowDownToLine className="size-3.5" />
               Move to bottom
             </ContextMenuItem>
           </>
         )}
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={onPromote} data-testid="subtask-promote">
-          Make it its own task
+          <CornerUpLeft className="size-3.5" />
+          Make this its own task
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem variant="destructive" onSelect={onDelete}>
+          <Trash2 className="size-3.5" />
           Delete
         </ContextMenuItem>
       </ContextMenuContent>

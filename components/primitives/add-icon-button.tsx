@@ -34,8 +34,8 @@ interface AddIconButtonProps extends React.ComponentPropsWithoutRef<'button'> {
 }
 
 /**
- * Standalone "add" affordance: a rounded-square box (r5, 1.5px muted-foreground
- * hairline, transparent fill) wrapping a Plus glyph — the boxed-plus from the
+ * Standalone "add" affordance: a rounded-square box (r5, 1px hairline on the
+ * raised card fill) wrapping a Plus glyph — the boxed-plus from the
  * Figma redesign (node 62:38, a 16px box). Shared so every icon-only add button
  * reads identically across buckets, the sidebar Braindump, and dialogs. Settles
  * to full contrast (border + glyph + subtle wash) on hover. Use `size="input"`
@@ -54,7 +54,10 @@ export function AddIconButton({
     <button
       type={type}
       className={cn(
-        'flex flex-shrink-0 items-center justify-center rounded-[5px] border-[1.5px] border-muted-foreground/70 text-foreground/80 transition-colors hover:border-muted-foreground hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+        // The light box (the quick-add round, 2026-11-15): a 1px hairline on the
+        // raised card, the plus muted until hovered. The quick-add rows draw
+        // the same box (components/primitives/quick-add-row.tsx QuickAddBox).
+        'flex flex-shrink-0 items-center justify-center rounded-[5px] border border-border bg-card text-muted-foreground transition-colors hover:border-muted-foreground/50 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
         BOX[size],
         className
       )}
