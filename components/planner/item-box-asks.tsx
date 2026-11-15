@@ -24,7 +24,7 @@ import { askAboutItem, proposeForItem } from '@/lib/open-chat';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import type { Item } from '@/lib/planner-types';
-import { cn } from '@/lib/utils';
+import { ChipLabel, quietChip } from '@/components/ai/quiet-chip';
 
 /**
  * WHAT TO SAY FIRST, over the item's pinned box: at most three chips, picked
@@ -61,31 +61,6 @@ const LABEL: Partial<Record<ItemAskId, string>> = {
   // Shorter than the menu's "Find a time for this": the chip sits on the item.
   findTime: 'Find a time',
 };
-
-export const quietChip = cn(
-  'group/chip text-muted-foreground inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-medium transition-colors',
-  'hover:text-foreground data-[state=open]:text-foreground focus-visible:text-foreground focus-visible:outline-none',
-  'disabled:opacity-50'
-);
-
-/**
- * The chip's words, with a thin dashed underline that shows under the
- * pointer, an open menu or keyboard focus (Kirby, 2026-11-15): no box, no
- * wash. Drawn on the words alone, so the icon and the chevron stay clean.
- */
-function ChipLabel({ children }: { children: ReactNode }) {
-  return (
-    <span
-      className={cn(
-        'underline decoration-transparent decoration-dashed decoration-1 underline-offset-4 transition-[text-decoration-color]',
-        'group-hover/chip:decoration-current group-focus-visible/chip:decoration-current group-data-[state=open]/chip:decoration-current',
-        'group-disabled/chip:decoration-transparent'
-      )}
-    >
-      {children}
-    </span>
-  );
-}
 
 export function ItemBoxAsks({ item }: { item: Item }) {
   const live = usePlannerStore((s) => s.items.find((i) => i.id === item.id)) ?? item;
