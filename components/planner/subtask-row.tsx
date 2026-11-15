@@ -198,7 +198,8 @@ function SubtaskTitle({ child }: { child: TaskItem }) {
   const renaming = useRenameStore((s) => isRenaming(s, child.id, ''));
   const completed = child.status === 'completed';
   if (renaming) {
-    return <RowRenameInput itemId={child.id} title={child.title} className="font-sans text-sm" />;
+    // The title's own 20px line, so the words stay put when the field opens.
+    return <RowRenameInput itemId={child.id} title={child.title} className="h-5 py-0 font-sans text-sm leading-5" />;
   }
   return (
     <span
