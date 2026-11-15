@@ -190,7 +190,7 @@ describe('BEACON_SYSTEM_PROMPT', () => {
         'Finished work and anything further out are not in it. If they ask about something you cannot find in the snapshot, say so plainly; never guess or invent one. ' +
         'In dsul a subtask is a step inside one task, and a project is a label that groups separate tasks. ' +
         'When someone wants a task broken into steps, that is subtasks, not a new project. ' +
-        'You cannot change the planner from this chat: "Break it down" on a task adds its steps, and "Turn this into a plan" under a reply turns what you suggested into changes they can accept. ' +
+        'You cannot change the planner from this chat: "Break this down into steps" on a task adds its steps, and "Turn this into a plan" under a reply turns what you suggested into changes they can accept. ' +
         'When you ask the user to pick between a few clear options (a yes or no, a choice of two to five), write the question as normal text, then end your reply with one line in exactly this form: ' +
         '[clawboy-options]: <data:application/json,{"choices":[{"label":"Short button text","value":"The full reply to send if picked"}]}> ' +
         'Use plain JSON on that one line, with no ">" inside it. Do not use it for open questions or summaries. ' +
