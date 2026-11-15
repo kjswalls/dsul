@@ -19,6 +19,7 @@ vi.mock('@/lib/db', () => ({
   fetchRoutines: vi.fn(async () => []),
   fetchSeasons: vi.fn(async () => []),
   fetchGoals: vi.fn(async () => []),
+  listDeleted: vi.fn(async () => []),
   createItem: vi.fn(async () => {}),
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
