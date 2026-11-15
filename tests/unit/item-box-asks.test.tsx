@@ -80,7 +80,7 @@ describe('the chips over the item box', () => {
   it('offers a new task its starters, from the same list as right-click › AI', () => {
     unseed = seedAI(CONNECTED_MODEL);
     show();
-    expect(chipTexts()).toEqual(['Break it down', 'Help me start', 'Find a time']);
+    expect(chipTexts()).toEqual(['Break this down into steps', 'Help me start', 'Find a time']);
   });
 
   it('shows nothing once the item has a conversation', () => {
@@ -125,6 +125,6 @@ describe('the chips over the item box', () => {
   it('keeps to three chips with the hand-off among them', () => {
     unseed = seedAI({ ...CONNECTED_MODEL, openclaw: { agent: true, agentId: 'a' } });
     show();
-    expect(chipTexts()).toEqual(['Break it down', 'Help me start', 'Hand off to OpenClaw']);
+    expect(chipTexts()).toEqual(['Break this down into steps', 'Help me start', 'Hand off to OpenClaw']);
   });
 });

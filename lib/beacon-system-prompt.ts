@@ -15,7 +15,7 @@ const listOf = (nouns: string[], conjunction: 'and' | 'or'): string => {
  * swap names the exact text.
  */
 export const NO_CHANGES_SENTENCE =
-  'You cannot change the planner from this chat: "Break it down" on a task adds its steps, and "Turn this into a plan" under a reply turns what you suggested into changes they can accept. '
+  'You cannot change the planner from this chat: "Break this down into steps" on a task adds its steps, and "Turn this into a plan" under a reply turns what you suggested into changes they can accept. '
 
 const builtinNouns = ALL_ITEM_TYPES.map((t) => ITEM_TYPES[t].labelPlural.toLowerCase())
 
