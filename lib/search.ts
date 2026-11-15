@@ -66,13 +66,34 @@ export function parseSearchQuery(raw: string): ParsedSearchQuery {
 export interface SearchResults {
   tasks: Task[];
   habits: HabitItem[];
+  /**
+   * Parent id → the title of the subtask that put the parent in `tasks`, for a
+   * parent found only through a subtask. A parent whose own title (or
+   * container) matched is not listed here.
+   */
+  viaSubtask?: Record<string, string>;
 }
 
 // typeNameOf moved to lib/filters.ts — the filter predicates need the same
 // resolution, and two copies of "which registry type is this row" is exactly
 // how the four filter shapes drifted apart.
 
-export function searchItems(raw: string, tasks: Task[], habits: HabitItem[]): SearchResults {
+/**
+ * `subtasks` are the task-like rows with a `parentItemId`, which the planner's
+ * `tasks` projection leaves out. Search still has to find them: a subtask is
+ * something the user typed and will look for by name, and before this a search
+ * for one came back empty as if it had been deleted. A subtask has no row of its
+ * own anywhere in the app, so a hit answers with its PARENT (once, in the
+ * parent's place among the task results) and `viaSubtask` names the subtask so
+ * the row can say why it is there. The parent must still pass the query's
+ * filters; only the text is matched against the subtask's title.
+ */
+export function searchItems(
+  raw: string,
+  tasks: Task[],
+  habits: HabitItem[],
+  subtasks: readonly Task[] = []
+): SearchResults {
   const query = parseSearchQuery(raw);
   const text = query.text.toLowerCase();
   const hasQuery = text.length > 0 || query.type !== null || query.priority !== null || query.project !== null;
@@ -83,17 +104,34 @@ export function searchItems(raw: string, tasks: Task[], habits: HabitItem[]): Se
     title.toLowerCase().includes(text) ||
     (context?.toLowerCase().includes(text) ?? false);
 
+  const passesTaskFilters = (t: Task) =>
+    (query.type === null || typeNameOf(t) === query.type) &&
+    (query.priority === null || t.priority === query.priority) &&
+    (query.project === null ||
+      (t.project?.toLowerCase() ?? '') === query.project.toLowerCase());
+
+  // First matching subtask per parent, in the order the caller passed them.
+  const subtaskHit = new Map<string, string>();
+  if (text.length > 0) {
+    for (const sub of subtasks) {
+      const parentId = sub.parentItemId;
+      if (!parentId || subtaskHit.has(parentId)) continue;
+      if (sub.title.toLowerCase().includes(text)) subtaskHit.set(parentId, sub.title);
+    }
+  }
+
+  const viaSubtask: Record<string, string> = {};
   const matchedTasks =
     query.type === 'habit'
       ? []
-      : tasks.filter(
-          (t) =>
-            (query.type === null || typeNameOf(t) === query.type) &&
-            matchText(t.title, t.project) &&
-            (query.priority === null || t.priority === query.priority) &&
-            (query.project === null ||
-              (t.project?.toLowerCase() ?? '') === query.project.toLowerCase())
-        );
+      : tasks.filter((t) => {
+          if (!passesTaskFilters(t)) return false;
+          if (matchText(t.title, t.project)) return true;
+          const hit = subtaskHit.get(t.id);
+          if (hit === undefined) return false;
+          viaSubtask[t.id] = hit;
+          return true;
+        });
 
   /**
    * A QUERY is not a view filter, so the pass-through rule lands differently
@@ -121,7 +159,9 @@ export function searchItems(raw: string, tasks: Task[], habits: HabitItem[]): Se
               passesContainerFilter(h, [containerRef('project', query.project)]))
         );
 
-  return { tasks: matchedTasks, habits: matchedHabits };
+  return Object.keys(viaSubtask).length > 0
+    ? { tasks: matchedTasks, habits: matchedHabits, viaSubtask }
+    : { tasks: matchedTasks, habits: matchedHabits };
 }
 
 export interface SearchGroup {

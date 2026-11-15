@@ -205,3 +205,38 @@ describe('search keyword parser', () => {
     });
   });
 });
+
+describe('searchItems finds subtasks', () => {
+  const parent = { id: 'p1', title: 'Shop for presents', status: 'pending', isScheduled: false, order: 0 } as Task;
+  const other = { id: 'p2', title: 'Rug cleaning', status: 'pending', isScheduled: false, order: 1 } as Task;
+  const sub = (id: string, title: string, parentItemId: string) =>
+    ({ id, title, status: 'pending', isScheduled: false, order: 0, parentItemId }) as Task;
+
+  it('answers a subtask hit with its parent and names the subtask', () => {
+    const r = searchItems('imac', [parent, other], [], [sub('s1', 'iMac', 'p1')]);
+    expect(r.tasks.map((t) => t.id)).toEqual(['p1']);
+    expect(r.viaSubtask).toEqual({ p1: 'iMac' });
+  });
+
+  it('does not annotate a parent that matched on its own title', () => {
+    const r = searchItems('rug', [parent, other], [], [sub('s1', 'Rug', 'p1'), sub('s2', 'Rug pad', 'p2')]);
+    expect(r.tasks.map((t) => t.id)).toEqual(['p1', 'p2']);
+    expect(r.viaSubtask).toEqual({ p1: 'Rug' });
+  });
+
+  it('lists a parent once however many subtasks match', () => {
+    const r = searchItems('a', [parent], [], [sub('s1', 'Art supplies', 'p1'), sub('s2', 'Cabo', 'p1')]);
+    expect(r.tasks).toHaveLength(1);
+    expect(r.viaSubtask).toEqual({ p1: 'Art supplies' }); // the first match names it
+  });
+
+  it('still applies the parent filters, and needs text to match a subtask', () => {
+    expect(searchItems('priority:high imac', [parent], [], [sub('s1', 'iMac', 'p1')]).tasks).toEqual([]);
+    expect(searchItems('type:habit imac', [parent], [], [sub('s1', 'iMac', 'p1')]).tasks).toEqual([]);
+    expect(searchItems('type:task', [parent], [], [sub('s1', 'iMac', 'p1')]).viaSubtask).toBeUndefined();
+  });
+
+  it('skips a subtask whose parent is not in the list', () => {
+    expect(searchItems('imac', [parent], [], [sub('s1', 'iMac', 'gone')]).tasks).toEqual([]);
+  });
+});
