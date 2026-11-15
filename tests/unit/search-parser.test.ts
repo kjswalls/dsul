@@ -1,5 +1,12 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { groupResults, parseSearchQuery, searchItems } from '@/lib/search';
+import {
+  groupResults,
+  noteSnippet,
+  parseSearchQuery,
+  searchBin,
+  searchContainers,
+  searchItems,
+} from '@/lib/search';
 import { hydrateCustomTypes } from '@/lib/item-registry';
 import type { ItemTypeDef, Task } from '@/lib/planner-types';
 
@@ -238,5 +245,73 @@ describe('searchItems finds subtasks', () => {
 
   it('skips a subtask whose parent is not in the list', () => {
     expect(searchItems('imac', [parent], [], [sub('s1', 'iMac', 'gone')]).tasks).toEqual([]);
+  });
+});
+
+describe('searchItems matches notes', () => {
+  const task = (id: string, title: string, notes?: string) =>
+    ({ id, title, notes, status: 'pending', isScheduled: false, order: 0 }) as Task;
+  const habit = {
+    id: 'h1', title: 'Stretch', notes: 'ten minutes, then the foam roller', streak: 0, status: 'pending',
+    completedDates: [], skippedDates: [], dailyCounts: {}, repeatFrequency: 'daily',
+  };
+
+  it('finds a task and a habit by a word only in their notes, with a snippet', () => {
+    const r = searchItems('foam', [task('t1', 'Gym bag', 'pack the foam pad')], [habit as never]);
+    expect(r.tasks.map((t) => t.id)).toEqual(['t1']);
+    expect(r.habits.map((h) => h.id)).toEqual(['h1']);
+    expect(r.viaNotes).toEqual({ t1: 'pack the foam pad', h1: 'ten minutes, then the foam roller' });
+  });
+
+  it('does not annotate a title hit, and needs text', () => {
+    const r = searchItems('gym', [task('t1', 'Gym bag', 'gym at 6')], []);
+    expect(r.viaNotes).toBeUndefined();
+    expect(searchItems('priority:high', [task('t1', 'x', 'priority')], []).viaNotes).toBeUndefined();
+  });
+
+  it('cuts a long note to the words around the match', () => {
+    const long = `${'a'.repeat(80)} the passport number lives here ${'b'.repeat(80)}`;
+    const snip = noteSnippet(long, 'passport')!;
+    expect(snip.startsWith('…')).toBe(true);
+    expect(snip.endsWith('…')).toBe(true);
+    expect(snip).toContain('passport');
+    expect(snip.length).toBeLessThan(80);
+    expect(noteSnippet('line one\n\nline   two', 'two')).toBe('line one line two');
+    expect(noteSnippet(undefined, 'x')).toBeNull();
+  });
+});
+
+describe('searchContainers', () => {
+  const lists = {
+    projects: [{ id: 'p1', name: 'Homework', emoji: 'book' }, { id: 'p2', name: 'Work', emoji: 'briefcase' }],
+    routines: [{ id: 'r1', name: 'Morning work block' }],
+    seasons: [{ id: 's1', name: 'Workout season', icon: 'flame' }, { id: 's2', name: 'Winter' }],
+  };
+
+  it('matches names across kinds, prefix hits first', () => {
+    expect(searchContainers('work', lists).map((h) => `${h.kind}:${h.id}`)).toEqual([
+      'project:p2', 'season:s1', 'project:p1', 'routine:r1',
+    ]);
+  });
+
+  it('carries the glyph and is empty without text', () => {
+    expect(searchContainers('winter', lists)).toEqual([{ kind: 'season', id: 's2', name: 'Winter' }]);
+    expect(searchContainers('project:Work', lists)).toEqual([]);
+  });
+});
+
+describe('searchBin', () => {
+  const bin = [
+    { kind: 'item', id: 'a', name: 'Rug' },
+    { kind: 'item', id: 'b', name: 'Rug pad' },
+    { kind: 'project', id: 'c', name: 'Rugby' },
+    { kind: 'item', id: 'd', name: 'Rugs, again' },
+    { kind: 'item', id: 'e', name: 'Lamp' },
+  ];
+
+  it('matches names, keeps the order given, at most three', () => {
+    expect(searchBin('rug', bin).map((e) => e.id)).toEqual(['a', 'b', 'c']);
+    expect(searchBin('lamp', bin).map((e) => e.id)).toEqual(['e']);
+    expect(searchBin('', bin)).toEqual([]);
   });
 });

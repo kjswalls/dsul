@@ -161,6 +161,12 @@ export interface ConversationsState {
   /** Set synchronously when a send starts, by binding key (rail-store's `bindingKey`). */
   sending: Record<string, true>;
   search: ConversationSearchState;
+  /**
+   * The same search, run from the omnibar. A slot of its own so typing in the
+   * main search box never rewrites the results in Ask's history search, which
+   * can be open beside it.
+   */
+  omniSearch: ConversationSearchState;
 
   /** Sync: a different account than the cache's resets it. */
   ensureOwner(): void;
@@ -213,6 +219,8 @@ export interface ConversationsState {
   noteChanges(id: string, tally: ConversationChanges): void;
   /** The caller debounces (250ms). Under the 2-character minimum it clears. */
   runSearch(q: string): void;
+  /** runSearch into `omniSearch`. The caller debounces too. */
+  runOmniSearch(q: string): void;
   /**
    * `pagehide` (registered below, once): keepalive saves within one
    * 60,000-byte budget, then a keepalive DELETE for every delete still
@@ -640,6 +648,37 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
     );
   };
 
+  /** One search, into whichever slot asked (Ask's history, or the omnibar). */
+  const searchInto = (slot: 'search' | 'omniSearch', q: string): void => {
+    const put = (v: ConversationSearchState): Pick<ConversationsState, 'search'> | Pick<ConversationsState, 'omniSearch'> =>
+      slot === 'search' ? { search: v } : { omniSearch: v };
+    const query = Array.from(cleanText(typeof q === 'string' ? q : '', 1_000).trim())
+      .slice(0, CHAT_LIMITS.searchMax)
+      .join('');
+    if (Array.from(query).length < CHAT_LIMITS.searchMin) {
+      set(put({ q: query, status: 'idle', hits: [] }));
+      return;
+    }
+    if (get().saving === 'off') {
+      set(put({ q: query, status: 'error', hits: [] }));
+      return;
+    }
+    get().ensureOwner();
+    const st = stamp();
+    set((s) => put({ q: query, status: 'loading', hits: s[slot].hits }));
+    void deps.api.search(query).then((res) => {
+      // Superseded by a newer query, or by a reset.
+      if (isStale(st) || get()[slot].q !== query) return;
+      if (!res.ok) {
+        if (res.error === 'unavailable') latchOff();
+        set(put({ q: query, status: 'error', hits: [] }));
+        return;
+      }
+      const hits = res.value.filter((h) => !removed.has(h.id));
+      set((s) => ({ ...put({ q: query, status: 'done', hits }), summaries: { ...s.summaries, ...Object.fromEntries(hits.map((h) => [h.id, s.summaries[h.id] ?? stripHit(h)])) } }));
+    });
+  };
+
   const updateThread = (id: string, fn: (t: Thread) => Thread) =>
     set((s) => {
       const t = s.threads[id];
@@ -693,6 +732,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
         list: { ...s.list, ids: s.list.ids.filter((x) => x !== id), starredIds: s.list.starredIds.filter((x) => x !== id) },
         itemIndex: itemId ? { ...s.itemIndex, [itemId]: null } : s.itemIndex,
         search: withoutHit(s.search, id),
+        omniSearch: withoutHit(s.omniSearch, id),
       };
     });
   };
@@ -1036,6 +1076,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
     threads: {},
     sending: {},
     search: INITIAL_SEARCH,
+    omniSearch: INITIAL_SEARCH,
 
     ensureOwner: () => {
       const uid = useAIConnectionStore.getState().hydratedUserId;
@@ -1728,6 +1769,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
           list: { ...x.list, ids: x.list.ids.filter((v) => v !== id), starredIds: x.list.starredIds.filter((v) => v !== id) },
           itemIndex: itemId !== null ? { ...x.itemIndex, [itemId]: null } : x.itemIndex,
           search: withoutHit(x.search, id),
+          omniSearch: withoutHit(x.omniSearch, id),
         };
       });
       useRailStore.getState().leaveConversation(id);
@@ -1836,33 +1878,8 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       void enqueue(id, () => sendTally(id, t, st));
     },
 
-    runSearch: (q) => {
-      const query = Array.from(cleanText(typeof q === 'string' ? q : '', 1_000).trim())
-        .slice(0, CHAT_LIMITS.searchMax)
-        .join('');
-      if (Array.from(query).length < CHAT_LIMITS.searchMin) {
-        set({ search: { q: query, status: 'idle', hits: [] } });
-        return;
-      }
-      if (get().saving === 'off') {
-        set({ search: { q: query, status: 'error', hits: [] } });
-        return;
-      }
-      get().ensureOwner();
-      const st = stamp();
-      set((s) => ({ search: { q: query, status: 'loading', hits: s.search.hits } }));
-      void deps.api.search(query).then((res) => {
-        // Superseded by a newer query, or by a reset.
-        if (isStale(st) || get().search.q !== query) return;
-        if (!res.ok) {
-          if (res.error === 'unavailable') latchOff();
-          set({ search: { q: query, status: 'error', hits: [] } });
-          return;
-        }
-        const hits = res.value.filter((h) => !removed.has(h.id));
-        set((s) => ({ search: { q: query, status: 'done', hits }, summaries: { ...s.summaries, ...Object.fromEntries(hits.map((h) => [h.id, s.summaries[h.id] ?? stripHit(h)])) } }));
-      });
-    },
+    runSearch: (q) => searchInto('search', q),
+    runOmniSearch: (q) => searchInto('omniSearch', q),
 
     flushOnPageHide: () => {
       const s = get();
@@ -1927,6 +1944,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
         threads: {},
         sending: {},
         search: INITIAL_SEARCH,
+        omniSearch: INITIAL_SEARCH,
       }));
     },
   };
