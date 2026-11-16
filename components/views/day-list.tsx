@@ -107,30 +107,35 @@ export function DayList() {
         <GhostFold dateStr={dateStr} />
         {/* The floor gives an empty or short day a target worth aiming at;
             the negative margin lets the drop tint breathe past the rows. */}
-        <ListDropZone dateStr={dateStr} className="-mx-2 min-h-[50vh] space-y-5 px-2">
-          {day.totalCount === 0 ? (
-            <div className="py-16 text-center">
-              <p className="font-serif text-lg italic text-muted-foreground">
-                Nothing planned for {format(selectedDate, 'EEEE')} yet.
-              </p>
-            </div>
-          ) : (
-            groups.map((g) => (
-              <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
-                <ReorderSection
-                  id={`list:${dateStr}:${g.key}`}
-                  rows={g.rows}
-                  dateStr={dateStr}
-                  completedAs={completedAs}
-                  enabled={canReorder}
-                >
-                  {g.rows.map((row) => (
-                    <TaskRow key={row.item.id} row={row as never} />
-                  ))}
-                </ReorderSection>
-              </GroupSection>
-            ))
-          )}
+        <ListDropZone dateStr={dateStr} className="-mx-2 min-h-[50vh] px-2">
+          {/* The groups keep their 20px apart; the add row does not take it.
+              It sits flush under the last row, where the next one will land
+              (the quick-add round's one spacing rule). */}
+          <div className="space-y-5">
+            {day.totalCount === 0 ? (
+              <div className="py-16 text-center">
+                <p className="font-serif text-lg italic text-muted-foreground">
+                  Nothing planned for {format(selectedDate, 'EEEE')} yet.
+                </p>
+              </div>
+            ) : (
+              groups.map((g) => (
+                <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
+                  <ReorderSection
+                    id={`list:${dateStr}:${g.key}`}
+                    rows={g.rows}
+                    dateStr={dateStr}
+                    completedAs={completedAs}
+                    enabled={canReorder}
+                  >
+                    {g.rows.map((row) => (
+                      <TaskRow key={row.item.id} row={row as never} />
+                    ))}
+                  </ReorderSection>
+                </GroupSection>
+              ))
+            )}
+          </div>
           {/* The day's own add line, at its end like the braindump's. Pointer
               surfaces only: the phone keeps its capture bar. */}
           {addHere && (
