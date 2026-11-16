@@ -449,18 +449,17 @@ function SubtasksSection({
             aria-expanded={showDone}
             data-testid="subtask-done-fold"
             data-sink-row=""
-            className="text-muted-foreground hover:text-foreground mt-1 -ml-0.5 flex w-fit items-center gap-1.5 rounded-sm py-0.5 text-xs transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
+            // One row step under the add row, on the rows' own columns: the
+            // chevron centred where the boxes sit, the words on the titles' edge.
+            className="text-muted-foreground hover:text-foreground -mx-1.5 flex w-fit items-center gap-2.5 rounded-md px-1.5 py-[5px] text-xs leading-5 transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
           >
-            <ChevronRight className={cn('size-3.5 transition-transform', showDone && 'rotate-90')} aria-hidden />
+            <span className="flex size-4 shrink-0 items-center justify-center">
+              <ChevronRight className={cn('size-3.5 transition-transform', showDone && 'rotate-90')} aria-hidden />
+            </span>
             {openRows.length === 0 ? `All ${doneRows.length} done` : `${doneRows.length} done`}
           </button>
         )}
-        {showDone && (
-          <>
-            <div aria-hidden className="h-1 shrink-0" />
-            {doneRows.map(renderRow)}
-          </>
-        )}
+        {showDone && doneRows.map(renderRow)}
         {lineY !== null && (
           // Where the held row would land: the planner's own insertion line
           // (components/primitives/reorder-section.tsx).
