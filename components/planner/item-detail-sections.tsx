@@ -15,7 +15,8 @@ import { AgentChip } from '@/components/primitives/pills';
 import { PackInPanel } from '@/components/sidebar/prep-pack';
 import { AgentExchangeFor } from '@/components/ai/agent-exchange';
 import { useProposalStore } from '@/lib/proposal-store';
-import { canBreakDown, canOfferBreakDown } from '@/lib/item-asks';
+import { BREAK_DOWN_LABEL, canBreakDown, canOfferBreakDown } from '@/lib/item-asks';
+import { ChipLabel, quietChip } from '@/components/ai/quiet-chip';
 import { openSetup } from '@/lib/open-chat';
 import { NUDGE_BREAK_IT_DOWN_OFFER } from '@/lib/nudges/registry';
 import { useOneTimeNudge } from '@/hooks/use-one-time-nudge';
@@ -340,44 +341,6 @@ function SubtasksSection({
             {done}/{children.length}
           </span>
         )}
-        <span className="flex-1" />
-        {breakable && !drafts && !asksElsewhere && (
-          <button
-            onClick={() => requestProposal('breakdown', undefined, item.id)}
-            disabled={proposalBusy}
-            data-testid="break-it-down"
-            className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-ai/40 hover:text-foreground disabled:opacity-50"
-          >
-            <Split className="h-2.5 w-2.5 text-ai" />
-            Break it down
-          </button>
-        )}
-        {offered && (
-          <span
-            data-testid="break-it-down-offer"
-            className="inline-flex items-center rounded-full border border-border text-[10px] font-medium text-muted-foreground"
-          >
-            <button
-              type="button"
-              onClick={() => openSetup(isMobile)}
-              data-testid="break-it-down-setup"
-              title="Set up AI to break this into small steps"
-              className="inline-flex items-center gap-1 rounded-l-full py-0.5 pr-1 pl-2 transition-colors hover:text-foreground"
-            >
-              <Split className="h-2.5 w-2.5" />
-              Break it down
-            </button>
-            <button
-              type="button"
-              onClick={offerNudge.dismiss}
-              data-testid="break-it-down-offer-close"
-              aria-label="Hide Break it down"
-              className="inline-flex items-center rounded-r-full py-0.5 pr-1.5 pl-0.5 transition-colors hover:text-foreground"
-            >
-              <X className="h-2.5 w-2.5" />
-            </button>
-          </span>
-        )}
       </div>
 
       {/* One parent for every row, the add row and the fold, so a row that
@@ -473,6 +436,48 @@ function SubtasksSection({
           </div>
         )}
       </div>
+      {/* Another way to fill the list, under it (Kirby, 2026-11-15): the quiet
+          chip the Ask box uses (components/ai/quiet-chip.tsx). Where the item
+          panel draws its own chips over the box, this one steps aside. */}
+      {((breakable && !drafts && !asksElsewhere) || offered) && (
+        <div className="-ml-2 mt-0.5 flex items-center">
+          {breakable && !drafts && !asksElsewhere && (
+            <button
+              type="button"
+              onClick={() => requestProposal('breakdown', undefined, item.id)}
+              disabled={proposalBusy}
+              data-testid="break-it-down"
+              className={quietChip}
+            >
+              <Split className="size-3" aria-hidden />
+              <ChipLabel>{BREAK_DOWN_LABEL}</ChipLabel>
+            </button>
+          )}
+          {offered && (
+            <span data-testid="break-it-down-offer" className="inline-flex items-center">
+              <button
+                type="button"
+                onClick={() => openSetup(isMobile)}
+                data-testid="break-it-down-setup"
+                title="Set up AI to break this into small steps"
+                className={quietChip}
+              >
+                <Split className="size-3" aria-hidden />
+                <ChipLabel>{BREAK_DOWN_LABEL}</ChipLabel>
+              </button>
+              <button
+                type="button"
+                onClick={offerNudge.dismiss}
+                data-testid="break-it-down-offer-close"
+                aria-label="Hide Break this down into steps"
+                className={cn(quietChip, 'px-1')}
+              >
+                <X className="size-3" aria-hidden />
+              </button>
+            </span>
+          )}
+        </div>
+      )}
       {showFinishOffer && (
         <div
           className="border-border text-muted-foreground mt-2.5 flex items-center gap-2 rounded-lg border py-1.5 pr-1.5 pl-3 text-[13px]"

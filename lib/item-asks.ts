@@ -27,6 +27,9 @@ import type { Item } from './planner-types';
  * names it, because its card is asked from Ask home, about the whole plan.
  */
 
+/** "Break it down", in the words every surface shows (Kirby, 2026-11-15). */
+export const BREAK_DOWN_LABEL = 'Break this down into steps';
+
 export type ItemAskId = 'ask' | 'breakdown' | 'start' | 'findTime' | 'keep';
 
 export interface ItemAskContext {
@@ -117,7 +120,7 @@ export const ITEM_ASKS: Record<ItemAskId, ItemAsk> = {
   breakdown: {
     id: 'breakdown',
     kind: 'breakdown',
-    label: () => 'Break this down into steps',
+    label: () => BREAK_DOWN_LABEL,
     eligible: (item, ctx) => canBreakDown(item, ctx.canPropose),
   },
   start: {
