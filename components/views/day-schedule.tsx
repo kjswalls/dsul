@@ -83,12 +83,12 @@ const BLOCK_ASK_CHOICES_H = 104;
  * The block + derivation helpers are exported so week-schedule reuses them.
  *
  * ── The timeline's visual language ────────────────────────────────────────
- * Every block stands beside a LANE. The lane carries a hairline rail; the item's
- * accent swells that rail to 2px for exactly as long as the event runs, and a
- * bead pins its start on the hour line. So the accent is a mark ON the grid,
- * with real extent, rather than a stripe glued to a card — and the block itself
- * is lit from the rail side (see --sched-* in app/globals.css) so the colour
- * reads as a light source instead of as a coloured container.
+ * Every block stands beside a LANE. The lane carries a hairline rail; a fine
+ * grey line runs beside the block for exactly as long as the event runs, and an
+ * open ring pins its start on the hour line, closing when the block is ticked.
+ * The block itself is a keycap (see --sched-* in app/globals.css): a paper face
+ * on a skirt tinted with the item's colour, which is the only place the colour
+ * shows, so it reads as a mark on an object rather than a coloured container.
  *
  * On hover the block picks up drafting-style REGISTRATION MARKS: four corner
  * crops and a caliper datum centred on each resizable edge. They sit OUTSIDE the
@@ -566,7 +566,7 @@ export function ScheduleBlock({
   gridStartMin: number;
   date?: Date;
   hourPx?: number;
-  /** Week columns are ~140px wide. They drop the emission wash and the whole
+  /** Week columns are ~140px wide. They drop the whole
    *  metadata rail and spend the width on a WRAPPING title instead — see the
    *  content block below. */
   variant?: 'day' | 'week';
@@ -931,14 +931,11 @@ export function ScheduleBlock({
   // day channel needs the escape hatch just as much as a week column.
   const canExpand = narrow && !preview;
 
-  // Done de-colours the rail with its bead: they are one glyph, not two states.
-  // Off-group does the same, one step lighter — the rail is where the block's
-  // identity lives, so it is the right thing to spend a recession on.
-  const railColor = done
-    ? 'color-mix(in oklab, var(--muted-foreground) 45%, transparent)'
-    : receded
-      ? 'var(--grp-off-ink)'
-      : accent;
+  // The rail and its ring are one grey on every block (the block's colour lives
+  // on its skirt); off-group goes a step lighter. Ticking the block closes the
+  // ring, and only ticking it: see --sched-ring in globals.css.
+  const railColor = receded ? 'var(--sched-ring-off)' : 'var(--sched-ring)';
+  const beadPunch = L?.beadOnPocket ? 'var(--surface-2)' : 'var(--canvas)';
 
   // Blocks are drag sources — drop on another hour to reschedule, or on the
   // Anytime section to un-time. The source stays in place (a hollow slot) while the
@@ -1162,7 +1159,7 @@ export function ScheduleBlock({
       data-start-min={effStartMin}
       data-duration={effDuration}
       className={cn(
-        'group/blk pointer-events-none absolute h-[var(--blk-h)]',
+        'sched-block group/blk pointer-events-none absolute h-[var(--blk-h)]',
         // No layout → the literal classes this block has always carried.
         !L && 'left-0 right-1',
         // z travels through a custom property rather than an interpolated class:
@@ -1180,6 +1177,9 @@ export function ScheduleBlock({
         {
           top,
           '--blk-h': `${height}px`,
+          // The block's accent, which tints its keycap skirt (.sched-block in
+          // globals.css). It is the only place the colour reaches the block.
+          '--blk-acc': accent,
           // The registration marks' ink: neutral --ink-1 normally, lime when the
           // block is selected. This is how selection reads THROUGH a hover — the
           // pane brightness is shared, but the mark colour is not (see BlockCorners).
@@ -1209,31 +1209,43 @@ export function ScheduleBlock({
           style={{ left: 6, right: L.startTie, top: -PANE_OFFSET }}
         />
       )}
-      {/* The rail's accent span: the lane's 1px hairline swells to 2px for the
-          duration of the event, so the accent has real extent on the grid rather
-          than being a stripe glued to the card. Offset back up by PANE_OFFSET to
-          undo the pane's nudge — this sits on the true start and end. */}
+      {/* The rail: a fine grey line for the duration of the event, so the block
+          has real extent on the grid rather than only a card. Offset back up by
+          PANE_OFFSET to undo the pane's nudge — this sits on the true start and
+          end, starting just under the ring. */}
       {/* When two items are booked at the same time they tile side by side, each
           with its own rail beside its own pane; the start-tie above is what marks
           them as the same slot. */}
       <span
         aria-hidden
-        className="absolute w-[2px] rounded-[1px]"
-        style={{ left: L?.railX ?? 5, top: -PANE_OFFSET, height: spanH, background: railColor }}
+        data-slot="rail"
+        className="absolute w-[1.5px] rounded-[1px]"
+        style={{
+          left: L?.railX ?? 5,
+          top: -PANE_OFFSET,
+          // Centred on the 7px ring, and starting under it.
+          margin: '4px 0 0 0.25px',
+          height: Math.max(0, spanH - 4),
+          background: railColor,
+        }}
       />
-      {/* The start bead, punched out of the canvas so two beads 15 minutes apart
-          still read as two at the minimum hour height. A NESTED bead is punched
+      {/* The start ring, punched out of the canvas so two rings 15 minutes apart
+          still read as two at the minimum hour height. Open while the block is
+          undone; ticking it grows the inset from the rim to the centre. A NESTED bead is punched
           out of its parent's plate instead — it is mounted on the field, not on
           the grid. A double-booking's beads no longer meet: each rides its own
           tile beside its pane (see beadX), and the start-tie above links them. */}
       <span
         aria-hidden
-        className="absolute h-[6px] w-[6px] rounded-full"
+        data-slot="bead"
+        className="absolute h-[7px] w-[7px] rounded-full transition-[box-shadow] duration-[320ms] ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none"
         style={{
           left: L?.beadX ?? 3,
           top: -PANE_OFFSET - 3,
-          background: railColor,
-          boxShadow: `0 0 0 1px ${L?.beadOnPocket ? 'var(--surface-2)' : 'var(--canvas)'}`,
+          // 7px on the old 6px bead's seat, so the start-tie still meets its centre.
+          margin: '-0.5px 0 0 -0.5px',
+          background: beadPunch,
+          boxShadow: `inset 0 0 0 ${done ? 3.5 : 1.5}px ${railColor}, 0 0 0 1px ${beadPunch}`,
         }}
       />
 
@@ -1250,7 +1262,7 @@ export function ScheduleBlock({
         />
       ))}
 
-      {/* The pane. overflow-hidden for the wash and the title, which is exactly
+      {/* The pane. overflow-hidden for the pockets and the title, which is exactly
           why the registration marks below are siblings, not children. */}
       {/* Right-click acts on THIS block's day — the week column it sits in. */}
       <ItemContextMenu item={item} date={rowDate}>
@@ -1288,7 +1300,7 @@ export function ScheduleBlock({
           className={cn(
             // In flow, not absolute: the wrapper's hover-expand height is `auto`,
             // and an absolutely positioned pane would contribute nothing to it.
-            'pointer-events-auto relative h-full cursor-grab touch-manipulation overflow-hidden rounded-[5px] border border-border active:cursor-grabbing',
+            'sched-face pointer-events-auto relative h-full cursor-grab touch-manipulation overflow-hidden rounded-[5px] border border-transparent active:cursor-grabbing',
             // …but `h-full` against that `auto` wrapper is a percentage of an
             // indefinite height, so it collapses the pane to its CONTENT. On a
             // block whose slot is taller than its title (a 3-hour block holding
@@ -1305,14 +1317,14 @@ export function ScheduleBlock({
             // cannot express this step at all in light mode. Solid surface-2 over
             // the pocket's ~0.975 is a real value step in both themes.
             L?.solid && !done && 'bg-[var(--surface-2)]',
-            // Done recedes by thinning the plate and switching the lit edge off,
-            // never by fading the whole block — opacity here composites the lime
-            // checkbox down to olive. The text carries the rest of the fade.
+            // Done presses the key home: the plate sinks to the well and the skirt
+            // and cast go, never a fade of the whole block — opacity here
+            // composites the lime checkbox down to olive. The text carries the rest.
             done
               ? 'bg-[var(--sched-pane-done)] shadow-[var(--sched-shadow-done)]'
               : 'hover:bg-[var(--sched-pane-hover)] hover:shadow-[var(--sched-shadow-hover)]',
-            // Off-group: the plate thins and trades its modelling for a hairline.
-            // It KEEPS its hover lamp — a receded block is still a live target you
+            // Off-group: the plate thins and trades its skirt for a hairline.
+            // It KEEPS its hover lift — a receded block is still a live target you
             // can read, click and drag; recession says "not what you asked about",
             // not "unavailable". Ordered after `done` so a finished off-group block
             // stays finished-looking, which is the more specific fact.
@@ -1322,15 +1334,14 @@ export function ScheduleBlock({
             // survive cn() and Tailwind's alphabetical utility order hands it to
             // the base — the hairline never paints, in either theme.
             receded && !done && 'bg-[var(--grp-off-pane)] shadow-[var(--sched-shadow-off)]',
-            // Selected brightens the pane — lit brighter than hover, its own
-            // latched state (the list rows latch a wash; a grid block latches the
-            // lamp). Kept off `done` blocks, whose lamp is deliberately out.
-            isMultiSelected && !done && 'bg-[var(--sched-pane-selected)] shadow-[var(--sched-shadow-hover)]'
+            // Selected lights the rim in the accent, its own latched state (the
+            // list rows latch a wash; a grid block latches the rim). Kept off
+            // `done` blocks, which are pressed flat.
+            isMultiSelected && !done && 'bg-[var(--sched-pane-selected)] shadow-[var(--sched-shadow-selected)]'
           )}
           style={{ marginLeft: L?.paneLeft ?? LANE_PX, marginRight: L?.paneRight ?? 0 }}
         >
-          {/* The pockets — one sunk well per child, above the wash and below the
-              content. This is what makes containment read in light mode, and the
+          {/* The pockets — one sunk well per child, below the content. This is what makes containment read in light mode, and the
               reason this direction beat the ones that expressed depth with alpha. */}
           {L?.pockets.map((p, i) => (
             <span
@@ -1340,38 +1351,6 @@ export function ScheduleBlock({
               style={{ top: p.top, height: p.height }}
             />
           ))}
-          {/* The emission wash — the accent bleeding off the rail-facing edge into
-              the plate. Three stops, not two: a bright edge, a fast falloff by
-              40px, then a long tail out to the reach. A straight two-stop ramp
-              reads as a stripe with a soft right edge; this reads as light falling
-              across the card and dissolving into it.
-
-              Wide panes only. Across a 140px column an 84px gradient is more than
-              half the pane, which is a coloured container by area — and that was
-              always an argument about WIDTH, not about which view you are in, so it
-              keys off the same threshold the content treatment does. */}
-          {/* The wash is the block's lamp, and an off-group block is not lit. It
-              goes rather than dimming: the gradient is built from the item's own
-              accent, so fading it would be exactly the "lime through an opacity"
-              move the recession rule forbids. */}
-          {!done && !narrow && !receded && (
-            <span
-              aria-hidden
-              className={cn(
-                'sched-lamp pointer-events-none absolute inset-0 z-0 transition-opacity duration-150',
-                // A container stops being a lamp and becomes the FIELD its contents
-                // are lit against, so its own wash goes ambient. Without this the
-                // child's wash reads as a second light source inside the first.
-                L?.wash === 'field'
-                  ? 'opacity-[var(--sched-wash-field)]'
-                  : 'opacity-[var(--sched-wash)] group-hover/blk:opacity-[var(--sched-wash-hover)]'
-              )}
-              // The gradient itself is `.sched-lamp` in globals.css, one recipe per
-              // mode: the accent only travels here, as --lamp.
-              style={{ '--lamp': accent } as React.CSSProperties}
-            />
-          )}
-
           {/*
             The content, re-anchored into its free band when something covers this
             pane. This is the move that actually fixes the reported bug: a 7-hour
