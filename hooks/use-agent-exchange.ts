@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { fetchItemEvents, getItemEventsAvailable, type ItemEvent } from '@/lib/db';
-import { buildAgentExchange, type AgentExchange } from '@/lib/agent-exchange';
+import { buildAgentExchange, rememberExchange, type AgentExchange } from '@/lib/agent-exchange';
 import { useAgentAnswers } from '@/lib/agent-question';
 import type { SentAnswer } from '@/lib/agent-exchange';
 
@@ -49,8 +49,14 @@ export function useAgentExchange(item: {
 
   const events = fetched.id === item.id ? fetched.events : NO_EVENTS;
   const { assignee, aiStatus, aiResult, aiStatusAt } = item;
-  return useMemo(
+  const exchange = useMemo(
     () => buildAgentExchange(events, { assignee, aiStatus, aiResult, aiStatusAt }, sent),
     [events, assignee, aiStatus, aiResult, aiStatusAt, sent]
   );
+  // Kept for the item's own conversation with the user's model, which is told
+  // what the agent said (lib/conversations-store.ts, the context it sends).
+  useEffect(() => {
+    rememberExchange(item.id, exchange);
+  }, [item.id, exchange]);
+  return exchange;
 }

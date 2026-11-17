@@ -57,32 +57,50 @@ export function pickOpenQuestionOptions(
 }
 
 /**
- * Answer the agent. Two writes, and the second is the load-bearing one: the
- * reply goes on the item's trail, which is where the agent reads it back from,
- * and the status flips to `queued` so the next scheduled run picks the work up
- * again. A reply that did not re-queue would look answered and never move.
+ * Write to the agent that holds the item: an answer to its question, or a
+ * message after it reported (Kirby, 2026-11-14: a reply in an item handed to
+ * Claude should simply reach Claude, whatever state the work is in).
  *
- * The flip is what takes the item out of Needs you and puts it under With AI
- * activity, spinning: the honest next state. Returns false, writing nothing,
- * for a blank answer, and while the planner is the look-only preview: the
- * store's write barrier (lib/preview-write-guard.ts) would refuse the flip,
- * leaving a reply on the trail of an item that never re-queues.
+ * The message goes on the item's trail, which is where the agent reads it back
+ * from (MCP `dsul_item_activity`, an `agent_reply` entry). Then, unless a run
+ * is going, the status flips to `queued`: that is what takes a question out of
+ * Needs you, reopens work the agent called done or could not finish, and wakes
+ * a connected app's routine (lib/handoff-wake.ts `requeues`). A message that
+ * did not re-queue would look sent and never move.
+ *
+ * A run that is `working` is left alone. Re-queueing it would move the item's
+ * agent clock under the run, and the run's own next report would be refused
+ * as stale. Its report hears the message instead: the progress route hands
+ * back whatever the user wrote since the run's last report
+ * (lib/agent-replies-server.ts), and puts finished work back in the queue.
+ *
+ * Returns false, writing nothing, for a blank message, for an item no agent
+ * holds, and while the planner is the look-only preview: the store's write
+ * barrier (lib/preview-write-guard.ts) would refuse the flip, leaving a reply
+ * on the trail of an item that never re-queues.
  */
+export function messageAgent(item: Item, text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || isPlannerPreviewing() || !heldByAgent(item)) return false;
+  recordAgentReply(item.id, itemTypeName(item), trimmed);
+  useAgentAnswers.getState().sent(item.id, { text: trimmed, at: Date.now() });
+  if ((item as { aiStatus?: string }).aiStatus !== 'working') {
+    usePlannerStore.getState().updateTask(item.id, { aiStatus: 'queued' });
+  }
+  return true;
+}
+
+/** The answer half of `blocked`: a message to the agent (`messageAgent`). */
 export function answerAgentQuestion(item: Item, text: string): boolean {
-  const trimmed = text.trim()
-  if (!trimmed || isPlannerPreviewing()) return false
-  recordAgentReply(item.id, itemTypeName(item), trimmed)
-  useAgentAnswers.getState().sent(item.id, { text: trimmed, at: Date.now() })
-  usePlannerStore.getState().updateTask(item.id, { aiStatus: 'queued' })
-  return true
+  return messageAgent(item, text);
 }
 
 /**
- * Answers sent from this device, per item, so the item's exchange
- * (lib/agent-exchange.ts) shows one the moment it is sent: the trail's write is
- * fire and forget, and a re-read straight after can miss it. Memory only; the
- * trail is the record. And, per item, whether the item's box has been turned
- * back to the user's own model while an agent's question is open.
+ * Messages sent to an agent from this device, per item, so the item's
+ * exchange (lib/agent-exchange.ts) shows one the moment it is sent: the
+ * trail's write is fire and forget, and a re-read straight after can miss it.
+ * Memory only; the trail is the record. And, per item, whether the item's box
+ * has been pointed at the user's own model instead of the agent holding it.
  */
 interface AgentAnswersState {
   byItem: Record<string, SentAnswer[]>
@@ -106,20 +124,26 @@ export const useAgentAnswers = create<AgentAnswersState>((set) => ({
     }),
 }))
 
+/** An agent holds this item: it was handed to one, in any state of the work. */
+export function heldByAgent(item: Item | undefined | null): item is Item & { assignee: string } {
+  const held = item as { assignee?: unknown } | null | undefined;
+  return typeof held?.assignee === 'string' && held.assignee.trim() !== '';
+}
+
 /** An agent holds this item and is waiting on the user's answer. */
 export function awaitsAnswer(item: Item | undefined | null): item is Item & { assignee: string } {
-  const held = item as { assignee?: string; aiStatus?: string } | null | undefined
-  return !!held?.assignee && held.aiStatus === 'blocked'
+  return heldByAgent(item) && (item as { aiStatus?: string }).aiStatus === 'blocked';
 }
 
 /**
- * Does the item's box answer the agent rather than the model? While its
- * question is open, by default: the box under an agent's question is where the
- * answer goes (Kirby, 2026-10-15). The user can point it back at their own
- * model for this item (`useAgentAnswers.setToModel`).
+ * Does the item's box talk to the agent rather than the model? Whenever an
+ * agent holds the item, by default: the box under an agent's work is where you
+ * talk to that agent (Kirby, 2026-10-15 for an open question; 2026-11-14 for
+ * every state). The user can point it at their own model for this item
+ * (`useAgentAnswers.setToModel`, the box's who chip).
  */
 export function boxAnswersAgent(item: Item | undefined | null, toModel: Record<string, true>): boolean {
-  return awaitsAnswer(item) && !toModel[item.id]
+  return heldByAgent(item) && !toModel[item.id];
 }
 
 /**
@@ -127,21 +151,34 @@ export function boxAnswersAgent(item: Item | undefined | null, toModel: Record<s
  * model (lib/open-chat.ts `sendFrom` asks this first). True when it did.
  */
 export function routeItemSendToAgent(itemId: string, text: string): boolean {
-  const item = usePlannerStore.getState().items.find((i) => i.id === itemId)
-  if (!boxAnswersAgent(item, useAgentAnswers.getState().toModel)) return false
-  return answerAgentQuestion(item as Item, text)
+  const item = usePlannerStore.getState().items.find((i) => i.id === itemId);
+  if (!boxAnswersAgent(item, useAgentAnswers.getState().toModel)) return false;
+  return messageAgent(item as Item, text);
 }
 
 /**
- * The agent the item's box answers right now, by name ("Claude"), or null when
- * it talks to the model as usual. For the box's placeholder and its "Answering
- * Claude" line (components/ai/agent-exchange.tsx `AgentRouteLine`).
+ * The agent the item's box talks to right now, by name ("Claude"), or null when
+ * it talks to the model as usual. For the box's placeholder and its who chip
+ * (components/ai/answerer-chip.tsx).
  */
 export function useBoxAnswersAgent(itemId: string | null): string | null {
-  const item = usePlannerStore((s) => (itemId ? s.items.find((i) => i.id === itemId) : undefined))
-  const toModel = useAgentAnswers((s) => s.toModel)
-  if (!itemId || !boxAnswersAgent(item, toModel)) return null
-  return assigneeLabel((item as { assignee: string }).assignee)
+  const item = usePlannerStore((s) => (itemId ? s.items.find((i) => i.id === itemId) : undefined));
+  const toModel = useAgentAnswers((s) => s.toModel);
+  if (!itemId || !boxAnswersAgent(item, toModel)) return null;
+  return assigneeLabel((item as { assignee: string }).assignee);
+}
+
+/** The agent holding this item, by name, whichever way the box points; null when none does. */
+export function useItemAgent(itemId: string | null): string | null {
+  return usePlannerStore((s) => {
+    const item = itemId ? s.items.find((i) => i.id === itemId) : undefined;
+    return heldByAgent(item) ? assigneeLabel(item.assignee) : null;
+  });
+}
+
+/** What the box's placeholder says while it talks to an agent. */
+export function agentPlaceholder(name: string, blocked: boolean): string {
+  return blocked ? `Answer ${name}…` : `Message ${name}…`;
 }
 
 /** An agent is waiting on the user's answer on this item (whichever way the box points). */

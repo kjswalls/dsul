@@ -48,6 +48,10 @@ vi.mock('@/lib/supabase-service', () => ({
   resolveUserIdFromApiKey: async () => resolvedUser,
 }));
 
+let replies: { text: string; at: string }[] = [];
+const repliesSince = vi.fn(async () => replies);
+vi.mock('@/lib/agent-replies-server', () => ({ repliesSince: (...a: unknown[]) => repliesSince(...(a as [])) }));
+
 import { POST } from '@/app/api/agent/items/[id]/progress/route';
 
 const report = (body: unknown, auth = 'Bearer dsul_key') =>
@@ -65,6 +69,8 @@ beforeEach(() => {
   updateItem.mockResolvedValue(undefined);
   owner = { user_id: 'u1', type: 'task', assignee: 'openclaw', ai_status_at: STAMP };
   resolvedUser = 'u1';
+  replies = [];
+  repliesSince.mockClear();
 });
 
 describe('the compare-and-set', () => {
@@ -211,5 +217,33 @@ describe('a report the user can read', () => {
   it('takes the same question asked again', async () => {
     owner = { ...owner!, ai_status: 'queued', ai_result: 'Which gym?' };
     expect((await report({ aiStatus: 'blocked', aiResult: 'Which gym?' })).status).toBe(200);
+  });
+});
+
+describe('what the user wrote while the run was going', () => {
+  it('hands the messages back, and puts a finished run back in the queue', async () => {
+    owner = { ...owner!, ai_status: 'working', ai_result: 'Started.' };
+    replies = [{ text: 'Also pilates, please', at: '2026-08-26T10:30:00.000Z' }];
+    const res = await report({ aiStatus: 'done', aiResult: 'Three gyms near you', lastSeenAt: STAMP });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ aiStatus: 'queued', userReplies: replies });
+    expect(repliesSince).toHaveBeenCalledWith(expect.anything(), 'u1', 'item-1', STAMP);
+    expect(updateItem).toHaveBeenLastCalledWith('item-1', 'task', { aiStatus: 'queued' }, 'u1', expect.anything());
+  });
+
+  it('only passes them on for a heartbeat, which keeps the run going', async () => {
+    owner = { ...owner!, ai_status: 'working' };
+    replies = [{ text: 'Also pilates', at: '2026-08-26T10:30:00.000Z' }];
+    const res = await report({ aiStatus: 'working', aiResult: 'Halfway', lastSeenAt: STAMP });
+    expect(await res.json()).toMatchObject({ aiStatus: 'working', userReplies: replies });
+    expect(updateItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks nothing when the run was not going', async () => {
+    owner = { ...owner!, ai_status: 'queued' };
+    const res = await report({ aiStatus: 'working', lastSeenAt: STAMP });
+    expect(await res.json()).toEqual({ itemId: 'item-1', aiStatus: 'working' });
+    expect(repliesSince).not.toHaveBeenCalled();
   });
 });

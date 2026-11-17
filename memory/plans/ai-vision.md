@@ -1463,6 +1463,11 @@ conversation is saved to the account.
   - notes you write on an item's timeline (082): stored, verbatim, until you delete the note or
     its item is purged from the trash. Never sent to a model or to OpenClaw, and not readable by
     agents or MCP.
+  - a message you send an agent (Claude, Cursor) from Ask (089, memory/plans/agent-chat.md):
+    stored twice, verbatim, in your conversation and in that agent's inbox, with the agent's
+    reply, until you delete the conversation. That agent reads only what you sent it, with its
+    own earlier replies in the same conversation; never what you said to your model or to
+    another agent. What the agent keeps on its side, dsul cannot delete.
 - *Not stored:*
   - the planner context sent with each message;
   - your custom instructions;

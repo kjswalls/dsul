@@ -29,6 +29,10 @@ import { chatAssistantName, stripReasoningTags } from '@/lib/chat-utils';
 import { clockTime } from '@/lib/format-chat-timestamp';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import type { Answerer } from '@/lib/conversation-types';
+import { agentOfAnswerer } from '@/lib/agent-messages';
+import { assigneeLabel } from '@/lib/chat-utils';
+import { useAskToStore } from '@/lib/ask-to-store';
+import { useAgentsStore } from '@/lib/agents-store';
 import { parseAnswers, parseOptions, questionStates, stripOptionDirectives } from '@/lib/chat-options';
 
 /**
@@ -67,6 +71,8 @@ import { parseAnswers, parseOptions, questionStates, stripOptionDirectives } fro
 
 /** "Your model answers from here" / "OpenClaw answers from here". */
 export function answererDividerCopy(answerer: Answerer): string {
+  const agent = agentOfAnswerer(answerer);
+  if (agent) return `${assigneeLabel(agent)} answers from here`;
   return answerer === 'openclaw' ? 'OpenClaw answers from here' : 'Your model answers from here';
 }
 
@@ -81,7 +87,9 @@ export function answererDividers(messages: readonly ChatMessage[]): Map<number, 
   let last: Answerer | null = null;
   messages.forEach((m, i) => {
     if (m.role !== 'assistant' || !m.answerer) return;
-    if (last && m.answerer !== last) {
+    // An agent's first reply says who wrote it too: Ask's own answerer is the
+    // one a reply is from unless told otherwise.
+    if ((last && m.answerer !== last) || (!last && m.answerer.startsWith('agent:'))) {
       const prev = messages[i - 1];
       at.set(prev && prev.role === 'user' && prev.id === m.replyTo ? i - 1 : i, m.answerer);
     }
@@ -293,6 +301,7 @@ const UserMessage = memo(function UserMessage({
         {shown}
       </div>
       {notSaved && <NotSaved />}
+      <SentToAgent messageId={m.id} />
       {canEdit && (
         // A tool, so it fades like Copy under a reply; always on a touch screen.
         <button
@@ -308,6 +317,32 @@ const UserMessage = memo(function UserMessage({
     </div>
   );
 });
+
+/**
+ * Under a message written to an agent (lib/agent-chat.ts): who has it and when
+ * it is answered, until the answer lands; or that it never reached the agent.
+ */
+function SentToAgent({ messageId }: { messageId: string }) {
+  const waiting = useAskToStore((s) => s.waiting[messageId]?.agent ?? null);
+  const unsent = useAskToStore((s) => s.unsent[messageId] ?? null);
+  const agents = useAgentsStore((s) => s.agents);
+  if (unsent) {
+    return (
+      <span data-testid="chat-sent-to-agent" data-state="unsent" className="text-2xs text-muted-foreground">
+        Not sent to {assigneeLabel(unsent)}
+      </span>
+    );
+  }
+  if (!waiting) return null;
+  const wakes = agents.some((a) => a.wake && a.assignee.toLowerCase() === waiting.toLowerCase());
+  return (
+    <span data-testid="chat-sent-to-agent" data-state="waiting" className="flex items-center gap-1.5 text-2xs text-muted-foreground">
+      {/* Full strength: the lime never dims, so it waits as one still mark. */}
+      <span aria-hidden className="size-1.5 shrink-0 rounded-[1px] bg-[var(--lime-solid)]" />
+      Sent to {assigneeLabel(waiting)} · {wakes ? 'answers in about a minute' : 'answers when it next runs'}
+    </span>
+  );
+}
 
 /**
  * The latest question, open for editing. Send asks the edited words as a new

@@ -66,13 +66,58 @@ export function parseSearchQuery(raw: string): ParsedSearchQuery {
 export interface SearchResults {
   tasks: Task[];
   habits: HabitItem[];
+  /**
+   * Parent id → the title of the subtask that put the parent in `tasks`, for a
+   * parent found only through a subtask. A parent whose own title (or
+   * container) matched is not listed here.
+   */
+  viaSubtask?: Record<string, string>;
+  /**
+   * Item id → a short excerpt of its notes around the match, for an item found
+   * only through its notes (title, container and subtasks missed). The row
+   * shows it, or a hit on a word the row doesn't display reads as a mistake.
+   */
+  viaNotes?: Record<string, string>;
+}
+
+/** Characters of context either side of a notes match. */
+const SNIPPET_PAD = 28;
+
+/**
+ * About 60 characters of `body` around the first match of `needle` (already
+ * lower-cased), whitespace collapsed, with an ellipsis on each cut side. Null
+ * when there is no match.
+ */
+export function noteSnippet(body: string | undefined, needle: string): string | null {
+  if (!body || !needle) return null;
+  const flat = body.replace(/\s+/g, ' ').trim();
+  const at = flat.toLowerCase().indexOf(needle);
+  if (at < 0) return null;
+  const start = Math.max(0, at - SNIPPET_PAD);
+  const end = Math.min(flat.length, at + needle.length + SNIPPET_PAD);
+  return `${start > 0 ? '…' : ''}${flat.slice(start, end).trim()}${end < flat.length ? '…' : ''}`;
 }
 
 // typeNameOf moved to lib/filters.ts — the filter predicates need the same
 // resolution, and two copies of "which registry type is this row" is exactly
 // how the four filter shapes drifted apart.
 
-export function searchItems(raw: string, tasks: Task[], habits: HabitItem[]): SearchResults {
+/**
+ * `subtasks` are the task-like rows with a `parentItemId`, which the planner's
+ * `tasks` projection leaves out. Search still has to find them: a subtask is
+ * something the user typed and will look for by name, and before this a search
+ * for one came back empty as if it had been deleted. A subtask has no row of its
+ * own anywhere in the app, so a hit answers with its PARENT (once, in the
+ * parent's place among the task results) and `viaSubtask` names the subtask so
+ * the row can say why it is there. The parent must still pass the query's
+ * filters; only the text is matched against the subtask's title.
+ */
+export function searchItems(
+  raw: string,
+  tasks: Task[],
+  habits: HabitItem[],
+  subtasks: readonly Task[] = []
+): SearchResults {
   const query = parseSearchQuery(raw);
   const text = query.text.toLowerCase();
   const hasQuery = text.length > 0 || query.type !== null || query.priority !== null || query.project !== null;
@@ -83,17 +128,44 @@ export function searchItems(raw: string, tasks: Task[], habits: HabitItem[]): Se
     title.toLowerCase().includes(text) ||
     (context?.toLowerCase().includes(text) ?? false);
 
+  const passesTaskFilters = (t: Task) =>
+    (query.type === null || typeNameOf(t) === query.type) &&
+    (query.priority === null || t.priority === query.priority) &&
+    (query.project === null ||
+      (t.project?.toLowerCase() ?? '') === query.project.toLowerCase());
+
+  // First matching subtask per parent, in the order the caller passed them.
+  const subtaskHit = new Map<string, string>();
+  if (text.length > 0) {
+    for (const sub of subtasks) {
+      const parentId = sub.parentItemId;
+      if (!parentId || subtaskHit.has(parentId)) continue;
+      if (sub.title.toLowerCase().includes(text)) subtaskHit.set(parentId, sub.title);
+    }
+  }
+
+  const viaSubtask: Record<string, string> = {};
+  const viaNotes: Record<string, string> = {};
+  /** Last resort for a row nothing else matched: its notes. */
+  const matchNotes = (id: string, notes: string | undefined) => {
+    const snippet = noteSnippet(notes, text);
+    if (snippet === null) return false;
+    viaNotes[id] = snippet;
+    return true;
+  };
   const matchedTasks =
     query.type === 'habit'
       ? []
-      : tasks.filter(
-          (t) =>
-            (query.type === null || typeNameOf(t) === query.type) &&
-            matchText(t.title, t.project) &&
-            (query.priority === null || t.priority === query.priority) &&
-            (query.project === null ||
-              (t.project?.toLowerCase() ?? '') === query.project.toLowerCase())
-        );
+      : tasks.filter((t) => {
+          if (!passesTaskFilters(t)) return false;
+          if (matchText(t.title, t.project)) return true;
+          const hit = subtaskHit.get(t.id);
+          if (hit !== undefined) {
+            viaSubtask[t.id] = hit;
+            return true;
+          }
+          return matchNotes(t.id, t.notes);
+        });
 
   /**
    * A QUERY is not a view filter, so the pass-through rule lands differently
@@ -116,12 +188,74 @@ export function searchItems(raw: string, tasks: Task[], habits: HabitItem[]): Se
       ? []
       : habits.filter(
           (h) =>
-            matchText(h.title, h.project) &&
             (query.project === null ||
-              passesContainerFilter(h, [containerRef('project', query.project)]))
+              passesContainerFilter(h, [containerRef('project', query.project)])) &&
+            (matchText(h.title, h.project) || matchNotes(h.id, h.notes))
         );
 
-  return { tasks: matchedTasks, habits: matchedHabits };
+  const results: SearchResults = { tasks: matchedTasks, habits: matchedHabits };
+  if (Object.keys(viaSubtask).length > 0) results.viaSubtask = viaSubtask;
+  if (Object.keys(viaNotes).length > 0) results.viaNotes = viaNotes;
+  return results;
+}
+
+/** A project, routine or season, as a search row. */
+export interface ContainerHit {
+  kind: 'project' | 'routine' | 'season';
+  id: string;
+  name: string;
+  /** The container's glyph token or emoji, for CategoryIcon. */
+  glyph?: string;
+}
+
+/** Containers shown at most, across the three kinds: a jump, not a browse. */
+const CONTAINER_LIMIT = 4;
+
+/**
+ * Projects, routines and seasons by NAME, text-only like searchGoals and for
+ * the same reason: the grammar's filters are questions about items. A
+ * `project:Work` query still finds the items filed under Work, not the project.
+ * Name hits that START with the text come first, so "work" puts Work above
+ * Homework.
+ */
+export function searchContainers(
+  raw: string,
+  lists: {
+    projects: readonly { id: string; name: string; emoji?: string }[];
+    routines: readonly { id: string; name: string; icon?: string }[];
+    seasons: readonly { id: string; name: string; icon?: string }[];
+  }
+): ContainerHit[] {
+  const text = parseSearchQuery(raw).text.trim().toLowerCase();
+  if (!text) return [];
+  const hits: (ContainerHit & { rank: number; seq: number })[] = [];
+  let seq = 0;
+  const take = (kind: ContainerHit['kind'], id: string, name: string, glyph?: string) => {
+    const at = name.toLowerCase().indexOf(text);
+    if (at >= 0) hits.push({ kind, id, name, glyph, rank: at === 0 ? 0 : 1, seq: seq++ });
+  };
+  for (const p of lists.projects) take('project', p.id, p.name, p.emoji);
+  for (const r of lists.routines) take('routine', r.id, r.name, r.icon);
+  for (const s of lists.seasons) take('season', s.id, s.name, s.icon);
+  return hits
+    .sort((a, b) => a.rank - b.rank || a.seq - b.seq)
+    .slice(0, CONTAINER_LIMIT)
+    .map(({ kind, id, name, glyph }) => (glyph === undefined ? { kind, id, name } : { kind, id, name, glyph }));
+}
+
+/** Bin rows shown at most. The bin is the last place to look, not the first. */
+const BIN_LIMIT = 3;
+
+/**
+ * What's in the bin, by name, text-only. Fed from a fetch the omnibar makes
+ * itself (the bin must never enter the planner store, see
+ * components/planner/organize/sections/trash.tsx), newest-deleted first as
+ * listDeleted returns it.
+ */
+export function searchBin<T extends { name: string }>(raw: string, entries: readonly T[]): T[] {
+  const text = parseSearchQuery(raw).text.trim().toLowerCase();
+  if (!text) return [];
+  return entries.filter((e) => e.name.toLowerCase().includes(text)).slice(0, BIN_LIMIT);
 }
 
 export interface SearchGroup {

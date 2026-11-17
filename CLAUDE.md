@@ -498,6 +498,10 @@ the capability gate, delegation to OpenClaw, saved conversations and their priva
 statement, and which earlier decisions steps 1 and 2a superseded. Read it before touching
 `lib/ai-*`, `lib/ai-server/**`, `app/api/ai/**`, `app/api/chat`, the AI settings pane, the
 right rail, or anything under `components/ai/`.
+[agent-chat.md](memory/plans/agent-chat.md) holds talking to an agent from any chat box: the
+agent inbox (migration 089, `agent_messages`, `dsul_my_messages`/`dsul_reply`) and the one rule
+that keeps saved conversations unreadable to agents. Read it before letting any agent route read
+anything from a conversation.
 [openclaw-browser-chat.md](memory/plans/openclaw-browser-chat.md) holds Ask's chat with OpenClaw straight from the
 browser (`lib/openclaw-browser/`, `lib/openclaw-browser-store.ts`, transport `'browser'`): a paired device key in
 IndexedDB, the shared token used once and never stored, and what an approved browser can and can't do, measured

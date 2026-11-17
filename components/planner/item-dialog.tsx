@@ -11,6 +11,7 @@ import {
 } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useBraindumpArrows } from '@/hooks/use-braindump-arrows';
 import { addDays, format, parseISO, startOfDay } from 'date-fns';
 import {
   CalendarClock,
@@ -24,7 +25,6 @@ import {
   Pause as PauseIcon,
   Play as PlayIcon,
   AlignLeft,
-  ArrowLeftToLine,
   ChevronDown,
   History as HistoryIcon,
   Maximize2,
@@ -92,7 +92,8 @@ import { ItemHistory } from '@/components/planner/item-history';
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { PrepStatus } from '@/components/ai/ai-work-badge';
-import { AgentStatus, ItemBoxAsks, ItemDetailSections } from '@/components/planner/item-detail-sections';
+import { AgentStatus, ItemDetailSections } from '@/components/planner/item-detail-sections';
+import { ItemBoxAsks } from '@/components/planner/item-box-asks';
 import { StreakChip } from '@/components/planner/streak-chip';
 import { RailHeader } from '@/components/ai/rail/rail-header';
 import { BoundComposer } from '@/components/ai/bound-composer';
@@ -741,8 +742,9 @@ function FoldRegion({
         active && (open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')
       )}
     >
-      {/* -mx-1/px-1: room for a focus ring at the clipped edge. */}
-      <div className={active ? '-mx-1 min-h-0 overflow-hidden px-1' : undefined} inert={!open}>
+      {/* -mx-5/px-5: room at the clipped edges for a focus ring, and for the
+          subtask rows' drag grip, which sits in the rail body's 20px gutter. */}
+      <div className={active ? '-mx-5 min-h-0 overflow-hidden px-5' : undefined} inert={!open}>
         {/* The Lift: the details rise a little as their rows close. */}
         <div
           className={cn(
@@ -885,6 +887,7 @@ function ItemDialogInner({
     addGoal,
   } = usePlannerStore();
   const away = useAwayStore((s) => s.periods);
+  const { toBraindump } = useBraindumpArrows();
   /**
    * The two extension gates this dialog answers to.
    *
@@ -3176,7 +3179,7 @@ function ItemDialogInner({
         label: nextDayLabel(paneNextDay, paneToday),
         detail: formatTargetDay(paneNextDay),
       });
-    if (canPaneBraindump) paneActions.push({ id: 'item-dialog-unschedule', icon: ArrowLeftToLine, label: 'Move to Braindump' });
+    if (canPaneBraindump) paneActions.push({ id: 'item-dialog-unschedule', icon: toBraindump, label: 'Move to Braindump' });
     if (canSkipToday) paneActions.push({ id: 'item-dialog-skip', icon: SkipForward, label: 'Skip today' });
     // Pause lives here too, beside the other "not now" verbs. Never the
     // destructive tone: setting something aside is a plan, not a failure.

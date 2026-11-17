@@ -3,7 +3,10 @@
 import { GhostFold } from '@/components/planner/ghost-fold';
 import { useDroppable } from '@dnd-kit/core';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { BucketCard, bucketGap } from '@/components/primitives/bucket-card';
+import { BUCKET_META, BucketCard, bucketGap } from '@/components/primitives/bucket-card';
+import { AddRow } from '@/components/planner/slot-composer';
+import { rowScope } from '@/lib/slot-add';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow } from '@/components/primitives/task-row';
 import { ProjectBlock } from '@/components/views/project-block';
@@ -205,6 +208,10 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
   const timedHabits = habits.filter((h) => h.startTime);
 
   const totalItems = tasks.length + habits.length;
+  // Each card ends in its own add row on a pointer surface (the quick-add
+  // round), in place of the caption's +; the phone keeps the + and its
+  // capture bar.
+  const addHere = !useIsMobile();
   const hasUntimed = untimedTasks.length > 0 || untimedHabits.length > 0;
   const hasTimed = timedTasks.length > 0 || timedHabits.length > 0;
   const bucketProjects = recurringProjects.filter((p) => p.timeBucket === bucket);
@@ -278,11 +285,12 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
       <BucketCard
         bucket={bucket}
         count={totalItems}
-        onAdd={(b, type) => openAddDialog(type, b, usePlannerStore.getState().selectedDate)}
+        onAdd={addHere ? undefined : (b, type) => openAddDialog(type, b, usePlannerStore.getState().selectedDate)}
         isCurrent={isCurrent}
         isDropTarget={isOver || isOverUnscheduled}
         dragging={dragging}
-        isEmpty={totalItems === 0 && bucketProjects.length === 0}
+        // With an add row an empty card is still a card: the row is its body.
+        isEmpty={!addHere && totalItems === 0 && bucketProjects.length === 0}
         variant={variant}
         // What a shut card lists in its caption, in the order the open card
         // draws it: untimed rows (grouped and sunk), then project blocks, then
@@ -380,12 +388,28 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
           </div>
         )}
 
-        {/* Completely empty and not dragging renders NOTHING — BucketCard
-            collapses to its 22px caption. The serif "Nothing here yet" line
-            that used to live here cost ~100px per empty bucket, and four empty
-            buckets is a common evening; the column's vertical rhythm is now a
-            readout of the shape of the day instead of four equal boxes. The
-            add affordance is still in the caption, and a drag opens the slot. */}
+        {/* The add row, where the next row will land. Its space is always
+            kept so nothing moves, but it is drawn only on the card under the
+            pointer, while it has focus or words, and always on an empty card
+            (Kirby's pick B, 2026-11-16). Hidden under a drag, where the card
+            is a drop target. On the phone an empty card still collapses to
+            its caption, whose + is the way in. */}
+        {addHere && !dragging && (
+          <div
+            data-bucket-add=""
+            className={cn(
+              'transition-opacity duration-150',
+              (totalItems > 0 || bucketProjects.length > 0) &&
+                'opacity-0 group-hover/bucket:opacity-100 focus-within:opacity-100 focus-within:transition-none has-[input:not(:placeholder-shown)]:opacity-100'
+            )}
+          >
+            <AddRow
+              persistent
+              target={{ kind: 'row', scope: rowScope(`bucket-${bucket}`, dateStr), dateStr, bucket }}
+              placeholder={`Add to ${BUCKET_META[bucket].label}`}
+            />
+          </div>
+        )}
       </BucketCard>
     </div>
   );

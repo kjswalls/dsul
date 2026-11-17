@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Plus, SlashSquare, X,
-  Target, Search, CornerDownLeft, Check,
+  Target, Search, CornerDownLeft, Check, Trash2, MessageSquare,
 } from 'lucide-react';
 import { Command as CommandPrimitive } from 'cmdk';
 import {
@@ -22,10 +22,23 @@ import { captureTask } from '@/lib/held-captures';
 import { useUIStore, openEditFor, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import { isParagraphPaste, splitterFor } from '@/lib/braindump-split';
-import { askFromCommandBar, openSetup } from '@/lib/open-chat';
+import { askFromCommandBar, openConversation, openSetup } from '@/lib/open-chat';
 import { keepQuestion } from '@/lib/ask-pending';
 import { getAICapabilities, useAICapabilities } from '@/lib/ai-connection-store';
-import { groupResults, searchGoals, searchItems, type SearchGroup } from '@/lib/search';
+import {
+  groupResults,
+  searchBin,
+  searchContainers,
+  searchGoals,
+  searchItems,
+  type ContainerHit,
+  type SearchGroup,
+} from '@/lib/search';
+import { listDeleted, type TrashEntry } from '@/lib/db';
+import { useOpenConsole } from '@/lib/console-door';
+import { useConversationsStore } from '@/lib/conversations-store';
+import { CHAT_LIMITS } from '@/lib/conversation-types';
+import type { Task } from '@/lib/planner-types';
 import { sortGoalsForDisplay } from '@/lib/goals';
 import { useGoalsEnabled } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
@@ -57,6 +70,24 @@ import {
 import { useCommandUsageStore } from '@/lib/command-usage-store';
 import { useShortcutBindings } from '@/lib/keyboard-shortcuts-store';
 import { useCommandContext } from '@/hooks/use-command-context';
+import { useAskToStore } from '@/lib/ask-to-store';
+import { useAgentsStore } from '@/lib/agents-store';
+
+/** The kind word beside a container search row. */
+const CONTAINER_KIND_WORD: Record<ContainerHit['kind'], string> = {
+  project: 'Project',
+  routine: 'Routine',
+  season: 'Season',
+};
+
+/** The kind word beside a bin search row. */
+const BIN_KIND_WORD: Record<TrashEntry['kind'], string> = {
+  item: 'Item',
+  project: 'Project',
+  routine: 'Routine',
+  season: 'Season',
+  goal: 'Goal',
+};
 
 /**
  * The omnibar: search, quick-add, /commands and chat from one input. Prefixes:
@@ -187,9 +218,12 @@ export function Omnibar({
 } = {}) {
   const isLauncher = variant === 'launcher';
   const {
+    items: allItems,
     tasks,
     habits,
     userTimezone,
+    userId,
+    projects,
     routines,
     seasons,
     goals,
@@ -281,7 +315,13 @@ export function Omnibar({
   // (`askInvite`), `?` is setup's door instead, and Ctrl+K's AI row is "Set
   // up AI" (or "Fix AI" while a saved key needs attention, `askFix`).
   const { canChat, answererName, askInvite, askFix } = useAICapabilities();
-  const askLabel = `Ask ${answererName ?? 'AI'}`;
+  // `?` starts from Ask home, so it writes to whoever home's To chip names
+  // (lib/ask-to-store.ts): "Ask Claude" when that is a connected app.
+  const homeTo = useAskToStore((st) => st.home);
+  const homeToName = useAgentsStore((st) =>
+    homeTo ? (st.agents.find((a) => a.assignee.toLowerCase() === homeTo.toLowerCase())?.name ?? null) : null
+  );
+  const askLabel = `Ask ${homeToName ?? answererName ?? 'AI'}`;
   const usage = useCommandUsageStore((s) => s.usage);
   const bindings = useShortcutBindings();
 
@@ -465,10 +505,95 @@ export function Omnibar({
   }, [goalsOn, query, goals, activeCommand, isCommandMode, isAddMode, isQuestionMode]);
 
   /** Search hits as one section per item type; row caps live in groupResults. */
-  const results = useMemo<SearchGroup[]>(() => {
-    if (activeCommand || isCommandMode || isAddMode || isQuestionMode || !trimmed) return [];
-    return groupResults(searchItems(trimmed, tasks, habits));
-  }, [trimmed, activeCommand, isCommandMode, isAddMode, isQuestionMode, tasks, habits]);
+  // Subtasks sit outside the `tasks` projection, so search is handed them
+  // separately and answers a hit with its parent (lib/search.ts).
+  const subtasks = useMemo(
+    () => allItems.filter((i) => i.type !== 'habit' && !!i.parentItemId) as unknown as Task[],
+    [allItems]
+  );
+  const searchResults = useMemo(() => {
+    if (activeCommand || isCommandMode || isAddMode || isQuestionMode || !trimmed) return null;
+    return searchItems(trimmed, tasks, habits, subtasks);
+  }, [trimmed, activeCommand, isCommandMode, isAddMode, isQuestionMode, tasks, habits, subtasks]);
+  const results = useMemo<SearchGroup[]>(
+    () => (searchResults ? groupResults(searchResults) : []),
+    [searchResults]
+  );
+  const viaSubtask = searchResults?.viaSubtask;
+  const viaNotes = searchResults?.viaNotes;
+
+  /** Plain text search, no prefix and no picker: what the sections below answer. */
+  const plainSearch =
+    !activeCommand && !isCommandMode && !isAddMode && !isQuestionMode && !!trimmed;
+
+  /** Projects, routines and seasons by name; each opens its own page. */
+  const containerHits = useMemo<ContainerHit[]>(
+    () => (plainSearch ? searchContainers(trimmed, { projects, routines, seasons }) : []),
+    [plainSearch, trimmed, projects, routines, seasons]
+  );
+
+  /**
+   * The bin (Trash in Organize), fetched once per search: when text first
+   * goes in, kept while it is edited, dropped when the box empties. Local on purpose: the bin must never enter the
+   * planner store (components/planner/organize/sections/trash.tsx). Opening a
+   * result goes to Trash in Organize, which re-reads it, so a stale row here
+   * costs at most one look at a thing already restored.
+   */
+  // Not gated on Organize: Trash rides no extension (console-rail.tsx), since
+  // deleting isn't gated either and this is the only way back.
+  const openConsoleAt = useOpenConsole();
+  const [bin, setBin] = useState<{ userId: string; entries: TrashEntry[] } | null>(null);
+  // Dropped when the box empties, so something deleted a minute ago is
+  // findable next time. Adjusted during render (React's "state from a prop
+  // change" pattern), not in an effect.
+  const [binSession, setBinSession] = useState(plainSearch);
+  if (binSession !== plainSearch) {
+    setBinSession(plainSearch);
+    if (!plainSearch) setBin(null);
+  }
+  const binWanted = plainSearch && !!userId;
+  const binFetching = useRef<string | null>(null);
+  useEffect(() => {
+    if (!binWanted || !userId) return;
+    if (bin?.userId === userId || binFetching.current === userId) return;
+    binFetching.current = userId;
+    listDeleted(userId)
+      .then((entries) => {
+        // Dropped if the account changed while it was out.
+        if (usePlannerStore.getState().userId === userId) setBin({ userId, entries });
+      })
+      // Quiet on failure: Trash itself says so. Here a miss only means no
+      // bin rows, and the next search tries again.
+      .catch((error) => console.error('omnibar bin fetch failed', error))
+      .finally(() => {
+        if (binFetching.current === userId) binFetching.current = null;
+      });
+  }, [binWanted, userId, bin]);
+  const binHits = useMemo(
+    () => (binWanted && bin?.userId === userId ? searchBin(trimmed, bin.entries) : []),
+    [binWanted, bin, userId, trimmed]
+  );
+
+  /**
+   * Saved conversations, by title or by what was said, from the server's own
+   * search (the one Ask's history uses, in a slot of its own). Debounced like
+   * Ask's; nothing is asked until the text is long enough to be a search.
+   */
+  const runOmniSearch = useConversationsStore((s) => s.runOmniSearch);
+  const omniSearch = useConversationsStore((s) => s.omniSearch);
+  const chatQuery = plainSearch && canChat ? trimmed : '';
+  useEffect(() => {
+    if (Array.from(chatQuery).length < CHAT_LIMITS.searchMin) return;
+    const timer = setTimeout(() => runOmniSearch(chatQuery), 250);
+    return () => clearTimeout(timer);
+  }, [chatQuery, runOmniSearch]);
+  const chatHits = useMemo(
+    () =>
+      chatQuery && omniSearch.status === 'done' && omniSearch.q === Array.from(chatQuery).slice(0, CHAT_LIMITS.searchMax).join('')
+        ? omniSearch.hits.slice(0, 3)
+        : [],
+    [chatQuery, omniSearch]
+  );
 
   /**
    * Every command the typed free text reaches, ranked and uncapped. The flat
@@ -1186,6 +1311,36 @@ export function Omnibar({
                     </CommandGroup>
                   )}
 
+                  {/* Projects, routines and seasons by name, one section: a
+                      jump to the container's page, four at most. */}
+                  {containerHits.length > 0 && (
+                    <CommandGroup heading="Projects & routines">
+                      {containerHits.map((hit) => (
+                        <CommandItem
+                          key={`${hit.kind}-${hit.id}`}
+                          value={`container-${hit.kind}-${hit.id}`}
+                          data-testid="omnibar-container-result"
+                          data-container-kind={hit.kind}
+                          className="group"
+                          onSelect={() => {
+                            closeAndClear();
+                            closeLauncher();
+                            router.push(`/${hit.kind}/${hit.id}`);
+                          }}
+                        >
+                          <CategoryIcon glyph={hit.glyph} name={hit.name} className="h-4 w-4" />
+                          <span className="truncate">{hit.name}</span>
+                          {trailing(
+                            'open',
+                            <span className="text-muted-foreground text-[11px]">
+                              {CONTAINER_KIND_WORD[hit.kind]}
+                            </span>,
+                          )}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
+
                   {/* One section per item type, in registry order. A custom type
                       gets its own heading and its own glyph instead of being
                       filed under Tasks because it rides the task pipeline. */}
@@ -1250,6 +1405,24 @@ export function Omnibar({
                             >
                               {item.title}
                             </span>
+                            {/* Found through a subtask: name it, or the row
+                                reads as a miss. */}
+                            {viaSubtask?.[item.id] && (
+                              <span
+                                data-testid="omnibar-result-subtask"
+                                className="min-w-0 shrink truncate text-xs text-muted-foreground"
+                              >
+                                › {viaSubtask[item.id]}
+                              </span>
+                            )}
+                            {viaNotes?.[item.id] && (
+                              <span
+                                data-testid="omnibar-result-notes"
+                                className="min-w-0 shrink truncate text-xs text-muted-foreground"
+                              >
+                                {viaNotes[item.id]}
+                              </span>
+                            )}
                             {/* Short on purpose: the panel is ~320px and the
                                 title truncates against it. */}
                             {trailing('open', paused && <CommandShortcut>Paused</CommandShortcut>)}
@@ -1258,6 +1431,67 @@ export function Omnibar({
                       })}
                     </CommandGroup>
                   ))}
+
+                  {/* Saved conversations, matched by the server on the title
+                      or what was said. Only with AI that can chat, since that
+                      is the only way to open one. */}
+                  {chatHits.length > 0 && (
+                    <CommandGroup heading="Chats">
+                      {chatHits.map((hit) => (
+                        <CommandItem
+                          key={hit.id}
+                          value={`chat-${hit.id}`}
+                          data-testid="omnibar-chat-result"
+                          className="group"
+                          onSelect={() => {
+                            closeAndClear();
+                            closeLauncher();
+                            openConversation(hit.id, ctx.isMobile);
+                          }}
+                        >
+                          <MessageSquare className="size-4 shrink-0 text-muted-foreground/50" />
+                          <span className="truncate">{hit.itemTitle ?? hit.title}</span>
+                          {hit.snippet && (
+                            <span className="min-w-0 shrink truncate text-xs text-muted-foreground">
+                              {hit.snippet}
+                            </span>
+                          )}
+                          {trailing('open')}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
+
+                  {/* The bin, last and quiet: muted rows that open the thing in
+                      Organize's Trash, where its preview and Restore live. Never
+                      restored from here, so a look costs nothing. */}
+                  {binHits.length > 0 && (
+                    <CommandGroup heading="In the trash">
+                      {binHits.map((entry) => (
+                        <CommandItem
+                          key={`${entry.kind}-${entry.id}`}
+                          value={`bin-${entry.kind}-${entry.id}`}
+                          data-testid="omnibar-bin-result"
+                          data-trash-kind={entry.kind}
+                          className="group text-muted-foreground"
+                          onSelect={() => {
+                            closeAndClear();
+                            closeLauncher();
+                            openConsoleAt({ section: 'trash', focusId: `${entry.kind}:${entry.id}` });
+                          }}
+                        >
+                          <Trash2 className="size-4 shrink-0 text-muted-foreground/50" />
+                          <span className="truncate">{entry.name}</span>
+                          {trailing(
+                            'open',
+                            <span className="text-muted-foreground text-[11px]">
+                              {BIN_KIND_WORD[entry.kind]}
+                            </span>,
+                          )}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
 
                   {/* Recents on top when they're the point: /command mode, and
                       the launcher's resting root (command-first — Enter runs the

@@ -38,7 +38,7 @@ export function ModelPicker({
 }: {
   disabled?: boolean;
   /**
-   * 'chat' sits quietly in the chat box's foot rail: no wash until hovered,
+   * 'chat' sits quietly at the right of the chat box's foot rail: no wash until hovered,
    * and a refused pick is a toast, since a line under it would shove the box.
    */
   variant?: 'settings' | 'chat';
@@ -86,13 +86,13 @@ export function ModelPicker({
 
   const chat = variant === 'chat';
   return (
-    <div className={cn('flex min-w-0 flex-col gap-1', chat ? 'items-start' : 'items-end')}>
+    <div className="flex min-w-0 flex-col items-end gap-1">
       <PropertyChip
         label="Model"
         ariaLabel={current ? `Model: ${shown}` : 'Choose a model'}
         value={shown}
         alwaysChevron
-        align={chat ? 'start' : 'end'}
+        align="end"
         disabled={disabled || busy === 'model' || !model}
         defaultOpen={defaultOpen}
         testId={chat ? 'chat-model-chip' : 'model-picker'}

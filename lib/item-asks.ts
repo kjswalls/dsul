@@ -102,7 +102,7 @@ function breakable(item: Item): boolean {
   return getItemTypeConfig(itemTypeName(item)).subtasks && !isSubtask(item) && !isFinished(item);
 }
 
-/** A streak-counting type (habits) gets "Make this easier to keep" instead of the task-shaped asks. */
+/** A streak-counting type (habits) gets "Make this easier to do consistently" instead of the task-shaped asks. */
 function keepsStreak(item: Item): boolean {
   return getItemTypeConfig(itemTypeName(item)).counters.streak;
 }
@@ -117,7 +117,7 @@ export const ITEM_ASKS: Record<ItemAskId, ItemAsk> = {
   breakdown: {
     id: 'breakdown',
     kind: 'breakdown',
-    label: () => 'Break it down',
+    label: () => 'Break this down into steps',
     eligible: (item, ctx) => canBreakDown(item, ctx.canPropose),
   },
   start: {
@@ -164,9 +164,9 @@ export const ITEM_ASKS: Record<ItemAskId, ItemAsk> = {
   keep: {
     id: 'keep',
     kind: 'send',
-    label: () => 'Make this easier to keep',
+    label: () => 'Make this easier to do consistently',
     eligible: (item, ctx) => ctx.canChat && keepsStreak(item),
-    prompt: () => 'Help me make this easier to keep up. Could it be smaller, or tied to something I already do?',
+    prompt: () => 'Help me make this easier to do consistently. Could it be smaller, or tied to something I already do?',
   },
 };
 

@@ -4,7 +4,6 @@ import { useMemo, useState, type ReactElement } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
-  ArrowLeftToLine,
   CalendarDays,
   Check,
   Maximize2,
@@ -34,6 +33,7 @@ import { useUIStore } from '@/lib/ui-store';
 import { useToday, parseDay } from '@/lib/collections';
 import { milestoneItemIds } from '@/lib/goals';
 import { toDateStr } from '@/lib/recurrence';
+import { useBraindumpArrows } from '@/hooks/use-braindump-arrows';
 import { ITEM_VERBS, type VerbContext, type VerbId } from '@/lib/item-verbs';
 import { addDaysStr, weekStartOf, type OccurrenceState } from '@/lib/container-schedule';
 import { ItemContextMenu, ItemMenuRow } from '@/components/planner/item-context-menu';
@@ -218,6 +218,7 @@ function MemberCapsule({
 }) {
   const v = useVerbs(item, todayState, todayStr, milestoneIds);
   const [picking, setPicking] = useState(false);
+  const { toBraindump } = useBraindumpArrows();
   const any = v.tick || v.skip || v.pause || v.resume || v.nextDay || v.reschedule || v.braindump;
   if (!any) return null;
   return (
@@ -260,7 +261,7 @@ function MemberCapsule({
         {v.braindump && (
           <>
             <RowControlDivider />
-            <RowControl icon={ArrowLeftToLine} label="Move to Braindump" testId="member-braindump" onClick={v.braindump} />
+            <RowControl icon={toBraindump} label="Move to Braindump" testId="member-braindump" onClick={v.braindump} />
           </>
         )}
       </RowControlGroup>
@@ -288,6 +289,7 @@ function MemberMenu({
   milestoneIds: ReadonlySet<string>;
 }) {
   const v = useVerbs(item, todayState, todayStr, milestoneIds, onRemove);
+  const { toBraindump: ToBraindump } = useBraindumpArrows();
   const nextWeek = addDaysStr(weekStartOf(todayStr, weekStartDay), 7);
   const [open, setOpen] = useState(false);
   return (
@@ -362,7 +364,7 @@ function MemberMenu({
         )}
         {v.braindump && (
           <DropdownMenuItem onSelect={v.braindump} data-testid="member-menu-braindump">
-            <ArrowLeftToLine className="size-3.5" />
+            <ToBraindump className="size-3.5" />
             Move to Braindump
           </DropdownMenuItem>
         )}
