@@ -714,6 +714,7 @@ export function OnboardingTour({ userId, onComplete, onExpandChat, onCollapseCha
             <div className="w-full flex items-center justify-between">
               <SkipButton onSkip={handleSkip} />
               <Button
+                variant="key"
                 className="gap-2"
                 onClick={() => setStep(2)}
               >
@@ -768,6 +769,7 @@ export function OnboardingTour({ userId, onComplete, onExpandChat, onCollapseCha
                   Skip
                 </Button>
                 <Button
+                  variant="key"
                   size="sm"
                   onClick={handleCreateTask}
                   disabled={isCreatingTask}
@@ -828,7 +830,7 @@ export function OnboardingTour({ userId, onComplete, onExpandChat, onCollapseCha
               <p className="text-xs text-muted-foreground leading-relaxed">{mc.description}</p>
               <div className="flex items-center justify-between">
                 <BackButton onBack={handleBack} />
-                <Button size="sm" onClick={handleNext}>
+                <Button variant="key" size="sm" onClick={handleNext}>
                   {mobileSubStep === 'B' ? lastLabel : 'Next'}
                 </Button>
               </div>
@@ -898,7 +900,7 @@ export function OnboardingTour({ userId, onComplete, onExpandChat, onCollapseCha
             <p className="text-xs text-muted-foreground leading-relaxed">{current.description}</p>
             <div className="flex items-center justify-between">
               <BackButton onBack={handleBack} />
-              <Button size="sm" onClick={handleNext}>
+              <Button variant="key" size="sm" onClick={handleNext}>
                 {desktopSubStep === 'C' ? lastLabel : 'Next'}
               </Button>
             </div>
@@ -994,12 +996,12 @@ export function OnboardingTour({ userId, onComplete, onExpandChat, onCollapseCha
           </div>
           <div className="shrink-0 flex flex-col gap-3">
             <div className="flex flex-col gap-2">
-              <Button size="sm" className="w-full" onClick={handleSetUpAI}>
+              <Button variant="key" size="sm" className="w-full" onClick={handleSetUpAI}>
                 Set up AI
               </Button>
               <div className="grid grid-cols-2 gap-2">
                 <Button
-                  variant="outline"
+                  variant="words"
                   size="sm"
                   onClick={() => void finish(isMobile ? TOUR_LATER_PHONE : TOUR_LATER_DESKTOP)}
                 >
@@ -1055,7 +1057,7 @@ export function OnboardingTour({ userId, onComplete, onExpandChat, onCollapseCha
       <>
         <div className="flex items-center justify-between">
           <BackButton onBack={handleBack} />
-          <Button size="sm" onClick={handleComplete}>
+          <Button variant="key" size="sm" onClick={handleComplete}>
             Got it →
           </Button>
         </div>

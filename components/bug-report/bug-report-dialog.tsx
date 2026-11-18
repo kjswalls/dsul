@@ -162,7 +162,7 @@ export function BugReportDialog({ open, onOpenChange }: BugReportDialogProps) {
               </button>
             )}
           </div>
-          <Button variant="outline" size="sm" onClick={() => handleOpenChange(false)}>
+          <Button variant="words" size="sm" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
           <Button size="sm" onClick={handleSubmit} disabled={!title.trim() || loading}>

@@ -418,6 +418,7 @@ export function DoStuffRow({ rows }: { rows: readonly RowItem[] }) {
       </span>
       {pending > 0 && (
         <Button
+          variant="key"
           size="sm"
           onClick={() => makeItSo({ ...commit, to: plan.target?.assignee })}
           data-testid="do-stuff-make-it-so"

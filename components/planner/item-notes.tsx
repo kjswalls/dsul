@@ -256,7 +256,7 @@ export function NoteEditor({ itemId, note, onDone }: { itemId: string; note: Ite
         >
           {busy ? 'Saving…' : 'Save'}
         </Button>
-        <Button size="sm" variant="ghost" className="h-7 px-3 text-xs" onClick={cancel}>
+        <Button size="sm" variant="words" className="h-7 px-3 text-xs" onClick={cancel}>
           Cancel
         </Button>
       </div>

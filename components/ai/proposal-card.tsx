@@ -174,7 +174,7 @@ export function ProposalCard({
               state that can last longest and that greys out the AI buttons
               everywhere else. Dismissing bumps the store's generation, so the
               reply cannot land after the user has walked away from it. */}
-          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={dismiss}>
+          <Button variant="words" size="sm" className="h-7 px-2 text-xs" onClick={dismiss}>
             Cancel
           </Button>
         </div>
@@ -367,7 +367,7 @@ export function ProposalCard({
         )}
         {offerFrom && canChat && <SomethingElse conversationId={offerFrom} onSent={dismiss} />}
         <Button
-          variant="ghost"
+          variant="words"
           size="sm"
           className="h-7 px-2 text-xs text-muted-foreground"
           onClick={dismiss}

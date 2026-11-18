@@ -404,7 +404,7 @@ function EndOfWalk() {
         </ul>
         <div className="mt-2 flex items-center gap-3 border-t border-border pt-3">
           {pending > 0 ? (
-            <Button size="sm" onClick={finishRun} data-testid="do-stuff-receipt-commit" aria-keyshortcuts="Enter">
+            <Button variant="key" size="sm" onClick={finishRun} data-testid="do-stuff-receipt-commit" aria-keyshortcuts="Enter">
               make it so
               <ButtonKey />
             </Button>

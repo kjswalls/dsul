@@ -425,7 +425,7 @@ export function RecipeBuilder({
         <Button type="button" size="sm" data-testid="recipe-save" disabled={saving} onClick={() => void save()}>
           Save
         </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+        <Button type="button" size="sm" variant="words" onClick={onCancel}>
           Cancel
         </Button>
       </div>

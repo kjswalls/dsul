@@ -9,21 +9,33 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        // Keycaps (Kirby, 2026-11-05: "F" in the keycap round). Every button
-        // that carries a face is the same paper key as the sidebar's Ctrl K
-        // launcher: a bevelled face, a hairline rim, a 2px skirt it sinks into
-        // when pressed. The shape, the skirt and the press live in globals.css
-        // under `.key`; the face colour is a background-color in the
-        // components layer, so a caller's bg-* still wins it.
+        // Two kinds of key (Kirby, 2026-11-18: "C Flat key" in the button
+        // audit, mocks at /mnt/project-files/button-audit/). The shape lives in
+        // globals.css under `.key`; the face colour is a background-color in
+        // the components layer, so a caller's bg-* still wins it.
         //
-        // The main button stands on a lime skirt: the raw accent as a flat
-        // edge, never a glow (a lit rim is AI's alone) and never faded. That
-        // skirt is its only lime; its ButtonKey goes neutral.
-        default: 'key key-main font-semibold text-foreground',
-        // Red words on a red-rimmed key with a faint wash.
-        destructive: 'key key-danger text-destructive-text',
-        outline: 'key text-foreground',
-        secondary: 'key text-secondary-foreground',
+        // `key` is the raised lime keycap (Kirby's "F", 2026-11-05): a bevelled
+        // paper face on a lime skirt that rises under the pointer and sinks
+        // when pressed. It is for the few actions that make or start
+        // something, where Enter presses it, one on screen at a time: Add in
+        // the add dialog, bulk add, a new container, sign in, do stuff's make
+        // it so, the tour's Next, Ask's send. The skirt is the raw accent as a
+        // flat edge, never a glow (a lit rim is AI's alone) and never faded.
+        //
+        // Every other faced button is a FLAT key (`.key-flat`): the same rim
+        // and bevel on a 1px foot, no cast and no travel, so it reads as the
+        // same family a step down. `default` is the flat main action
+        // (semibold, takes a ButtonKey where Enter presses it).
+        key: 'key key-main font-semibold text-foreground',
+        default: 'key key-flat font-semibold text-foreground',
+        // Red words on a red-rimmed flat key with a faint wash.
+        destructive: 'key key-flat key-danger text-destructive-text',
+        outline: 'key key-flat text-foreground',
+        secondary: 'key key-flat text-secondary-foreground',
+        // Quiet words for the way out: Cancel, Not now. Muted at rest, full
+        // ink and a wash under the pointer.
+        words:
+          'text-muted-foreground font-normal hover:bg-accent hover:text-foreground aria-expanded:text-foreground',
         ghost:
           'hover:bg-accent hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
