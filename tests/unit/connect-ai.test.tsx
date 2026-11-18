@@ -1677,11 +1677,15 @@ describe('nothing lime in the column', () => {
     expect(lime()).toEqual([]);
   });
 
-  it('while the pane keeps its main action’s fill (the check would see one)', async () => {
+  it('while the pane keeps its main action (a flat main key since the button audit, still no lime)', async () => {
     renderConnect('pane');
     await paste(box(), UNKNOWN);
-    expect(screen.getByTestId('connect-submit').className).toMatch(/\bkey-main\b/);
-    expect(screen.getByTestId('connect-openrouter-signin').className).toMatch(/\bkey-main\b/);
+    for (const id of ['connect-submit', 'connect-openrouter-signin']) {
+      const cls = screen.getByTestId(id).className;
+      expect(cls).toMatch(/\bkey-flat\b/);
+      expect(cls).toMatch(/\bfont-semibold\b/);
+      expect(cls).not.toMatch(/\bkey-main\b/);
+    }
   });
 });
 

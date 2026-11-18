@@ -375,7 +375,7 @@ export function DeleteAccountDialog({
               <>
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="words"
                   size="sm"
                   onClick={() => handleOpenChange(false)}
                   disabled={deleting}

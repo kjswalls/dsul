@@ -224,8 +224,9 @@ describe('ModTree: what it draws', () => {
         <Separator />
       </div>
     );
-    // An accent button is the app's main button (the lime-skirted key, 2026-11-05); the walk still sees a faded lime fill.
-    expect(screen.getByRole('button', { name: 'Accent' }).className).toMatch(/\bkey-main\b/);
+    // An accent button is the app's flat main button (the button audit, 2026-11-18: the lime key
+    // is kept for the app's own few make-or-start actions); the walk still sees a faded lime fill.
+    expect(screen.getByRole('button', { name: 'Accent' }).className).toMatch(/\bkey-flat\b.*\bfont-semibold\b/);
     const stock = render(<div className="bg-primary hover:bg-primary/90 disabled:opacity-50">Stock</div>);
     expect(classesUnder(stock.container).some((c) => LIME_ALPHA.test(c) && DIM.test(c))).toBe(true);
     stock.unmount();

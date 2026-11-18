@@ -622,7 +622,7 @@ function GhostSheet({
                 </Button>
               )}
               <DrawerClose asChild>
-                <Button variant="outline">Cancel</Button>
+                <Button variant="words">Cancel</Button>
               </DrawerClose>
             </DrawerFooter>
           )

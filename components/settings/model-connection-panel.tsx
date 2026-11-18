@@ -624,7 +624,7 @@ function ReplaceKeyForm({
         <Button type="submit" size="sm" disabled={busy || !hasKey}>
           {busy ? 'Checking key…' : 'Save'}
         </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={onDone} disabled={busy}>
+        <Button type="button" variant="words" size="sm" onClick={onDone} disabled={busy}>
           Cancel
         </Button>
       </div>

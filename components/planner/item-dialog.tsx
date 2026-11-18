@@ -4182,6 +4182,7 @@ function ItemDialogInner({
                 >
                   {deck && <div className="min-w-0 flex-1">{clearingField()}</div>}
                   <Button
+                    variant={mode === 'add' ? 'key' : 'default'}
                     onClick={handleSubmit}
                     data-testid="item-dialog-submit"
                     disabled={invalidCustomDays(activeDraft) || !activeDraft.title.trim()}

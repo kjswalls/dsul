@@ -455,10 +455,10 @@ export function BulkAddDialog({
             {count === 0 ? 'Nothing to add yet' : `${count} ${count === 1 ? 'item' : 'items'}`}
           </span>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            <Button variant="words" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={count === 0} data-testid="bulk-add-submit">
+            <Button variant="key" onClick={handleSubmit} disabled={count === 0} data-testid="bulk-add-submit">
               Add {count > 0 ? `${count} ${count === 1 ? (typeConfig.label?.toLowerCase() ?? 'item') : 'items'}` : 'items'}
             </Button>
           </div>

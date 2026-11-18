@@ -527,6 +527,7 @@ export function ChatComposer({
         ) : (
           hasText && (
             <Button
+              variant="key"
               size="icon"
               // -my-[5px] lets the 32px button overhang the 22px text line rather
               // than set the pill's floor — without it the bar is 58px tall the
@@ -733,6 +734,7 @@ export function ChatComposer({
             </Button>
           ) : canSend ? (
             <Button
+              variant="key"
               size="icon"
               className="h-8 w-8 rounded-full"
               onClick={handleSend}

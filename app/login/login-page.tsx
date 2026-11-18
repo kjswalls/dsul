@@ -539,6 +539,7 @@ function LoginPageInner({ apple }: { apple: boolean }) {
                     className="h-10 rounded-[10px] text-[13.5px]"
                   />
                   <Button
+                    variant="key"
                     type="submit"
                     className="h-10 w-full rounded-[10px] text-[13.5px]"
                     disabled={loading || !email}

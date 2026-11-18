@@ -440,6 +440,7 @@ function ContainerForm({
             </Button>
           )}
           <Button
+            variant="key"
             onClick={() => submit()}
             disabled={!canAdd}
             data-testid={`${kind}-dialog-add`}

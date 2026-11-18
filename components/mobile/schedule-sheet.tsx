@@ -279,7 +279,7 @@ export function ScheduleSheet() {
             <Trash2 className="mr-2 h-4 w-4" /> Delete
           </Button>
           <DrawerClose asChild>
-            <Button variant="outline">Cancel</Button>
+            <Button variant="words">Cancel</Button>
           </DrawerClose>
         </DrawerFooter>
       </DrawerContent>
