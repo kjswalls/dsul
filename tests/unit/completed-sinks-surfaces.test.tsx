@@ -243,6 +243,32 @@ describe('Day × List', () => {
   });
 });
 
+describe("Day × List's None", () => {
+  const sections = () =>
+    [...document.querySelectorAll('[data-settle-role="frame"][data-settle-key^="group:"]')].map((el) =>
+      el.getAttribute('data-settle-key')
+    );
+  const seedMixed = () => {
+    const tasks = [task({ id: 'a', title: 'Alpha' })];
+    const habits = [habit({ id: 'h', title: 'Stretch' })];
+    seedStore({ tasks, habits, items: [...habits, ...tasks] });
+  };
+
+  it('keeps Habits / Tasks / Projects while nothing is picked', () => {
+    seedMixed();
+    mount(<DayList />);
+    expect(sections()).toEqual(['group:Habits', 'group:Tasks']);
+  });
+
+  it('draws one flat list once None is picked', () => {
+    seedMixed();
+    useViewStore.setState({ canvasGroupBy: 'ungrouped' });
+    mount(<DayList />);
+    expect(sections()).toHaveLength(1);
+    expect(rowTitles(document, NAMES).sort()).toEqual(['Alpha', 'Stretch']);
+  });
+});
+
 /* ── Week × List ────────────────────────────────────────────────────────────*/
 
 describe('Week × List', () => {

@@ -1110,8 +1110,9 @@ describe('the touch shell', () => {
     await screen.findByTestId('display-section-grouping');
 
     fireEvent.click(screen.getByTestId('display-section-grouping'));
-    // seed() is Day × List, whose unset grouping reads Type (canvasNoneGrouping).
-    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: /^Type/ }));
+    // seed() is Day × List, whose first Grouping row is the real None
+    // ('ungrouped'), above Type (its unset look, canvasNoneGrouping).
+    expect(document.activeElement).toBe(screen.getByRole('menuitemradio', { name: /^None/ }));
 
     fireEvent.click(screen.getByTestId('display-back'));
     // Back lands on the row you came from, not the top of the list.
@@ -1280,11 +1281,11 @@ describe('the touch shell', () => {
       fireEvent.click(screen.getByTestId('display-back'));
     }
 
-    // Guards the walk itself. Grouping's 7 values, Ordering's 3 and Type's 3 are
+    // Guards the walk itself. Grouping's 8 values (Day × List adds None above Type), Ordering's 3 and Type's 3 are
     // the rows the root-only version never saw; if the drill stopped opening,
     // every assertion above would pass over an empty pane and this would not.
     // (Grouping was 6 before the aspire axis added Goal to the vocabulary.)
-    expect(measured.filter((el) => el.getAttribute('role') === 'menuitemradio')).toHaveLength(13);
+    expect(measured.filter((el) => el.getAttribute('role') === 'menuitemradio')).toHaveLength(14);
   });
 });
 
@@ -1329,5 +1330,39 @@ describe("Day × List names its default grouping, which is not 'none' on screen"
     openMenu();
 
     expect(await screen.findByRole('menuitem', { name: /Grouping/ })).toHaveTextContent('None');
+  });
+
+  it('offers a real None above Type, and picking it stores ungrouped', async () => {
+    render(<DisplayMenu surface="canvas" />);
+    await openSub('Grouping');
+    const none = await screen.findByRole('menuitemradio', { name: /^None/ });
+    expect(none).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(none);
+    expect(view().canvasGroupBy).toBe('ungrouped');
+  });
+
+  it('checks None, not Type, while ungrouped, and Type goes back to the default', async () => {
+    seed({ canvasGroupBy: 'ungrouped' });
+    render(<DisplayMenu surface="canvas" />);
+    openMenu();
+    const row = await screen.findByRole('menuitem', { name: /Grouping/ });
+    expect(row).toHaveTextContent('None');
+
+    fireEvent.click(row);
+    expect(await screen.findByRole('menuitemradio', { name: /^None/ })).toHaveAttribute('aria-checked', 'true');
+    const type = screen.getByRole('menuitemradio', { name: /^Type/ });
+    expect(type).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(type);
+    expect(view().canvasGroupBy).toBe('none');
+  });
+
+  it('shows one None elsewhere, checked while ungrouped', async () => {
+    seed({ scope: 'week', layout: 'list', canvasGroupBy: 'ungrouped' });
+    render(<DisplayMenu surface="canvas" />);
+    await openSub('Grouping');
+    const nones = await screen.findAllByRole('menuitemradio', { name: /^None/ });
+    expect(nones).toHaveLength(1);
+    expect(nones[0]).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('menuitemradio', { name: /^Type/ })).toBeNull();
   });
 });

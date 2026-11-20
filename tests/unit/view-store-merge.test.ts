@@ -119,6 +119,14 @@ describe('the persist merge, through a real rehydrate', () => {
     expect(useViewStore.getState().canvasGroupBy).toBe('routine');
   });
 
+  it("keeps a picked None ('ungrouped'), which is not a GroupBy but is a canvas value", async () => {
+    seed({ canvasGroupBy: 'ungrouped' });
+
+    await useViewStore.persist.rehydrate();
+
+    expect(useViewStore.getState().canvasGroupBy).toBe('ungrouped');
+  });
+
   it('coerces a braindumpGroupBy that is not a BraindumpGroupBy, even a legal canvas GroupBy', async () => {
     // The braindump axis was uncoerced until the routine/season values landed,
     // and its union is not the canvas one — 'bucket' is a legal canvas GroupBy

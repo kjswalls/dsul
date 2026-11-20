@@ -6,7 +6,7 @@ import { EXT_DO_STUFF, EXT_GOALS, EXT_ORGANIZE, EXT_STREAKS, extensionManifest, 
 import { useExtensionsStore } from './extensions-store';
 import { useViewStore, type BraindumpGroupBy } from './view-store';
 import { goalFilterItemIds } from './goals';
-import type { Goal, GroupBy } from './planner-types';
+import { groupByOf, type Goal, type GroupBy } from './planner-types';
 
 /**
  * extension-gates.ts — one place to ask "is this idea switched on", and one
@@ -224,8 +224,19 @@ function resolveGroupBy<T extends string>(value: T, enabled: Record<string, bool
 
 /** The canvas group-by every view should actually group by. */
 export function useCanvasGroupBy(): GroupBy {
-  const stored = useViewStore((s) => s.canvasGroupBy);
+  // 'ungrouped' reads as 'none' here: it differs from 'none' on Day × List only,
+  // which asks for it by name (`useCanvasUngrouped`).
+  const stored = useViewStore((s) => groupByOf(s.canvasGroupBy));
   return useExtensionsStore((s) => resolveGroupBy(stored, gateMap(s)));
+}
+
+/**
+ * Did the user pick None on purpose? Day × List's 'none' is its Habits / Tasks
+ * / Projects look, and this is what turns it into one flat list. A stored
+ * grouping whose extension is off is not a pick of None, so it keeps that look.
+ */
+export function useCanvasUngrouped(): boolean {
+  return useViewStore((s) => s.canvasGroupBy === 'ungrouped');
 }
 
 /**
@@ -240,7 +251,7 @@ export function useCanvasGroupBy(): GroupBy {
 export function resolvedCanvasGroupBy(): GroupBy {
   try {
     return resolveGroupBy(
-      useViewStore.getState().canvasGroupBy,
+      groupByOf(useViewStore.getState().canvasGroupBy),
       gateMap(useExtensionsStore.getState())
     );
   } catch (error) {

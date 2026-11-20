@@ -8,7 +8,7 @@ import { TaskRow } from '@/components/primitives/task-row';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
-import { useCanvasGroupBy } from '@/lib/extension-gates';
+import { useCanvasGroupBy, useCanvasUngrouped } from '@/lib/extension-gates';
 import { flattenDayRows } from '@/lib/day-items';
 import { toDateStr } from '@/lib/recurrence';
 import { groupRows, type RowGroup } from '@/lib/grouping';
@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils';
 /**
  * Day × List (P5c): one flat, full-width list in slash-label groups (see
  * design/redesign/desktop_day_listView.png). Default grouping: HABITS /
- * TASKS / PROJECTS; canvasGroupBy overrides. Rows stay drag sources, and the
+ * TASKS / PROJECTS; canvasGroupBy overrides, and None ('ungrouped') is one flat list. Rows stay drag sources, and the
  * whole list is ONE drop target for this day (`list:{date}`, see
  * components/views/list-drop-zone.tsx) — no per-row zones, so a braindump item
  * dropped anywhere on it lands on this day.
@@ -57,6 +57,8 @@ export function DayList() {
   const { selectedDate, navDirection, routines, seasons, goals, userTimezone } =
     usePlannerStore();
   const canvasGroupBy = useCanvasGroupBy();
+  // None, picked on purpose: one flat list instead of Habits / Tasks / Projects.
+  const ungrouped = useCanvasUngrouped();
   const sortBy = useViewStore((s) => s.canvasSortBy);
   const { completedAs, rootRef } = useSinkHold();
 
@@ -85,7 +87,7 @@ export function DayList() {
   const canReorder = reorderAllowed(sortBy, canvasGroupBy);
   const addHere = !useIsMobile();
   const groups = (
-    canvasGroupBy === 'none'
+    canvasGroupBy === 'none' && !ungrouped
       ? defaultListGroups(rows)
       : groupRows(rows, canvasGroupBy, { routines, seasons, goals })
   ).map((g) => ({

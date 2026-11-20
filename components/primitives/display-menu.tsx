@@ -61,7 +61,12 @@ import {
   sameContainerName,
 } from '@/lib/container-registry';
 import { displayGoals } from '@/lib/goals';
-import { useBraindumpGroupBy, useCanvasGroupBy, useGoalsEnabled } from '@/lib/extension-gates';
+import {
+  useBraindumpGroupBy,
+  useCanvasGroupBy,
+  useCanvasUngrouped,
+  useGoalsEnabled,
+} from '@/lib/extension-gates';
 import { accentColorForName } from '@/lib/accent-colors';
 import {
   BRAINDUMP_GROUP_BY_OPTIONS,
@@ -72,7 +77,7 @@ import {
   sortByBlockedBy,
   SORT_BY_OPTIONS,
 } from '@/lib/view-options';
-import type { Goal, GroupBy, Priority } from '@/lib/planner-types';
+import { groupByOf, type CanvasGroupBy, type Goal, type GroupBy, type Priority } from '@/lib/planner-types';
 import { TIME_BUCKET_RANGES } from '@/lib/planner-types';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import type { BraindumpGroupBy, ViewScope } from '@/lib/view-store';
@@ -563,6 +568,8 @@ export function DisplayMenu({
   const canvasGroupByOn = useCanvasGroupBy();
   const braindumpGroupByOn = useBraindumpGroupBy();
   const groupBy: string = isCanvas ? canvasGroupByOn : braindumpGroupByOn;
+  // None picked on purpose, which only Day × List draws differently from 'none'.
+  const canvasUngrouped = useCanvasUngrouped();
 
   const patch = (next: Partial<ViewFilters>) => setFilters({ ...filters, ...next });
 
@@ -665,12 +672,29 @@ export function DisplayMenu({
   // sentence, and its home is the extension's own settings pane — where the row
   // still is, because off means inert rather than gone.
   // Day × List draws 'none' as Habits / Tasks / Projects, so the row names that
-  // instead of "None" (see canvasNoneGrouping). Same value, honest words.
+  // instead of "None" (see canvasNoneGrouping). Same value, honest words. A real
+  // None ('ungrouped', one flat list) goes above it, since there 'none' is not
+  // no grouping. Everywhere else 'none' is already flat and needs no twin.
   const noneShape = isCanvas ? canvasNoneGrouping(scope, view.layout) : null;
-  const groupOptions = (isCanvas ? CANVAS_GROUP_BY_OPTIONS : BRAINDUMP_GROUP_BY_OPTIONS)
-    .filter((o) => o.value !== 'goal' || goalsOn)
-    .map((o) => (o.value === 'none' && noneShape ? { ...o, label: noneShape.label, icon: noneShape.icon } : o));
-  const groupLabel = groupOptions.find((o) => o.value === groupBy)?.label ?? 'None';
+  const groupOptions: { value: string; label: string; icon: (typeof CANVAS_GROUP_BY_OPTIONS)[number]['icon'] }[] =
+    (isCanvas ? CANVAS_GROUP_BY_OPTIONS : BRAINDUMP_GROUP_BY_OPTIONS)
+      .filter((o) => o.value !== 'goal' || goalsOn)
+      .flatMap((o) =>
+        o.value === 'none' && noneShape
+          ? [
+              { ...o, value: 'ungrouped' },
+              { ...o, label: noneShape.label, icon: noneShape.icon },
+            ]
+          : [o]
+      );
+  /** Is this row the one the surface is drawing? */
+  const groupChecked = (value: string): boolean => {
+    if (!noneShape) return groupBy === value;
+    if (value === 'ungrouped') return groupBy === 'none' && canvasUngrouped;
+    if (value === 'none') return groupBy === 'none' && !canvasUngrouped;
+    return groupBy === value;
+  };
+  const groupLabel = groupOptions.find((o) => groupChecked(o.value))?.label ?? 'None';
 
   /**
    * A couple of live examples per group-by value, so "Project" reads with the
@@ -741,7 +765,7 @@ export function DisplayMenu({
           // Three states: honoured silently, honoured with the part it reaches
           // on the rail, or inert — visible and disabled with the reason.
           const reach = isCanvas
-            ? groupBySupport(scope, view.layout, o.value as GroupBy)
+            ? groupBySupport(scope, view.layout, groupByOf(o.value as CanvasGroupBy))
             : { honoured: true, note: null };
           return rowEntry({
             key: o.value,
@@ -750,11 +774,11 @@ export function DisplayMenu({
             hint: groupExamples[o.value],
             rail: reach.note ?? undefined,
             disabled: !reach.honoured,
-            checked: groupBy === o.value,
+            checked: groupChecked(o.value),
             keepOpen: false,
             onToggle: () =>
               isCanvas
-                ? view.setCanvasGroupBy(o.value as GroupBy)
+                ? view.setCanvasGroupBy(o.value as CanvasGroupBy)
                 : view.setBraindumpGroupBy(o.value as BraindumpGroupBy),
           });
         }),

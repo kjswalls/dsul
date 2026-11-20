@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { isGroupBy, type GroupBy, type TimeBucket } from './planner-types';
+import {
+  groupByOf,
+  isCanvasGroupBy,
+  isGroupBy,
+  type CanvasGroupBy,
+  type TimeBucket,
+} from './planner-types';
 import { usePlannerStore } from './planner-store';
 import { EMPTY_VIEW_FILTERS, normalizeFilters, type ViewFilters } from './filters';
 import { containerRef } from './container-registry';
@@ -142,7 +148,7 @@ interface ViewStore {
   atlasHideFinished: boolean;
   atlasHideResting: boolean;
   typeFilter: TypeFilter;
-  canvasGroupBy: GroupBy;
+  canvasGroupBy: CanvasGroupBy;
   braindumpGroupBy: BraindumpGroupBy;
   /** Ordering, per surface. List surfaces only — see lib/sort-rows.ts. */
   canvasSortBy: SortBy;
@@ -225,7 +231,7 @@ interface ViewStore {
   setAtlasHideFinished: (on: boolean) => void;
   setAtlasHideResting: (on: boolean) => void;
   setTypeFilter: (filter: TypeFilter) => void;
-  setCanvasGroupBy: (groupBy: GroupBy) => void;
+  setCanvasGroupBy: (groupBy: CanvasGroupBy) => void;
   setBraindumpGroupBy: (groupBy: BraindumpGroupBy) => void;
   setCanvasSortBy: (sortBy: SortBy) => void;
   setBraindumpSortBy: (sortBy: SortBy) => void;
@@ -370,7 +376,7 @@ export const useViewStore = create<ViewStore>()(
       },
       setCanvasGroupBy: (canvasGroupBy) => {
         set({ canvasGroupBy });
-        usePlannerStore.getState().setGroupBy(canvasGroupBy);
+        usePlannerStore.getState().setGroupBy(groupByOf(canvasGroupBy));
       },
       setBraindumpGroupBy: (braindumpGroupBy) => set({ braindumpGroupBy }),
       setCanvasSortBy: (canvasSortBy) => set({ canvasSortBy }),
@@ -492,7 +498,7 @@ export const useViewStore = create<ViewStore>()(
           // container arm, so a stale blob would silently group by project — and
           // the Grouping row would render "None" over it, because no option
           // matches, while the trigger counted it as one active clause.
-          canvasGroupBy: isGroupBy(canvasAxis) ? canvasAxis : 'none',
+          canvasGroupBy: isCanvasGroupBy(canvasAxis) ? canvasAxis : 'none',
           // The braindump's own axis, uncoerced before this — it predates the
           // routine/season values, so a blob written earlier holds a value that
           // is still legal, but a garbage one would fall through groupRows to the
