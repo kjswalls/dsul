@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
-import { ChevronRight, Pencil, Plus, Split, X } from 'lucide-react';
+import { ChevronRight, Split, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { RelayRow } from '@/components/ai/ai-work-badge';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,7 @@ import { openSetup } from '@/lib/open-chat';
 import { NUDGE_BREAK_IT_DOWN_OFFER } from '@/lib/nudges/registry';
 import { useOneTimeNudge } from '@/hooks/use-one-time-nudge';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useSinkHold } from '@/hooks/use-sink-hold';
 import { DraftedSteps, useStepDraftsShowing } from '@/components/planner/drafted-steps';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { ItemFilesSection } from '@/components/planner/item-files';
@@ -36,10 +37,12 @@ import { EDIT_COPY } from '@/lib/item-edit';
 import { toast } from 'sonner';
 import type { Item, TaskItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
-import { ItemTick, animateItemCheck } from '@/components/primitives/item-check';
-import { RowRenameInput } from '@/components/primitives/row-rename-input';
+import { isRecurring } from '@/lib/recurrence';
+import { animateItemCheck } from '@/components/primitives/item-check';
+import { QUICK_ADD_INPUT, QuickAddBox, QuickAddEnter, QuickAddRow } from '@/components/primitives/quick-add-row';
 import { hoveredItem, setHoveredItemRef } from '@/lib/hovered-item';
-import { isRenaming, startRename, useRenameStore } from '@/lib/item-rename';
+import { SubtaskRow, type SubtaskDragHandlers, type SubtaskMove } from '@/components/planner/subtask-row';
+import { moveToSlot, slotAt, sortSubtasks, stepTo, SUBTASK_COPY } from '@/lib/subtasks';
 
 /**
  * The item detail sections — what the dialog never had room for. One component
@@ -74,11 +77,12 @@ function SubtasksSection({
 }: {
   item: Item;
   offerSetup: boolean;
-  /** "Break it down" is a chip above the item's box instead (ItemBoxAsks). */
+  /** "Break it down" is a chip above the item's box instead (components/planner/item-box-asks.tsx). */
   asksElsewhere: boolean;
 }) {
-  const { items, addTask, addTasksBulk, deleteTask, toggleTaskStatus } = usePlannerStore();
+  const { items, addTask, addTasksBulk, deleteTask, toggleTaskStatus, updateTask, reorderItems } = usePlannerStore();
   const [title, setTitle] = useState('');
+  const addInputRef = useRef<HTMLInputElement>(null);
   // The finished ones fold under "N done" (the panel tidy, round 3), held per
   // item so the next item opens folded.
   const [doneOpenFor, setDoneOpenFor] = useState<string | null>(null);
@@ -114,8 +118,9 @@ function SubtasksSection({
 
   // Live children — the edit dialog holds a SNAPSHOT of the parent, but the
   // subtask list must reflect toggles immediately.
-  const children = items.filter(
-    (i): i is TaskItem => i.type !== 'habit' && i.parentItemId === item.id
+  // In the user's order (`items.order`, lib/subtasks.ts), which a drag writes.
+  const children = sortSubtasks(
+    items.filter((i): i is TaskItem => i.type !== 'habit' && i.parentItemId === item.id)
   );
 
   // A panel that closes under the pointer gets no mouseleave: drop the ref so
@@ -138,9 +143,25 @@ function SubtasksSection({
     setTitle('');
   };
 
-  const doneRows = children.filter((c) => c.status === 'completed');
-  const openRows = children.filter((c) => c.status !== 'completed');
-  const done = doneRows.length;
+  // A row ticked here keeps its place for a moment, then slides into the done
+  // list, the planner lists' sink (hooks/use-sink-hold.ts). The count and the
+  // box are live; only where the row sits waits.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const setListEl = useCallback((el: HTMLDivElement | null) => {
+    listRef.current = el;
+  }, []);
+  const { completedAs, rootRef: sinkRootRef } = useSinkHold(setListEl);
+  const sunk = (c: TaskItem) => completedAs({ itemType: 'task', item: c }, null);
+  const doneRows = children.filter(sunk);
+  const openRows = children.filter((c) => !sunk(c));
+  const liveOpen = children.filter((c) => c.status !== 'completed');
+  const done = children.length - liveOpen.length;
+
+  // Rows ticked here. The fold opens as one lands in the done list, so the
+  // row you ticked is seen arriving rather than vanishing into a closed fold.
+  // Folding it away clears them, and it stays folded until the next tick.
+  const [sinking, setSinking] = useState<ReadonlySet<string>>(() => new Set());
+  const showDone = doneOpen || doneRows.some((c) => sinking.has(c.id));
 
   /**
    * "This is too big" is the moment the assistant is most useful and the moment
@@ -169,68 +190,157 @@ function SubtasksSection({
   const offered =
     offerSetup && !breakable && offerNudge.active && canOfferBreakDown(item, askInvite);
 
-  const renderRow = (child: TaskItem) => (
-    <div
-      key={child.id}
-      className="group flex items-center gap-2"
-      data-testid="subtask-row"
-      // F2 over a subtask renames it in place, as over a planner row
-      // (rename_hovered reads this ref; so do E and Backspace).
-      onMouseEnter={() => setHoveredItemRef(child.id, 'task')}
-      onMouseLeave={() => setHoveredItemRef(null, null)}
-    >
-      <button
-        type="button"
-        onClick={(e) => {
-          animateItemCheck(e.currentTarget, child.status === 'completed');
-          toggleTaskStatus(child.id);
-        }}
-        aria-label={child.status === 'completed' ? 'Mark not done' : 'Mark done'}
-        className={cn(
-          'relative flex size-4 shrink-0 items-center justify-center rounded-[5px] inset-ring transition-[background-color,box-shadow]',
-          'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-          child.status === 'completed'
-            ? 'inset-ring-check-fill bg-check-fill shadow-[var(--check-shadow)]'
-            : 'inset-ring-muted-foreground/45 hover:inset-ring-muted-foreground'
-        )}
-      >
-        {child.status === 'completed' && <ItemTick />}
-      </button>
-      <SubtaskTitle child={child} />
-      <button
-        type="button"
-        onClick={() => deleteTask(child.id)}
-        aria-label={`Delete subtask ${child.title}`}
-        className="text-muted-foreground hover:text-destructive opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-      >
-        <X className="size-3.5" />
-      </button>
-    </div>
-  );
+  // ── Moving a row: the grip, Alt+↑/↓ and the menu all end in one write ──
+  const openIds = openRows.map((c) => c.id);
+  const commitOrder = (sequence: string[] | null, label: string) => {
+    if (sequence) reorderItems(sequence, label);
+  };
+  const moveRow = (id: string, where: SubtaskMove) =>
+    commitOrder(stepTo(openIds, id, where), where === 'up' || where === 'top' ? 'Move up' : 'Move down');
+
+  // Where every open row was when the drag began. Nothing moves while the row
+  // is held (it stays in place, faded, and the lime line shows where it will
+  // land), so one measurement serves the whole drag.
+  const measured = useRef<{
+    ids: string[];
+    middles: number[];
+    edges: number[];
+    top: number;
+    /** The gap the held row would land in now (null: back where it was). */
+    slot: number | null;
+  } | null>(null);
+  const [drag, setDrag] = useState<{
+    id: string;
+    slot: number | null;
+    /** The insertion line's y in the list, while the row would land somewhere new. */
+    lineY: number | null;
+  } | null>(null);
+
+  const measure = () => {
+    const list = listRef.current;
+    if (!list) return null;
+    const els = Array.from(list.querySelectorAll<HTMLElement>('[data-subtask-open]'));
+    const rects = els.map((el) => el.getBoundingClientRect());
+    return {
+      ids: els.map((el) => el.dataset.subtaskId ?? ''),
+      middles: rects.map((r) => r.top + r.height / 2),
+      // The y of every gap: above each row, then below the last.
+      edges: [...rects.map((r) => r.top), rects.length ? rects[rects.length - 1].bottom : 0],
+      top: list.getBoundingClientRect().top,
+      slot: null,
+    };
+  };
+
+  // Escape puts a held row back where it was.
+  useEffect(() => {
+    if (!drag) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      measured.current = null;
+      setDrag(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [drag]);
+
+  const dragHandlersFor = (id: string): SubtaskDragHandlers => ({
+    onPointerDown: (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      measured.current = measure();
+      setDrag({ id, slot: null, lineY: null });
+    },
+    onPointerMove: (e) => {
+      const m = measured.current;
+      if (!m) return;
+      const at = slotAt(m.middles, e.clientY);
+      const slot = moveToSlot(m.ids, id, at) ? at : null;
+      m.slot = slot;
+      setDrag((d) =>
+        d && d.id === id
+          ? { ...d, slot, lineY: slot === null ? null : m.edges[slot] - m.top }
+          : d
+      );
+    },
+    onPointerUp: () => {
+      const m = measured.current;
+      measured.current = null;
+      setDrag(null);
+      if (m && m.slot !== null) commitOrder(moveToSlot(m.ids, id, m.slot), 'Reorder subtasks');
+    },
+    onPointerCancel: () => {
+      measured.current = null;
+      setDrag(null);
+    },
+  });
+  const lineY = drag?.lineY ?? null;
+
+  // ── "Last one done. Finish the task too?" ──
+  // Asked once, right after the user ticks the last open subtask HERE. It
+  // never ticks the task itself, and a recurring parent (done per day, not
+  // once) is never asked.
+  const [finishOfferFor, setFinishOfferFor] = useState<string | null>(null);
+  const liveParent = items.find((i) => i.id === item.id);
+  const parentOpen =
+    !!liveParent && liveParent.type !== 'habit' && !isRecurring(liveParent as TaskItem) && (liveParent as TaskItem).status !== 'completed';
+  const showFinishOffer = finishOfferFor === item.id && liveOpen.length === 0 && done > 0 && parentOpen;
+
+  const toggleRow = (child: TaskItem, box: HTMLElement | null) => {
+    const finishing = child.status !== 'completed';
+    if (box) animateItemCheck(box, !finishing);
+    toggleTaskStatus(child.id);
+    // Unticked from a fold that opened for a landing: keep it open while the
+    // row waits out its hold and slides back up, rather than shutting it on
+    // a row that is still drawn there.
+    if (!finishing && showDone) setDoneOpenFor(item.id);
+    setSinking((prev) => {
+      const next = new Set(prev);
+      if (finishing) next.add(child.id);
+      else next.delete(child.id);
+      return next;
+    });
+    if (finishing && liveOpen.length === 1 && liveOpen[0].id === child.id) setFinishOfferFor(item.id);
+  };
+
+  /** Out of the list and into the planner as a task of its own: its day if it has one, else the braindump. */
+  const promote = (child: TaskItem) => {
+    updateTask(child.id, { parentItemId: undefined }, { label: 'Make this its own task' });
+    toast(child.startDate ? SUBTASK_COPY.promoted : SUBTASK_COPY.promotedToBraindump);
+  };
+
+  const renderRow = (child: TaskItem) => {
+    const at = openIds.indexOf(child.id);
+    const open = at >= 0;
+    return (
+      <SubtaskRow
+        key={child.id}
+        child={child}
+        onToggle={(box) => toggleRow(child, box)}
+        onDelete={() => deleteTask(child.id)}
+        onPromote={() => promote(child)}
+        move={(where) => moveRow(child.id, where)}
+        canMove={open ? { up: at > 0, down: at < openIds.length - 1 } : null}
+        // A pointer and two rows to move between; never on a phone.
+        drag={open && !isMobile && openIds.length > 1 ? dragHandlersFor(child.id) : null}
+        dragging={drag?.id === child.id}
+      />
+    );
+  };
 
   return (
-    <div ref={sectionRef} className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-2.5">
+    <div ref={sectionRef} className="flex flex-col">
+      <div className="mb-1.5 flex items-center gap-2">
         <SectionLabel>Subtasks</SectionLabel>
         {children.length > 0 && (
-          <>
-            {/* How far along, as a hairline: graphite, never lime, and its own
-                element so nothing around it dims it. */}
-            <span
-              aria-hidden
-              className="bg-border/70 h-[3px] min-w-6 flex-1 overflow-hidden rounded-full"
-              data-testid="subtask-progress"
-            >
-              <span
-                className="bg-foreground block h-full rounded-full transition-[width] duration-200"
-                style={{ width: `${Math.round((done / children.length) * 100)}%` }}
-              />
-            </span>
-            <span className="text-muted-foreground font-mono text-[10px] tabular-nums" data-testid="subtask-count">
-              {done}/{children.length}
-            </span>
-          </>
+          <span className="text-muted-foreground font-mono text-[10px] tabular-nums" data-testid="subtask-count">
+            {done}/{children.length}
+          </span>
         )}
+        <span className="flex-1" />
         {breakable && !drafts && !asksElsewhere && (
           <button
             onClick={() => requestProposal('breakdown', undefined, item.id)}
@@ -270,101 +380,126 @@ function SubtasksSection({
         )}
       </div>
 
-      {openRows.map(renderRow)}
-      {/* What the AI drafted: rows not kept yet, after the kept ones. */}
-      <DraftedSteps item={item} />
-      <div className="flex items-center gap-2">
-        <Plus className="text-muted-foreground size-4 shrink-0" />
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder={EDIT_COPY.subtaskPlaceholder}
-          data-sub-input
-          data-testid="subtask-add-input"
-          className="placeholder:text-muted-foreground -mx-1 min-w-0 flex-1 bg-transparent px-1 text-sm outline-none"
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
-            addSubtask();
-          }}
-          // A multi-line paste commits inline — every line becomes a subtask
-          // of THIS parent, one set(), one ⌘Z. No bulk-add dialog hop here:
-          // the dialog knows nothing of parents, and the rows land visibly in
-          // the list right below the field.
-          onPaste={(e) => {
-            const pasted = e.clipboardData.getData('text/plain');
-            if (!isBulkPaste(pasted)) return;
-            e.preventDefault();
-            const { titles, truncated } = splitBulkLinesWithMeta(pasted);
-            addTasksBulk(
-              'task',
-              titles.map((line) => ({ title: line, parentItemId: item.id }))
-            );
-            // The parser's contract: a capped tail is surfaced, never silent.
-            // This surface has no dialog to say it in, so the toast does.
-            if (truncated) {
-              toast(EDIT_COPY.subtaskPasteCapped);
-            }
-            setTitle('');
-          }}
-        />
+      {/* One parent for every row, the add row and the fold, so a row that
+          sinks or comes back up is the same element and can slide there. */}
+      <div ref={sinkRootRef} className="relative flex flex-col" data-testid="subtask-list">
+        {openRows.map(renderRow)}
+        {/* What the AI drafted: rows not kept yet, after the kept ones. */}
+        <DraftedSteps item={item} />
+        <QuickAddRow className="-mx-1.5 gap-[9px] px-1.5 py-[5px]" data-testid="subtask-add" data-sink-row="">
+          <QuickAddBox
+            aria-label="Add subtask"
+            title="Add subtask"
+            onClick={() => (title.trim() ? addSubtask() : addInputRef.current?.focus())}
+          />
+          <input
+            ref={addInputRef}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={EDIT_COPY.subtaskPlaceholder}
+            data-sub-input
+            data-testid="subtask-add-input"
+            className={cn(QUICK_ADD_INPUT, '-mx-1 px-1 text-sm leading-5')}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                addSubtask();
+              } else if (e.key === 'Escape') {
+                // Ours: clear what is typed, else leave the field. Never the
+                // panel's Escape while there is text to drop.
+                e.preventDefault();
+                e.stopPropagation();
+                if (title) setTitle('');
+                else e.currentTarget.blur();
+              }
+            }}
+            // A multi-line paste commits inline — every line becomes a subtask
+            // of THIS parent, one set(), one ⌘Z. No bulk-add dialog hop here:
+            // the dialog knows nothing of parents, and the rows land visibly in
+            // the list right below the field.
+            onPaste={(e) => {
+              const pasted = e.clipboardData.getData('text/plain');
+              if (!isBulkPaste(pasted)) return;
+              e.preventDefault();
+              const { titles, truncated } = splitBulkLinesWithMeta(pasted);
+              addTasksBulk(
+                'task',
+                titles.map((line) => ({ title: line, parentItemId: item.id }))
+              );
+              // The parser's contract: a capped tail is surfaced, never silent.
+              // This surface has no dialog to say it in, so the toast does.
+              if (truncated) {
+                toast(EDIT_COPY.subtaskPasteCapped);
+              }
+              setTitle('');
+            }}
+          />
+          {title.trim() && <QuickAddEnter label="Add subtask" onClick={addSubtask} />}
+        </QuickAddRow>
+        {doneRows.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              if (!showDone) return setDoneOpenFor(item.id);
+              setDoneOpenFor(null);
+              setSinking(new Set());
+            }}
+            aria-expanded={showDone}
+            data-testid="subtask-done-fold"
+            data-sink-row=""
+            // One row step under the add row, on the rows' own columns: the
+            // chevron centred where the boxes sit, the words on the titles' edge.
+            className="text-muted-foreground hover:text-foreground -mx-1.5 flex w-fit items-center gap-2.5 rounded-md px-1.5 py-[5px] text-xs leading-5 transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
+          >
+            <span className="flex size-4 shrink-0 items-center justify-center">
+              <ChevronRight className={cn('size-3.5 transition-transform', showDone && 'rotate-90')} aria-hidden />
+            </span>
+            {openRows.length === 0 ? `All ${doneRows.length} done` : `${doneRows.length} done`}
+          </button>
+        )}
+        {showDone && doneRows.map(renderRow)}
+        {lineY !== null && (
+          // Where the held row would land: the planner's own insertion line
+          // (components/primitives/reorder-section.tsx).
+          <div
+            aria-hidden
+            data-testid="subtask-drop-line"
+            className="pointer-events-none absolute -inset-x-0.5 z-20 h-0.5 -translate-y-1/2 rounded-full bg-primary"
+            style={{ top: lineY }}
+          >
+            <span className="absolute -left-1 top-1/2 size-2 -translate-y-1/2 rounded-full bg-primary" />
+          </div>
+        )}
       </div>
-      {done > 0 && (
-        <button
-          type="button"
-          onClick={() => setDoneOpenFor(doneOpen ? null : item.id)}
-          aria-expanded={doneOpen}
-          data-testid="subtask-done-fold"
-          className="text-muted-foreground hover:text-foreground -ml-0.5 flex w-fit items-center gap-1.5 rounded-sm py-0.5 text-xs transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
+      {showFinishOffer && (
+        <div
+          className="border-border text-muted-foreground mt-2.5 flex items-center gap-2 rounded-lg border py-1.5 pr-1.5 pl-3 text-[13px]"
+          data-testid="subtask-finish-offer"
         >
-          <ChevronRight className={cn('size-3.5 transition-transform', doneOpen && 'rotate-90')} aria-hidden />
-          {openRows.length === 0 ? `All ${done} done` : `${done} done`}
-        </button>
+          <span className="min-w-0 flex-1">{SUBTASK_COPY.finishOffer}</span>
+          <button
+            type="button"
+            onClick={() => setFinishOfferFor(null)}
+            className="hover:text-foreground rounded-md px-2 py-1 text-xs font-medium transition-colors"
+          >
+            Not yet
+          </button>
+          <button
+            type="button"
+            data-testid="subtask-finish-parent"
+            onClick={() => {
+              setFinishOfferFor(null);
+              toggleTaskStatus(item.id, 'completed');
+            }}
+            className="bg-foreground text-background rounded-md px-2.5 py-1 text-xs font-medium transition-opacity hover:opacity-90"
+          >
+            Mark done
+          </button>
+        </div>
       )}
-      {doneOpen && doneRows.map(renderRow)}
     </div>
-  );
-}
-
-/**
- * A subtask's title, renamed in place (lib/item-rename.ts) with the planner
- * rows' field. One click is enough here, unlike a row's double-click: a row's
- * click opens the panel, but a subtask's title does nothing else, and a click
- * is the only way in on a phone, where a double tap zooms. A soft tint and a
- * pencil on hover say it is a field, as on the panel's own title.
- */
-function SubtaskTitle({ child }: { child: TaskItem }) {
-  // Any target with no day (F2 over the row, or the click below) is this one.
-  const renaming = useRenameStore((s) => isRenaming(s, child.id, ''));
-  const completed = child.status === 'completed';
-  if (renaming) {
-    return <RowRenameInput itemId={child.id} title={child.title} className="font-sans text-sm" />;
-  }
-  return (
-    <span
-      role="button"
-      tabIndex={0}
-      aria-label={`Rename subtask ${child.title}`}
-      data-testid="subtask-title"
-      onClick={() => startRename(child.id)}
-      onKeyDown={(e) => {
-        if (e.key !== 'Enter' && e.key !== 'F2') return;
-        e.preventDefault();
-        e.stopPropagation();
-        startRename(child.id);
-      }}
-      className={cn(
-        'group/subtitle relative -mx-1 min-w-0 flex-1 cursor-text truncate rounded-[3px] px-1 pr-5 text-sm transition-colors hover:bg-accent',
-        'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-        completed && 'text-muted-foreground line-through'
-      )}
-    >
-      {child.title}
-      <Pencil
-        aria-hidden="true"
-        className="text-muted-foreground pointer-events-none absolute top-1/2 right-1 size-3 -translate-y-1/2 opacity-0 transition-opacity group-hover/subtitle:opacity-100"
-      />
-    </span>
   );
 }
 
@@ -385,7 +520,7 @@ function AgentSection({
 }: {
   item: Item;
   inConversation: boolean;
-  /** "Give to OpenClaw" is a chip above the item's box instead (ItemBoxAsks). */
+  /** "Give to OpenClaw" is a chip above the item's box instead (components/planner/item-box-asks.tsx). */
   asksElsewhere?: boolean;
   /** The agent's status is drawn under the item's title instead (ItemDialog's `AgentStatus`). */
   statusElsewhere?: boolean;
@@ -627,62 +762,6 @@ function AgentReply({ item }: { item: TaskItem }) {
  */
 export { AgentReply as AgentReplyForTest };
 
-// ── Asks above the box ───────────────────────────────────────────────────────
-
-/**
- * The item's two standing asks as chips over its pinned box, where the docked
- * panel's chat starts (the panel tidy, round 3): "Break it down" (the same gate
- * and request as the Subtasks section's button, which steps aside) and "Give
- * to OpenClaw" (the Agent section's Assign, likewise). Nothing when neither
- * applies, so a finished or delegated item shows no row.
- */
-export function ItemBoxAsks({ item }: { item: Item }) {
-  const live = usePlannerStore((s) => s.items.find((i) => i.id === item.id)) ?? item;
-  const updateTask = usePlannerStore((s) => s.updateTask);
-  const { canPropose, canDelegate } = useAICapabilities();
-  const requestProposal = useProposalStore((s) => s.request);
-  const proposalBusy = useProposalStore(
-    (s) => s.status === 'loading' && s.lastRequest?.surface === `item:${item.id}`
-  );
-  const drafts = useStepDraftsShowing(item.id, item.title);
-  const config = getItemTypeConfig(itemTypeName(live));
-  const breakable = config.subtasks && canBreakDown(live, canPropose) && !drafts;
-  const givable = config.agentAssignable && canDelegate && !(live as TaskItem).assignee;
-  if (!breakable && !givable) return null;
-  const chip = cn(
-    'inline-flex h-7 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-xs text-foreground/85',
-    'hover-wash transition-colors disabled:opacity-50',
-    'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
-  );
-  return (
-    <div className="flex flex-wrap gap-1.5" data-sub-input data-testid="item-box-asks">
-      {breakable && (
-        <button
-          type="button"
-          onClick={() => requestProposal('breakdown', undefined, item.id)}
-          disabled={proposalBusy}
-          data-testid="break-it-down"
-          className={chip}
-        >
-          <Split className="text-ai size-3.5" />
-          Break it down
-        </button>
-      )}
-      {givable && (
-        <button
-          type="button"
-          onClick={() => updateTask(item.id, { assignee: 'openclaw', aiStatus: 'queued' })}
-          data-testid="assign-agent"
-          className={chip}
-        >
-          <AskMark tone="ink" className="size-3.5" />
-          Give to OpenClaw
-        </button>
-      )}
-    </div>
-  );
-}
-
 // ── Habit heatmap (extension: habit-heatmap) ────────────────────────────────
 
 const HEATMAP_WEEKS = 26;
@@ -772,7 +851,7 @@ export function ItemDetailSections({
   asksElsewhere = false,
 }: {
   item: Item;
-  /** The host draws Break it down and Give to OpenClaw as chips above its box (`ItemBoxAsks`). */
+  /** The host draws Break it down and Give to OpenClaw as chips above its box (components/planner/item-box-asks.tsx). */
   asksElsewhere?: boolean;
   /** The host draws the agent's status under the item's title (`AgentStatus`). */
   agentStatusElsewhere?: boolean;

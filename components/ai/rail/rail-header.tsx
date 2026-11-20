@@ -12,7 +12,7 @@ import { backLabel, railHeaderHeld, type AskView } from '@/lib/rail-store';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { useLayoutDef } from '@/lib/look-store';
-import { canvasHeaderPad, railHeaderDividedPad, railHeaderRowOffset } from '@/lib/layout-themes';
+import { canvasHeaderPad, railHeaderRowOffset } from '@/lib/layout-themes';
 import { RELAY } from '@/lib/relay-config';
 import { cn } from '@/lib/utils';
 
@@ -141,9 +141,11 @@ export function RailHeader({
    */
   lead?: ReactNode;
   /**
-   * Close the row off with a hairline, as much room under the row as over it
-   * (the item panel folded for its chat, where the header is the item's only
-   * line; Kirby, 2026-11-08: the row read short and off-centre).
+   * Close the row off with a hairline a short step under it (the item panel
+   * folded for its chat, where the header is the item's only line). The room
+   * OVER the row is the canvas's date alignment and the desktop app's drag
+   * band, so it is never mirrored below: mirroring it made the folded header
+   * ~110px tall (Kirby, 2026-11-15).
    */
   divided?: boolean;
   /** Ask home: the mark (the Ask key's own, components/ai/ask-mark.tsx), and the relay ground. */
@@ -181,7 +183,7 @@ export function RailHeader({
         swallowing.current = false;
         if (held) swallow(e);
       }}
-      className={cn('relative isolate shrink-0 px-5', canvasHeaderPad(slots), divided ? cn('border-b border-border', railHeaderDividedPad(slots)) : 'pb-2')}
+      className={cn('relative isolate shrink-0 px-5', canvasHeaderPad(slots), divided ? 'border-b border-border pb-3' : 'pb-2')}
     >
       {home && RELAY.beacon && (
         <RelayField

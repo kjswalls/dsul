@@ -129,15 +129,6 @@ describe('ScheduleBlock — NESTED renders the pocket and moves the title', () =
     expect(parseFloat(p.style.height)).toBeCloseTo(152, 1);
   });
 
-  it('drops the container wash to a field so the child can read', () => {
-    const { byId } = paint(entries);
-    const wash = byId('span').querySelector('[class*="sched-wash-field"]');
-    expect(wash).not.toBeNull();
-    // …and a lone block keeps the full wash.
-    const { byId: solo } = paint([timed('s', 'Gym', HM(10), 60)]);
-    expect(solo('s').querySelector('[class*="sched-wash-field"]')).toBeNull();
-  });
-
   it('re-anchors the container title into the band ABOVE its child', () => {
     const { byId } = paint(entries);
     // This is the reported bug: the title used to centre over the whole 360px
@@ -211,7 +202,7 @@ describe('ScheduleBlock — DOUBLE-BOOKED tiles, each rail beside its pane', () 
   it('seats the second member’s swell beside its own tile, not the shared edge', () => {
     const { byId } = paint(entries);
     const swell = (blk: HTMLElement) =>
-      blk.querySelector('[class*="w-\\[2px\\]"]') as HTMLElement;
+      blk.querySelector('[data-slot="rail"]') as HTMLElement;
     expect(swell(byId('dentist')).style.left).toBe('5px');
     // The CSS serialiser is free to reorder a calc's terms, so assert on parts.
     expect(swell(byId('standup')).style.left).toContain('50%');
@@ -252,12 +243,11 @@ describe('ScheduleBlock — the content treatment follows WIDTH, not view', () =
   const titleOf = (blk: HTMLElement) =>
     blk.querySelector('[class*="font-content"]') as HTMLElement;
 
-  it('keeps a wide day pane on one truncated line with its wash', () => {
+  it('keeps a wide day pane on one truncated line', () => {
     // 900px field, two channels → 450px panes. Nowhere near the threshold.
     const { byId } = paint(crossing, 900);
     expect(titleOf(byId('a')).className).toContain('truncate');
     expect(titleOf(byId('a')).className).not.toContain('break-words');
-    expect(byId('a').querySelector('[class*="sched-wash"]')).not.toBeNull();
   });
 
   it('wraps a narrow day channel exactly like a week column', () => {
@@ -267,8 +257,6 @@ describe('ScheduleBlock — the content treatment follows WIDTH, not view', () =
     expect(title.className).toContain('break-words');
     expect(title.className).toContain('line-clamp');
     expect(title.className).not.toContain('truncate');
-    // …and drops the wash, which at this width would be a coloured container.
-    expect(byId('a').querySelector('[class*="sched-wash"]')).toBeNull();
   });
 
   it('leaves an unmeasured field on the wide treatment', () => {

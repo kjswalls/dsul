@@ -221,12 +221,12 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
             {/* Thin glass over the field (Kirby, 2026-11-08 and 2026-11-10;
                 mocks /mnt/project-files/day-done/dock.html): in dark the full
                 relay mix (or the theme's own) under a 2px frost; in light the
-                aurora's lime, mint and teal with orange and indigo sparks,
-                brighter so the ink-on-paper tiles read, under 1px. The field is
+                same mix lifted a step for paper ('night', Kirby 2026-11-14),
+                under 1.5px. The field is
                 turned up to make up for what the glass takes. */}
             <RelayField
               className="absolute inset-0 z-0 rounded-[10px]"
-              lightPalette="aurora"
+              lightPalette="night"
               focalY={0.7}
               pitch={20}
               idleIntensity={0.34}

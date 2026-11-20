@@ -816,18 +816,27 @@
      arbitrary value like `shadow-[inset_1px_0_0_...]` compiles the LIGHT numbers
      straight into the class and never sees the .dark re-tune. The var() form
      keeps the reference live. */
-  /* On a white plate a white inset edge is invisible, so light mode's only
-     modelling is a whisper of shade on the far edge — the near edge then reads
-     brighter by comparison, and the wash does the rest of the lamp. */
-  --sched-lit: inset -1px -1px 0 oklch(0 0 0 / 4%);
-  /* Slightly translucent: the hour hairlines pass faintly through the glass,
-     which is what keeps a block reading as laid ON the grid rather than as a
-     patch covering it. */
-  --sched-pane: color-mix(in oklab, var(--surface-2) 80%, transparent);
-  --sched-pane-hover: color-mix(in oklab, var(--surface-2) 94%, transparent);
-  /* Multi-selected: brighter than hover — the pane picks up the lamp. Opaque
-     surface-2 lifted toward white so it reads lit, not merely un-glassed. */
-  --sched-pane-selected: color-mix(in oklab, white 12%, var(--surface-2));
+  /* The block is a KEYCAP (Kirby, 2026-11-16: "Soft" from the preview round),
+     the same build as the keycap buttons: a paper face with a neutral rim,
+     standing on a 2px skirt in a softened tint of the block's own colour, with a
+     soft cast below. Colour lives only on the skirt; the rail and its ring are
+     one grey on every block (see --sched-ring). The skirt needs the block's
+     accent, so the composed shadows are re-declared on `.sched-block` at the end
+     of this file, where --blk-acc is in scope; these root values are the neutral
+     fallback the slot composer and the drag ghost read. */
+  --sched-rim: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, var(--surface-2));
+  --sched-skirt: color-mix(in oklab, var(--foreground) 14%, var(--surface-2));
+  --sched-cast: 0 3px 8px -4px oklch(0 0 0 / 8%);
+  --sched-cast-hover: 0 6px 14px -6px oklch(0 0 0 / 14%);
+  /* The face's shading, a background-image over the pane colour (`.sched-face`):
+     a hair darker toward the skirt, so the cap reads convex. Hover lightens it. */
+  --sched-face: linear-gradient(transparent, color-mix(in oklab, var(--foreground) 2.5%, transparent));
+  --sched-face-hover: linear-gradient(transparent, color-mix(in oklab, var(--foreground) 1%, transparent));
+  /* Opaque: a keycap is a solid object, not glass. */
+  --sched-pane: var(--surface-2);
+  --sched-pane-hover: var(--surface-2);
+  /* Multi-selected keeps the face and lights the rim instead (--sched-shadow-selected). */
+  --sched-pane-selected: var(--surface-2);
   /* Done goes the other way — INTO the well. The lamp is off, so the block sinks
      to the grey the whole set used to sit at. */
   --sched-pane-done: color-mix(in oklab, var(--surface-3) 55%, transparent);
@@ -854,20 +863,20 @@
      accent of a project-less task), and lime is the one colour that never fades.
      The rail and bead take this ink instead, and everything lime stays lime. */
   --grp-off-ink: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
-  --sched-shadow: var(--sched-lit), var(--shadow-elev-md);
-  --sched-shadow-hover: var(--sched-lit), var(--shadow-elev-lg);
-  /* Done: the modelling goes out, but the card keeps floating. */
-  --sched-shadow-done: var(--shadow-elev-md);
+  --sched-shadow: var(--sched-rim), 0 2px 0 var(--sched-skirt), var(--sched-cast);
+  /* Hover lifts the cap a pixel: the skirt shows 3px and the cast spreads. */
+  --sched-shadow-hover: var(--sched-rim), 0 3px 0 var(--sched-skirt), var(--sched-cast-hover);
+  --sched-shadow-selected: inset 0 0 0 1px var(--primary), 0 2px 0 var(--sched-skirt), var(--sched-cast);
+  /* Done: the key is pressed home. No skirt, no cast, a faint hairline. */
+  --sched-shadow-done: inset 0 0 0 1px color-mix(in oklab, var(--foreground) 6%, transparent);
 
-  /* The accent emission wash rides its own layer so week columns and done blocks
-     can dial it to zero without touching the plate underneath. The gradient is
-     `.sched-lamp` at the end of this file, one recipe per mode; light's is a
-     pale tint rather than the accent itself, so these opacities are not
-     comparable with dark's. The long tail is what makes it a fade rather than a
-     stripe. */
-  --sched-wash: 0.6;
-  --sched-wash-hover: 0.85;
-  --sched-wash-reach: 84px;
+  /* The rail and its start ring: one grey on every block whatever its project
+     (Kirby, 2026-11-15, R6 in one colour). The ring is open while the block is
+     undone and closes when it is ticked, never when its time passes: a past
+     block left undone is still open, and a filled ring would claim otherwise.
+     Off-group (another lane focused) takes the lighter grey. */
+  --sched-ring: color-mix(in oklab, var(--muted-foreground) 55%, var(--surface-2));
+  --sched-ring-off: color-mix(in oklab, var(--muted-foreground) 30%, var(--surface-2));
 
   /* The unlit rail down the lane. Deliberately BELOW hairline contrast: it
      carries no information of its own and must not out-shout the hour grid. */
@@ -875,8 +884,7 @@
 
   /* ── Containment: the pocket (lib/schedule-overlap.ts) ────────────────────
      When a block CONTAINS another — a 7h session with a 3h task inside it — the
-     container stops being a lamp and becomes the field its contents are lit
-     against. Its wash drops to --sched-wash-field, and it sinks one POCKET per
+     container becomes the field its contents sit on, and it sinks one POCKET per
      child: a well in its own plate that the child's plate then sits in.
 
      The pocket is what makes containment read in LIGHT MODE, and it is the whole
@@ -888,7 +896,6 @@
 
      A nested plate is deliberately not glass: there is nothing informative behind
      it, so it has nothing to let through. */
-  --sched-wash-field: 0.35;
   --sched-pocket: color-mix(in oklab, var(--surface-3) 45%, transparent);
   /* The lip the child's plate disappears under — same gesture as the pressed-key
      inset, one hair of it. */
@@ -916,7 +923,7 @@
      to the desktop. */
   --bkt-tray: color-mix(in oklab, var(--surface-0) 70%, var(--surface-3));   /* 0.9737 */
   --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
-  /* Light shades the far edge, dark lights it — --sched-lit's rule verbatim. */
+  /* Light shades the far edge, dark lights it. */
   --bkt-walls: inset -1px 0 0 oklch(0 0 0 / 4%), inset 0 -1px 0 oklch(0 0 0 / 3.5%);
   --bkt-lip: oklch(0 0 0 / 6%);
   --bkt-lip-armed: oklch(0 0 0 / 11%);
@@ -1041,19 +1048,17 @@
   /* Schedule blocks, dark. Only the leaf values are re-declared — --sched-shadow
      and friends compose from these with var(), and a custom property is
      substituted per element, so the composed ones pick the dark leaves up
-     automatically.
-
-     Dark keeps the value-modelled edge that light can't have: on a dark plate a
-     white inset lip along the rail-facing and top edges reads unmistakably as
-     light catching a raised surface, which is the same trick the elev family
-     uses here. The wash runs stronger and shorter than light's, because a tint
-     needs more alpha to register on a dark ground. */
-  --sched-lit: inset 1px 0 0 oklch(1 0 0 / 10%), inset 0 1px 0 oklch(1 0 0 / 9%);
-  --sched-pane: color-mix(in oklab, var(--surface-2) 80%, transparent);
-  --sched-pane-hover: color-mix(in oklab, var(--surface-2) 92%, transparent);
-  /* Multi-selected, dark: lift surface-2 toward white so the block brightens
-     against the ground instead of just losing its glass. */
-  --sched-pane-selected: color-mix(in oklab, white 10%, var(--surface-2));
+     automatically. The face is lit from the top here (light catching a raised
+     surface), and the cast goes much heavier: a soft black barely registers on
+     a dark ground. */
+  --sched-rim: inset 0 0 0 1px oklch(1 0 0 / 9%);
+  --sched-cast: 0 6px 14px -4px oklch(0 0 0 / 45%);
+  --sched-cast-hover: 0 10px 22px -6px oklch(0 0 0 / 55%);
+  --sched-face: linear-gradient(oklch(1 0 0 / 6%), transparent);
+  --sched-face-hover: linear-gradient(oklch(1 0 0 / 9%), oklch(1 0 0 / 2%));
+  --sched-pane: var(--surface-2);
+  --sched-pane-hover: var(--surface-2);
+  --sched-pane-selected: var(--surface-2);
   /* Floors at a real step above the canvas: surface-3/32 resolves to ~0.224 over
      a 0.21 ground, which is vanishing rather than receding. */
   --sched-pane-done: color-mix(in oklab, var(--surface-3) 80%, transparent);
@@ -1067,10 +1072,6 @@
   --sched-shadow-off: 0 0 0 1px var(--grp-off-edge);
   --grp-off-ink: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
 
-  --sched-wash: 0.55;
-  --sched-wash-hover: 0.78;
-  --sched-wash-reach: 72px;
-
   --sched-rail: oklch(1 0 0 / 7%);
 
   /* The pocket, dark. Dark has a value step available to it that light does not,
@@ -1078,7 +1079,6 @@
      0.264 pane — and the nested child's solid surface-2 (0.278) then reads
      clearly above both. The lip goes heavier: a black inset barely registers on
      a dark ground. */
-  --sched-wash-field: 0.34;
   --sched-pocket: color-mix(in oklab, var(--surface-3) 70%, transparent);
   --sched-pocket-lip: inset 0 1px 0 oklch(0 0 0 / 25%);
 
@@ -1782,8 +1782,9 @@ body {
 
 /* ─── Keycap buttons (components/ui/button.tsx) ─────────────────────────────
    Kirby's pick "F" (2026-11-05, mocks at /mnt/project-files/keycap-buttons/).
-   Every Button variant with a face (default, outline, secondary, destructive)
-   is the same paper key as the sidebar's Ctrl K launcher ([data-do-key]):
+   Since the button audit (2026-11-18) only the `key` variant is raised like
+   this; every other faced variant adds .key-flat (below). The raised key is
+   the same paper key as the sidebar's Ctrl K launcher ([data-do-key]):
 
      the face    background-color (layered above, so bg-* still wins) under a
                  translucent bevel, brighter at the top as a lit key is
@@ -1796,8 +1797,10 @@ body {
    Under the pointer the key rises (Kirby's "A Rise", 2026-11-07, mocks at
    /mnt/project-files/keycap-hover/): up 1px, the skirt grows to 3px, the
    cast lengthens (--shadow-key-lifted) and the face brightens (--key-wash,
-   less shade in light, more foreground in dark). It eases in over 260ms and
-   settles back a little slower; a press is quick. Reduced motion keeps the
+   less shade in light, more foreground in dark). It eases in over 160ms and
+   settles back over 200ms on a plain ease-out, never --ease-out-soft: that
+   curve's long tail read as floaty on the sign-in page's tall full-width
+   keys (Kirby, 2026-11-14). A press is quick. Reduced motion keeps the
    lift and drops the easing.
 
    .key-main stands on a LIME skirt: --primary itself, a flat edge, never
@@ -1821,11 +1824,13 @@ body {
     0 2px 0 var(--key-skirt),
     var(--key-ring),
     var(--shadow-key-rest);
+  /* A plain ease-out with a short tail (see above). */
+  --key-ease: cubic-bezier(0.25, 0.6, 0.4, 1);
   /* Settling back: a touch slower than the rise, so leaving reads as calm. */
   transition:
-    translate 320ms var(--ease-out-soft),
-    box-shadow 320ms var(--ease-out-soft),
-    --key-wash 320ms var(--ease-out-soft),
+    translate 200ms var(--key-ease),
+    box-shadow 200ms var(--key-ease),
+    --key-wash 200ms var(--key-ease),
     background-color 150ms var(--ease-out-soft),
     color 150ms var(--ease-out-soft);
 }
@@ -1860,7 +1865,7 @@ body {
       0 3px 0 var(--key-skirt),
       var(--key-ring),
       var(--shadow-key-lifted);
-    transition-duration: 260ms, 260ms, 260ms, 150ms, 150ms;
+    transition-duration: 160ms, 160ms, 160ms, 150ms, 150ms;
   }
   :where(.dark) .key:hover:not(:disabled, [aria-disabled='true']) {
     --key-wash: 3%;
@@ -1889,6 +1894,38 @@ body {
   .key {
     transition: none;
   }
+}
+
+/* ─── Flat keys (Kirby's "C Flat key", 2026-11-18, mocks at
+   /mnt/project-files/button-audit/) ────────────────────────────────────────
+   Every faced button but the lime keycap (the `key` variant) is a .key-flat:
+   the keycap's face, bevel and rim on a 1px foot of the skirt colour, with no
+   cast, no rise and no travel. Under the pointer only the face brightens
+   (--key-wash, as on the raised key); a press sinks the foot into the face and
+   shades it with --shadow-key-pressed's insets. Unlayered and after the .key
+   rules on purpose, at the same specificity, so these win the raised key's
+   hover and press. */
+.key-flat {
+  box-shadow:
+    inset 0 0 0 1px var(--key-rim),
+    0 1px 0 var(--key-skirt),
+    var(--key-ring);
+}
+@media (hover: hover) {
+  .key-flat:hover:not(:disabled, [aria-disabled='true']) {
+    translate: none;
+    box-shadow:
+      inset 0 0 0 1px var(--key-rim),
+      0 1px 0 var(--key-skirt),
+      var(--key-ring);
+  }
+}
+.key-flat:active:not([aria-disabled='true']) {
+  translate: none;
+  box-shadow:
+    inset 0 0 0 1px var(--key-rim),
+    var(--key-ring),
+    var(--shadow-key-pressed);
 }
 
 /* ─── The picked day, and today (Kirby's "Slim key", 2026-11-06; mocks at
@@ -5381,10 +5418,12 @@ body {
   --priority-low-foreground: var(--primary-foreground);
   --day-on: var(--secondary-foreground);
   --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 8%);
-  --sched-pane: color-mix(in oklab, var(--surface-2) 80%, transparent);
-  --sched-pane-hover: color-mix(in oklab, var(--surface-2) 94%, transparent);
-  --sched-pane-selected: color-mix(in oklab, white 12%, var(--surface-2));
+  --sched-pane: var(--surface-2);
+  --sched-pane-hover: var(--surface-2);
+  --sched-pane-selected: var(--surface-2);
   --sched-pane-done: color-mix(in oklab, var(--surface-3) 55%, transparent);
+  --sched-ring: color-mix(in oklab, var(--muted-foreground) 55%, var(--surface-2));
+  --sched-ring-off: color-mix(in oklab, var(--muted-foreground) 30%, var(--surface-2));
   --sched-rail: color-mix(in oklab, var(--border) 60%, transparent);
   --sched-pocket: color-mix(in oklab, var(--surface-3) 45%, transparent);
   --bkt-tray: color-mix(in oklab, var(--surface-0) 70%, var(--surface-3));
@@ -5431,9 +5470,12 @@ body {
   --day-today: #60cdff;
   /* The derived chain, re-cut from the dark values (formulas from .dark). */
   --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 10%);
-  --sched-pane-hover: color-mix(in oklab, var(--surface-2) 92%, transparent);
-  --sched-pane-selected: color-mix(in oklab, white 10%, var(--surface-2));
+  --sched-pane: var(--surface-2);
+  --sched-pane-hover: var(--surface-2);
+  --sched-pane-selected: var(--surface-2);
   --sched-pane-done: color-mix(in oklab, var(--surface-3) 80%, transparent);
+  --sched-ring: color-mix(in oklab, var(--muted-foreground) 55%, var(--surface-2));
+  --sched-ring-off: color-mix(in oklab, var(--muted-foreground) 30%, var(--surface-2));
   --sched-rail: oklch(1 0 0 / 7%);
   --sched-pocket: color-mix(in oklab, var(--surface-3) 70%, transparent);
   --bkt-tray: color-mix(in oklab, var(--canvas) 40%, var(--surface-0));
@@ -5709,50 +5751,25 @@ body {
     color: inherit;
   }
 }
-/* ── The schedule block's lamp (components/views/day-schedule.tsx) ──────────
-   The accent wash bleeding off a block's rail-facing edge. The block hands its
-   accent over as --lamp; the recipe lives here so each mode can have its own.
-   Three stops, not two: a bright edge, a fast falloff by 40px, then a long tail
-   out to the reach, which reads as light falling across the card rather than a
-   stripe. Strength is the layer's opacity (--sched-wash, -hover, -field).
-
-   Dark adds the accent itself: on a dark plate a low-alpha accent can only
-   brighten, so it reads as light.
-
-   Light can't do that. The accent (L 0.6 to 0.86) is DARKER than the white
-   plate, so a low-alpha accent over white darkens as much as it tints, and a
-   darkened tint is grey: a coral block washed muddy pink, a slate one plain grey
-   (Kirby, 2026-11-07). Light instead lays down a tint LIGHTER than the accent,
-   the accent's own hue and chroma at L 0.88, at a higher alpha, so the colour
-   arrives without the grey. The card, its glass, shadow and hover lift are
-   untouched. Relative colour syntax, so it sits behind @supports; a browser
-   without it keeps the old recipe. */
-.sched-lamp {
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklab, var(--lamp) 32%, transparent) 0px,
-    color-mix(in oklab, var(--lamp) 12%, transparent) 40px,
-    transparent var(--sched-wash-reach)
-  );
+/* ── The schedule block's keycap (components/views/day-schedule.tsx) ───────
+   The skirt is tinted with the block's own colour, which the wrapper hands
+   over as --blk-acc. A custom property is substituted where it is declared, so
+   the composed shadows from :root would resolve with no accent at all: they are
+   re-declared here, on the block, where --blk-acc is in scope. The leaves
+   (--sched-rim, --sched-cast…) still come from :root and .dark. */
+.sched-block {
+  --sched-skirt: color-mix(in oklab, var(--blk-acc) 55%, var(--surface-2));
+  --sched-shadow: var(--sched-rim), 0 2px 0 var(--sched-skirt), var(--sched-cast);
+  --sched-shadow-hover: var(--sched-rim), 0 3px 0 var(--sched-skirt), var(--sched-cast-hover);
+  --sched-shadow-selected: inset 0 0 0 1px var(--primary), 0 2px 0 var(--sched-skirt), var(--sched-cast);
 }
-@supports (color: oklch(from red l c h)) {
-  .sched-lamp {
-    background: linear-gradient(
-      90deg,
-      oklch(from var(--lamp) 0.88 c h / 0.92) 0px,
-      oklch(from var(--lamp) 0.88 c h / 0.37) 40px,
-      oklch(from var(--lamp) 0.88 c h / 0) var(--sched-wash-reach)
-    );
-  }
-}
-.dark .sched-lamp {
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklab, var(--lamp) 32%, transparent) 0px,
-    color-mix(in oklab, var(--lamp) 12%, transparent) 40px,
-    transparent var(--sched-wash-reach)
-  );
-}
+/* The face's shading rides background-image, so the pane's colour utilities
+   (background-color) stay the one source for each state. Done and receded
+   blocks are flat. */
+.sched-face { background-image: var(--sched-face); }
+.sched-face:hover { background-image: var(--sched-face-hover); }
+[data-completed='true'] .sched-face,
+.sched-face[data-receded='true'] { background-image: none; }
 
 /* ── Day done aurora (components/celebrate/day-done-aurora.tsx) ─────────────
    The field is a canvas under a frosted pane; the copy sits crisp on top.

@@ -605,7 +605,7 @@ export function ThemeBuilder({
         >
           Save
         </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+        <Button type="button" size="sm" variant="words" onClick={onCancel}>
           Cancel
         </Button>
         <span className="text-muted-foreground text-xs">

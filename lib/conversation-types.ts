@@ -12,7 +12,11 @@ import { MAX_ASSISTANT_CHARS, MAX_MESSAGE_CHARS } from './ai-limits';
  * short `errorCode`, and its words are the client's (lib/chat-errors.ts).
  */
 
-export type Answerer = 'model' | 'openclaw';
+/**
+ * Who wrote a reply: the user's model, OpenClaw in Ask, or an agent the user
+ * wrote to from Ask (`agent:<name>`, lib/agent-messages.ts, migration 089).
+ */
+export type Answerer = 'model' | 'openclaw' | `agent:${string}`;
 export type MessageStatus = 'complete' | 'stopped' | 'error';
 
 /** What accepted proposals changed, for History's second line. Counters only. */
@@ -192,8 +196,11 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
 /** chat_messages_status_check's rule for `error_code`. */
 export const ERROR_CODE_RE = /^[a-z_]{1,32}$/;
 
+/** 089's rule for an agent's answerer: `agent:` and a name of 1..60, no control characters. */
+const AGENT_ANSWERER_RE = /^agent:[^\u0000-\u001f\u007f-\u009f]{1,60}$/;
+
 export function isAnswerer(v: unknown): v is Answerer {
-  return v === 'model' || v === 'openclaw';
+  return v === 'model' || v === 'openclaw' || (typeof v === 'string' && AGENT_ANSWERER_RE.test(v));
 }
 
 export function isMessageStatus(v: unknown): v is MessageStatus {

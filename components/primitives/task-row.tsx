@@ -1,10 +1,9 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, useMemo } from 'react';
-import { ArrowDown, ArrowUp, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Redo2, Undo2, MoreHorizontal,
+import { ArrowDown, ArrowUp, Trash2, Minus, Plus, SkipForward, Redo2, Undo2, MoreHorizontal,
   Flag,
   Repeat,
-  Sun,
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { ItemContextMenu, ItemMenuRow } from '@/components/planner/item-context-menu';
@@ -28,6 +27,7 @@ import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useScheduleSheet } from '@/lib/schedule-sheet-store';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useBraindumpArrows } from '@/hooks/use-braindump-arrows';
 import { SwipeRow } from '@/components/mobile/swipe-row';
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import { suppressionLabel, suppressionReason } from '@/lib/active';
@@ -127,6 +127,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
   const away = useAwayStore((s) => s.periods);
   const confirm = useUIStore((s) => s.confirm);
   const isMobile = useIsMobile();
+  const arrows = useBraindumpArrows();
   const { item, itemType } = row;
   const isTask = itemType === 'task';
   const task = isTask ? (item as Task) : null;
@@ -749,7 +750,12 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
               className={cn(
                 // Content typeface via tokens: sans = Inter Regular 11.5,
                 // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
-                'min-w-0 flex-1 font-content text-foreground',
+                // flex-initial, not flex-1: the title is only as wide as its
+                // words, so the marks after it (the goal role, the agent chip)
+                // sit beside the text. The rail's ml-auto takes the slack
+                // instead; with flex-1 here the chip landed wherever the title's
+                // box ended, mid-row in front of a task's empty rail columns.
+                'min-w-0 flex-initial font-content text-foreground',
                 // Both densities take text-content: the week views render compact
                 // rows and the day view default ones, and a title that changed size
                 // between the two would break the token's whole purpose.
@@ -899,7 +905,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
             enough that the between-item gap clearly outranks the within-item one. */}
         <div
           className={cn(
-            'relative z-10 flex flex-shrink-0 items-center gap-3',
+            // ml-auto: the rail holds the right edge whatever the title's width.
+            'relative z-10 ml-auto flex flex-shrink-0 items-center gap-3',
             completed && !suppressCompletedLook && 'opacity-60'
           )}
           onClick={(e) => e.stopPropagation()}
@@ -987,7 +994,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
                 )}
                 {canBraindump && (
                   <RowControl
-                    icon={ArrowLeftToLine}
+                    icon={arrows.toBraindump}
                     label="Move to Braindump"
                     testId="item-unschedule-button"
                     onClick={() => unscheduleTask(item.id)}
@@ -1074,11 +1081,11 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date, tr
               <RowControlGroup>
                 {/* The braindump's one-tap carry, as Move to tomorrow is the
                     day rows': Reschedule's gate, so it shows exactly where
-                    Schedule does, and its picked day is always today. Sun is
-                    the phone's Today tab. */}
+                    Schedule does, and its picked day is always today. Its arrow
+                    is Move to Braindump's mirror (hooks/use-braindump-arrows.ts). */}
                 {canReschedule && (
                   <RowControl
-                    icon={Sun}
+                    icon={arrows.toDay}
                     label="Move to today"
                     detail={formatTargetDay(todayStr)}
                     testId="item-today-button"

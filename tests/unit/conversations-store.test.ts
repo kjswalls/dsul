@@ -1081,6 +1081,22 @@ describe('History', () => {
     expect(syncs(id)).toEqual(['saved', 'saved', 'saved', 'saved']);
   });
 
+  it("runs the omnibar's search in its own slot, leaving Ask's history search alone", async () => {
+    const hit = (cid: string) => ({ ...summary({ id: cid }), matched: 'title' as const, snippet: null, itemTitle: null });
+    api.answer.search = () => ({ ok: true, value: [hit('h1')] });
+    store().runSearch('dentist');
+    await flush();
+    api.answer.search = () => ({ ok: true, value: [hit('o1'), hit('o2')] });
+    store().runOmniSearch('rug');
+    await flush();
+    expect(store().search).toMatchObject({ q: 'dentist', status: 'done' });
+    expect(store().search.hits.map((h) => h.id)).toEqual(['h1']);
+    expect(store().omniSearch).toMatchObject({ q: 'rug', status: 'done' });
+    expect(store().omniSearch.hits.map((h) => h.id)).toEqual(['o1', 'o2']);
+    // Both slots make the hit openable before History has listed it.
+    expect(store().summaries.o1).toBeDefined();
+  });
+
   it("takes a deleted conversation's search result with it, and puts it back where it was if the delete fails", async () => {
     const id = await sendNew('biopsy results');
     const hit = (cid: string) => ({ ...summary({ id: cid }), matched: 'message' as const, snippet: '…biopsy…', itemTitle: null });

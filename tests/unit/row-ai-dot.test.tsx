@@ -26,8 +26,23 @@ const dotOf = (item: Record<string, string>) => {
 const recent = () => new Date(Date.now() - 60_000).toISOString();
 
 describe('the hover dot', () => {
-  it('is ready for a finished item waiting on its tick', () => {
-    expect(dotOf({ assignee: 'claude', aiStatus: 'done', aiStatusAt: recent(), status: 'pending' })?.getAttribute('data-ai-dot')).toBe('ready');
+  // A finished item's square sits beside the title and stays put on hover
+  // (Kirby, 2026-11-13), so the buttons get no second copy of it.
+  it('is not drawn for a finished item: its square beside the title stays put', () => {
+    const item = { assignee: 'claude', aiStatus: 'done', aiStatusAt: recent(), status: 'pending' };
+    expect(dotOf(item)).toBeNull();
+    const { getByTestId } = render(
+      <TooltipProvider>
+        <AgentPill item={item} />
+      </TooltipProvider>
+    );
+    expect(getByTestId('item-agent-finished').querySelector('[data-ai-dot]')?.getAttribute('data-ai-dot')).toBe('ready');
+  });
+
+  it('never folds the finished square away under the hover buttons', () => {
+    const css = readFileSync('app/globals.css', 'utf8');
+    const fold = css.slice(css.indexOf('[data-row-ai-fold]:is('), css.indexOf('visibility: hidden', css.indexOf('[data-row-ai-fold]:is(')));
+    expect(fold).not.toContain('data-agent-finished');
   });
 
   it('is the warm one for a question', () => {

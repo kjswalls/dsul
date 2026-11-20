@@ -14,6 +14,9 @@ import {
 import { openclawWasAsked, resolveConversationId, useConversationsStore } from '@/lib/conversations-store';
 import { CHAT_LIMITS } from '@/lib/conversation-types';
 import { useUIStore } from '@/lib/ui-store';
+import { agentOfAnswerer } from '@/lib/agent-messages';
+import { useAgentsStore } from '@/lib/agents-store';
+import { useAskToStore } from '@/lib/ask-to-store';
 
 /**
  * A saved conversation's own controls: the ⌄ on its title in Ask (Rename,
@@ -43,12 +46,32 @@ export const CONVERSATION_COPY = Object.freeze({
    * OpenClaw was asked in it from this browser, answered or not.
    */
   openclawCopy: ' OpenClaw may keep its own copy.',
+  /** Added for each app it was sent to from Ask (memory/plans/agent-chat.md). */
+  agentCopy: (name: string) => ` ${name} may keep its own copy.`,
 });
 
 /** The delete confirm's body, for a conversation or an item's. */
-export function deleteDescription(o: { item: boolean; openclawSeen: boolean }): string {
+export function deleteDescription(o: { item: boolean; openclawSeen: boolean; agents?: readonly string[] }): string {
   const base = o.item ? CONVERSATION_COPY.deleteItemDescription : CONVERSATION_COPY.deleteDescription;
-  return o.openclawSeen ? base + CONVERSATION_COPY.openclawCopy : base;
+  const withOpenclaw = o.openclawSeen ? base + CONVERSATION_COPY.openclawCopy : base;
+  return (o.agents ?? []).reduce((text, name) => text + CONVERSATION_COPY.agentCopy(name), withOpenclaw);
+}
+
+/**
+ * The apps a conversation was sent to from this browser: an agent's reply held
+ * here, or a message still waiting on one. Display names where known.
+ */
+function agentsSeenIn(id: string): string[] {
+  const rid = resolveConversationId(id);
+  const seen = new Set<string>();
+  for (const m of useConversationsStore.getState().threads[rid]?.messages ?? []) {
+    const agent = agentOfAnswerer(m.answerer);
+    if (agent) seen.add(agent);
+  }
+  for (const w of Object.values(useAskToStore.getState().waiting)) if (w.threadId === rid) seen.add(w.agent);
+  const agents = useAgentsStore.getState().agents;
+  const names = [...seen].map((a) => agents.find((x) => x.assignee.toLowerCase() === a.toLowerCase())?.name ?? a);
+  return [...new Set(names)];
 }
 
 /** The first Ask heading on screen: the view a delete fell back to. */
@@ -88,7 +111,7 @@ export function confirmDeleteConversation(id: string, o: { item?: boolean; fallb
   const item = !!o.item;
   useUIStore.getState().confirm({
     title: item ? CONVERSATION_COPY.deleteItemTitle : CONVERSATION_COPY.deleteTitle,
-    description: deleteDescription({ item, openclawSeen: openclawSeenIn(id) }),
+    description: deleteDescription({ item, openclawSeen: openclawSeenIn(id), agents: agentsSeenIn(id) }),
     confirmLabel: 'Delete',
     destructive: true,
     testId: item ? 'item-conversation-delete-confirm' : 'conversation-delete-confirm',

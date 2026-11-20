@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { useAgentExchange } from '@/hooks/use-agent-exchange';
 import { useAgentQuestion } from '@/hooks/use-agent-question';
-import { answerAgentQuestion, awaitsAnswer, useAgentAnswers } from '@/lib/agent-question';
+import { answerAgentQuestion, heldByAgent, useAgentAnswers } from '@/lib/agent-question';
 import { agentStatusView } from '@/lib/agent-status';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -247,24 +247,25 @@ function Entry({
 }
 
 /**
- * Under the item's box while an agent's question is open: who the box is
- * talking to, and the one tap that turns it the other way. The box answers the
- * agent by default (lib/agent-question.ts `boxAnswersAgent`); "Ask your model
- * instead" points it back at the user's model for this item, and back again.
- * Null when no question is open, so the host shows its usual model label.
+ * Under the item's small inline box while an agent holds the item: who the box
+ * is talking to, and the one tap that turns it the other way. The box talks to
+ * the agent by default (lib/agent-question.ts `boxAnswersAgent`); "Ask your
+ * model instead" points it at the user's model for this item, and back. The
+ * rail's box says the same with its who chip (components/ai/answerer-chip.tsx).
+ * Null when no agent holds the item.
  */
 export function AgentRouteLine({ itemId, className }: { itemId: string; className?: string }) {
   const item = usePlannerStore((s) => s.items.find((i) => i.id === itemId));
   const toModel = useAgentAnswers((s) => !!s.toModel[itemId]);
-  if (!awaitsAnswer(item)) return null;
+  if (!heldByAgent(item)) return null;
   const name = assigneeLabel(item.assignee);
   const flip = () => useAgentAnswers.getState().setToModel(itemId, !toModel);
   return (
     <p data-testid="agent-route-line" className={cn('text-muted-foreground flex items-center gap-1.5 text-[11px]', className)}>
-      <span className="truncate">{toModel ? 'Asking your model' : `Answering ${name}`}</span>
+      <span className="truncate">{toModel ? 'Asking your model' : `To ${name}`}</span>
       <span aria-hidden>·</span>
       <button type="button" onClick={flip} className="text-foreground shrink-0 font-medium underline-offset-2 hover:underline">
-        {toModel ? `Answer ${name} instead` : 'Ask your model instead'}
+        {toModel ? `Message ${name} instead` : 'Ask your model instead'}
       </button>
     </p>
   );

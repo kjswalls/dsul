@@ -799,7 +799,7 @@ export function CreateForm({
           <ButtonKey />
         </Button>
         {onCancel && (
-          <Button type="button" variant="outline" onClick={onCancel} data-testid={`${testPrefix}-cancel`}>
+          <Button type="button" variant="words" onClick={onCancel} data-testid={`${testPrefix}-cancel`}>
             Cancel
           </Button>
         )}

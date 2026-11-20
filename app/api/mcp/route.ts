@@ -9,6 +9,8 @@ import {
 } from '@/lib/agent-api'
 import { GET as getContext } from '@/app/api/agent/context/route'
 import { GET as getPrepBrief } from '@/app/api/agent/prep-brief/route'
+import { GET as getMessages } from '@/app/api/agent/messages/route'
+import { POST as replyToMessage } from '@/app/api/agent/messages/[id]/reply/route'
 import { GET as getItemEvents } from '@/app/api/agent/items/[id]/events/route'
 import { POST as askUser } from '@/app/api/agent/items/[id]/ask/route'
 import { POST as reportProgress } from '@/app/api/agent/items/[id]/progress/route'
@@ -88,6 +90,14 @@ async function runPlan(original: NextRequest, plan: ToolPlan): Promise<Response>
 
   if (collection === 'context') return getContext(proxyRequest(original, plan))
   if (collection === 'prep-brief' && !id) return getPrepBrief(proxyRequest(original, plan))
+  // /api/agent/messages and /api/agent/messages/:id/reply: the Ask inbox (dsul_my_messages, dsul_reply).
+  if (collection === 'messages' && !id) return getMessages(proxyRequest(original, plan))
+  if (collection === 'messages' && segments[2] === 'reply' && segments.length === 3) {
+    if (!id || id.includes('..') || id.includes('%')) {
+      return NextResponse.json({ error: 'id must be a single path segment' }, { status: 400 })
+    }
+    return replyToMessage(proxyRequest(original, plan), { params: Promise.resolve({ id }) })
+  }
 
   // /api/agent/items/:id/{events,ask,progress,act,prep,files} — the delegation verbs and
   // the one-day verbs, each with its own handler rather than a CRUD set: they

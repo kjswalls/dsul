@@ -18,7 +18,7 @@ vi.mock('@/lib/planner-store', () => ({
 }));
 vi.mock('@/lib/planner-ready', () => ({ isPlannerPreviewing: () => false }));
 
-import { buildAgentExchange } from '@/lib/agent-exchange';
+import { buildAgentExchange, exchangeContextLines } from '@/lib/agent-exchange';
 import { routeItemSendToAgent, useAgentAnswers } from '@/lib/agent-question';
 import type { ItemEvent } from '@/lib/db';
 
@@ -168,12 +168,42 @@ describe('routeItemSendToAgent', () => {
     expect(useAgentAnswers.getState().byItem.i1).toHaveLength(1);
   });
 
-  it('leaves the model to answer when nothing is open, or the box was turned back', () => {
-    items = [{ id: 'i1', type: 'task', assignee: 'claude', aiStatus: 'working' }];
+  it('messages the agent in every state, re-queueing all but a running run', () => {
+    for (const aiStatus of ['queued', 'done', 'failed']) {
+      updateTask.mockReset();
+      items = [{ id: 'i1', type: 'task', assignee: 'Claude', aiStatus }];
+      expect(routeItemSendToAgent('i1', 'one more thing')).toBe(true);
+      expect(updateTask).toHaveBeenCalledWith('i1', { aiStatus: 'queued' });
+    }
+    // A run that is going keeps its clock; its next report hears the message.
+    updateTask.mockReset();
+    items = [{ id: 'i1', type: 'task', assignee: 'Claude', aiStatus: 'working' }];
+    expect(routeItemSendToAgent('i1', 'also Pilates')).toBe(true);
+    expect(recordAgentReply).toHaveBeenLastCalledWith('i1', 'task', 'also Pilates');
+    expect(updateTask).not.toHaveBeenCalled();
+  });
+
+  it('leaves the model to answer when no agent holds the item, or the box was turned to it', () => {
+    items = [{ id: 'i1', type: 'task', aiStatus: 'done' }];
     expect(routeItemSendToAgent('i1', 'hi')).toBe(false);
     items = [{ id: 'i1', type: 'task', assignee: 'claude', aiStatus: 'blocked' }];
     useAgentAnswers.getState().setToModel('i1', true);
     expect(routeItemSendToAgent('i1', 'hi')).toBe(false);
     expect(recordAgentReply).not.toHaveBeenCalled();
+  });
+});
+
+describe('exchangeContextLines', () => {
+  it('tells the model what the agent and the user said, newest last, without the app\'s own markers', () => {
+    const x = buildAgentExchange(
+      [
+        ev('update', { assignee: 'Claude' }, '2026-10-24T22:15:00Z'),
+        ev('agent_question', { question: 'Which gym?' }, '2026-10-24T22:16:00Z'),
+        ev('agent_reply', { text: 'Ontario, CA. Pilates.' }, '2026-10-24T22:32:00Z'),
+      ],
+      { assignee: 'Claude', aiStatus: 'done', aiResult: 'Which gym?', aiStatusAt: '2026-10-24T22:34:00Z' }
+    );
+    expect(exchangeContextLines(x)).toEqual(['- Claude asked: Which gym?', '- The user, to Claude: Ontario, CA. Pilates.']);
+    expect(exchangeContextLines(null)).toEqual([]);
   });
 });

@@ -998,6 +998,9 @@ describe("a conversation's ⌄", () => {
     expect(deleteDescription({ item: true, openclawSeen: true })).toBe(
       "The item stays. The conversation is removed from all your devices. This can't be undone. OpenClaw may keep its own copy."
     );
+    expect(deleteDescription({ item: false, openclawSeen: false, agents: ['Claude'] })).toBe(
+      "It's removed from all your devices. Changes it made to your planner stay. This can't be undone. Claude may keep its own copy."
+    );
   });
 
   it('is not offered for a conversation with no row yet', () => {

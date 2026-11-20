@@ -902,7 +902,7 @@ describe('the item menu\'s AI row', () => {
     const content = openAsk(rightClick(cardOf('once')));
     expect(askIds(content)).toEqual(['ask', 'breakdown', 'start', 'findTime']);
     expect(askLabel(content, 'ask')).toBe('Ask about this…');
-    expect(askLabel(content, 'breakdown')).toBe('Break it down');
+    expect(askLabel(content, 'breakdown')).toBe('Break this down into steps');
     expect(askLabel(content, 'start')).toBe('Help me start');
     expect(askLabel(content, 'findTime')).toBe('Find a time for this');
   });
@@ -912,7 +912,7 @@ describe('the item menu\'s AI row', () => {
     render(<LiveRow id="stretch" />);
     const content = openAsk(rightClick(cardOf('stretch')));
     expect(askIds(content)).toEqual(['ask', 'keep']);
-    expect(askLabel(content, 'keep')).toBe('Make this easier to keep');
+    expect(askLabel(content, 'keep')).toBe('Make this easier to do consistently');
   });
 
   it('offers no "Find a time" on a repeating task: its schedule is its series', () => {

@@ -69,6 +69,13 @@ export interface DsulContextState {
    * absent or empty, the output is byte-identical to before.
    */
   mentionedItemIds?: string[]
+  /**
+   * What the agent holding the focused item and the user said to each other
+   * (lib/agent-exchange.ts `exchangeContextLines`), so a box switched from the
+   * agent to the model is not blind to the agent's findings. Absent or empty,
+   * the output is byte-identical to before.
+   */
+  focusAgentLines?: string[]
 }
 
 /** The context's lines in three runs; buildDsulContext is head, beyond, tail. */
@@ -98,6 +105,15 @@ function contextSections(state: DsulContextState): { head: string[]; beyond: str
       )
       lines.push(...itemDetail(focus, state))
       lines.push('')
+      if (state.focusAgentLines?.length) {
+        lines.push('### Said between the user and the agent holding this item')
+        lines.push(
+          'The item was handed to an agent. This is what it and the user wrote on the item; ' +
+            'the agent does not see this conversation.'
+        )
+        lines.push(...state.focusAgentLines)
+        lines.push('')
+      }
     }
   }
 

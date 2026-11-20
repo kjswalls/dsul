@@ -504,9 +504,9 @@ function WalkOn({
 }
 
 // The app's keycap buttons (components/ui/button.tsx): Next and the last
-// Done stand on the lime skirt, the rest are plain keys.
+// Done are lime keys, the rest are flat keys.
 const WALK_BUTTON = buttonVariants({ variant: 'outline', size: 'sm' });
-const WALK_MAIN = buttonVariants({ size: 'sm' });
+const WALK_MAIN = buttonVariants({ variant: 'key', size: 'sm' });
 
 /**
  * The veil with its cut-out: one SVG path over the board, the whole board

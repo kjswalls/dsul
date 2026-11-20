@@ -12,7 +12,11 @@ import { resolveConversationId, useConversationsStore, type ConversationsState }
 import { bindingKey, sendFrom, type ComposerBinding } from '@/lib/open-chat';
 import type { AskSurface } from '@/lib/rail-store';
 import { chatAssistantName, chatPlaceholder, itemChatPlaceholder } from '@/lib/chat-utils';
-import { useBoxAnswersAgent } from '@/lib/agent-question';
+import { agentPlaceholder, useAgentQuestionOpen, useBoxAnswersAgent, useItemAgent } from '@/lib/agent-question';
+import { AnswererChip } from './answerer-chip';
+import { AskToChip } from './ask-to-chip';
+import { useAgentsStore } from '@/lib/agents-store';
+import { askToFor, useAskToStore } from '@/lib/ask-to-store';
 import { activeMention, insertMention, mentionChoices } from '@/lib/chat-mentions';
 import { activeSlash } from '@/lib/chat-slash';
 import { SlashCommands, type SlashCommandsHandle } from './chat-slash-commands';
@@ -185,17 +189,27 @@ export function ChatComposer({
     });
   };
 
-  // An agent's open question on this item takes the box (lib/agent-question.ts).
+  // An agent holding this item takes the box, until it is pointed at the model (lib/agent-question.ts).
   const answeringAgent = useBoxAnswersAgent(binding.kind === 'item' ? binding.itemId : null);
-  const displayName = answeringAgent ?? chatAssistantName(target);
+  const itemAgent = useItemAgent(binding.kind === 'item' ? binding.itemId : null);
+  const questionOpen = useAgentQuestionOpen(binding.kind === 'item' ? binding.itemId : null);
+  // Ask's own box may write to a connected app instead (components/ai/ask-to-chip.tsx).
+  const hasAgents = useAgentsStore((s) => s.agents.length > 0);
+  const agentsLoaded = useAgentsStore((s) => s.loaded);
+  useEffect(() => {
+    if (binding.kind !== 'item' && !agentsLoaded) void useAgentsStore.getState().load();
+  }, [binding.kind, agentsLoaded]);
+  useAskToStore((s) => (threadId === null ? s.home : s.byThread[threadId]));
+  const boundMessages = useConversationsStore((s) => (threadId ? s.threads[threadId]?.messages : undefined));
+  const askTo = binding.kind === 'item' || !hasAgents ? null : askToFor(threadId, boundMessages ?? []);
+  const askToName = useAgentsStore((s) =>
+    askTo ? (s.agents.find((a) => a.assignee.toLowerCase() === askTo.toLowerCase())?.name ?? askTo) : null
+  );
+  const displayName = answeringAgent ?? askToName ?? chatAssistantName(target);
   // A box bound to an item says so: it looks like every other box.
   const placeholder =
-    placeholderOverride ??
-    (answeringAgent
-      ? `Answer ${answeringAgent}…`
-      : binding.kind === 'item'
-        ? itemChatPlaceholder(target)
-        : chatPlaceholder(target));
+    (answeringAgent ? agentPlaceholder(answeringAgent, questionOpen) : askToName ? `Message ${askToName}…` : placeholderOverride) ??
+    (binding.kind === 'item' ? itemChatPlaceholder(target) : chatPlaceholder(target));
   const hasText = input.trim().length > 0;
 
   // Auto-grow, measured while the field can be: a field with no box (hidden,
@@ -330,8 +344,11 @@ export function ChatComposer({
       if (!text && attached.length === 0) return;
       // Taken before the message is stamped, so the files' cards sit just above it.
       const placedAt = Date.now();
+      // To an agent, the files are on the item for it to find; only the model takes pictures inline.
       const images =
-        target === 'model' ? attached.flatMap((a) => (a.image ? [a.image] : [])).slice(0, MAX_CHAT_IMAGES) : [];
+        target === 'model' && !answeringAgent
+          ? attached.flatMap((a) => (a.image ? [a.image] : [])).slice(0, MAX_CHAT_IMAGES)
+          : [];
       if (attached.length)
         void useItemFilesStore.getState().add(
           itemId,
@@ -357,7 +374,7 @@ export function ChatComposer({
   const refocus = useRef(false);
   /** Stops this conversation's reply only: another conversation's stream is its own. */
   const stop = (e: React.MouseEvent<HTMLButtonElement>) => {
-    // Stop's slot turns into Send or the disabled Mic once the reply ends, and
+    // Stop's slot turns into Send or nothing once the reply ends, and
     // a focused button that goes disabled drops focus to <body>, where the next
     // Tab starts over at the top of the page. A keyboard Stop hands focus to
     // the box: at once where the box is only read-only, and once the reply has
@@ -510,6 +527,7 @@ export function ChatComposer({
         ) : (
           hasText && (
             <Button
+              variant="key"
               size="icon"
               // -my-[5px] lets the 32px button overhang the 22px text line rather
               // than set the pill's floor — without it the bar is 58px tall the
@@ -684,39 +702,49 @@ export function ChatComposer({
               void attach(files);
             }}
           />
-          {target === 'model' && <ChatModelChip disabled={isLoading} />}
-        </div>
-        {isLoading ? (
-          <Button
-            size="icon"
-            className="h-8 w-8 rounded-full"
-            onClick={stop}
-            aria-label="Stop generating"
-            data-testid="chat-stop"
-          >
-            <Square className="h-3 w-3 fill-current" />
-          </Button>
-        ) : canSend ? (
-          <Button
-            size="icon"
-            className="h-8 w-8 rounded-full"
-            onClick={handleSend}
-            disabled={isLoading}
-            aria-label="Send"
-          >
-            <ArrowUp className="h-4 w-4" />
-          </Button>
-        ) : (
+          {/* Voice input is not built yet; it sits left so the right edge is who reads this. */}
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-full text-muted-foreground"
+            className="h-8 w-8 shrink-0 rounded-full text-muted-foreground"
             disabled
             title="Voice input (coming soon)"
+            aria-label="Voice input (coming soon)"
           >
             <Mic className="h-4 w-4" />
           </Button>
-        )}
+        </div>
+        <div className="flex min-w-0 items-center gap-1">
+          {itemAgent && binding.kind === 'item' ? (
+            <AnswererChip itemId={binding.itemId} target={target} disabled={isLoading} />
+          ) : binding.kind !== 'item' && hasAgents ? (
+            <AskToChip threadId={threadId} target={target} disabled={isLoading} />
+          ) : (
+            target === 'model' && <ChatModelChip disabled={isLoading} />
+          )}
+          {isLoading ? (
+            <Button
+              size="icon"
+              className="h-8 w-8 rounded-full"
+              onClick={stop}
+              aria-label="Stop generating"
+              data-testid="chat-stop"
+            >
+              <Square className="h-3 w-3 fill-current" />
+            </Button>
+          ) : canSend ? (
+            <Button
+              variant="key"
+              size="icon"
+              className="h-8 w-8 rounded-full"
+              onClick={handleSend}
+              disabled={isLoading}
+              aria-label="Send"
+            >
+              <ArrowUp className="h-4 w-4" />
+            </Button>
+          ) : null}
+        </div>
       </div>
     </div>
   );

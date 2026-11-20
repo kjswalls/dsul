@@ -154,6 +154,7 @@ function ZenComposer({
           ⇧↵ details
         </span>
         <Button
+          variant="key"
           size="sm"
           disabled={!title.trim()}
           // Keep focus in the field: a blur would add the title before this click does.
