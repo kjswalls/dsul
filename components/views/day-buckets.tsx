@@ -407,8 +407,6 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
               persistent
               target={{ kind: 'row', scope: rowScope(`bucket-${bucket}`, dateStr), dateStr, bucket }}
               placeholder={`Add to ${BUCKET_META[bucket].label}`}
-              // An empty card is only its add row: no breath above it.
-              className={totalItems > 0 || bucketProjects.length > 0 ? undefined : 'mt-0'}
             />
           </div>
         )}

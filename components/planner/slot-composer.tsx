@@ -321,11 +321,7 @@ export function AddRow({
       // The shared quick-add row (components/primitives/quick-add-row.tsx).
       // gap-[11px] after the box's -ml-px keeps the words on the rows' title column.
       // py-[5.5px] around the 18px box makes it the rows' 29px (py-1.5 + 17px).
-      // mt-2: a breath above it, so it reads as the list's foot rather than one
-      // more item (the spacing round, Kirby's pick "B", 2026-11-20). A caller
-      // whose row stands alone (an empty bucket card) passes mt-0; the week
-      // views' compact rows take mt-1.5.
-      className={cn('@container/addrow group/addrow mt-2 gap-[11px] px-2 py-[5.5px]', className)}
+      className={cn('@container/addrow group/addrow gap-[11px] px-2 py-[5.5px]', className)}
     >
       <QuickAddBox
         aria-label="Add with all the details"
