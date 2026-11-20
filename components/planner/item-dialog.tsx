@@ -743,8 +743,14 @@ function FoldRegion({
       )}
     >
       {/* -mx-5/px-5: room at the clipped edges for a focus ring, and for the
-          subtask rows' drag grip, which sits in the rail body's 20px gutter. */}
-      <div className={active ? '-mx-5 min-h-0 overflow-hidden px-5' : undefined} inert={!open}>
+          subtask rows' drag grip, which sits in the rail body's 20px gutter.
+          -mb-3/pb-3 does the same below, while open, for the last row's focus
+          look (the subtask add row's raised draft shadow was cut off). Never
+          while folded: a padded 0fr row would still show 12px of the details. */}
+      <div
+        className={cn(active && '-mx-5 min-h-0 overflow-hidden px-5', active && open && '-mb-3 pb-3')}
+        inert={!open}
+      >
         {/* The Lift: the details rise a little as their rows close. */}
         <div
           className={cn(

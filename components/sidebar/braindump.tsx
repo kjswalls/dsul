@@ -147,11 +147,10 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
     // its rows' own padding, so the plus lands in the same column as the
     // checkboxes above it.
     //
-    // -mt-2 cancels the section's gap-2 (both 8px), and the list has no bottom
-    // padding, so this row sits one row's step under the last item, like the
-    // planner's "Add to …" rows. It eats only the empty flex gap between
-    // siblings, landing exactly at the scroll port's edge — never over a row
-    // when a long list is scrolled.
+    // The section's gap-2 (8px) is the breath above it: the list has no bottom
+    // padding, so this row sits one row's step plus 8px under the last item,
+    // like the planner's "Add to …" rows (the spacing round, pick "B",
+    // 2026-11-20).
     <QuickAddShell
       data-testid="braindump-quick-add"
       data-focused={focused ? 'true' : 'false'}
@@ -163,7 +162,7 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
       // the hover wash of a braindump row at rest, a raised draft row while
       // focused. gap-[11px] after the box's -ml-px keeps the words on the
       // rows' title column.
-      className="-mt-2 mx-[14px] shrink-0 gap-[11px] px-2 py-1.5"
+      className="mx-[14px] shrink-0 gap-[11px] px-2 py-1.5"
     >
       <QuickAddBox onClick={openFull} aria-label="Open the full add dialog" title="Add with all the details (⇧↵)" />
       <input

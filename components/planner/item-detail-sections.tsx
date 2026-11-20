@@ -349,7 +349,12 @@ function SubtasksSection({
         {openRows.map(renderRow)}
         {/* What the AI drafted: rows not kept yet, after the kept ones. */}
         <DraftedSteps item={item} />
-        <QuickAddRow className="-mx-1.5 gap-[9px] px-1.5 py-[5px]" data-testid="subtask-add" data-sink-row="">
+        <QuickAddRow
+          // mt-2 under rows: the list's foot, as on the planner (spacing round B).
+          className={cn('-mx-1.5 gap-[9px] px-1.5 py-[5px]', openRows.length > 0 && 'mt-2')}
+          data-testid="subtask-add"
+          data-sink-row=""
+        >
           <QuickAddBox
             aria-label="Add subtask"
             title="Add subtask"
