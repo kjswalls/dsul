@@ -157,7 +157,7 @@ function DaySection({ date }: { date: Date }) {
             )}
           </div>
         )}
-        {adding && <AddRow target={addTarget} placeholder={`Add to ${format(date, 'EEEE')}`} className="ml-2" />}
+        {adding && <AddRow target={addTarget} placeholder={`Add to ${format(date, 'EEEE')}`} className="ml-2 mt-1.5" />}
       </ListDropZone>
     </section>
   );
