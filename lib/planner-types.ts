@@ -86,6 +86,24 @@ export const GROUP_BY_VALUES: readonly GroupBy[] = [
  */
 export const isGroupBy = (v: unknown): v is GroupBy =>
   typeof v === 'string' && (GROUP_BY_VALUES as readonly string[]).includes(v);
+
+/**
+ * What the canvas STORES: a `GroupBy`, or `'ungrouped'`.
+ *
+ * Day × List draws 'none' as Habits / Tasks / Projects (its default look, see
+ * `canvasNoneGrouping`), so "no grouping at all" there needs a value of its
+ * own. `'ungrouped'` is that value: one flat list on Day × List, and the same
+ * as 'none' everywhere else, which is already flat. It never reaches
+ * `groupRows` — `useCanvasGroupBy` reads it as 'none' — so only Day × List and
+ * the Display menu ever ask for it by name. 'none' stays the default and what
+ * Reset writes, so nobody's Day list changes until they pick None.
+ */
+export type CanvasGroupBy = GroupBy | 'ungrouped';
+
+export const isCanvasGroupBy = (v: unknown): v is CanvasGroupBy => v === 'ungrouped' || isGroupBy(v);
+
+/** A stored canvas value as the shared grouping core understands it. */
+export const groupByOf = (v: CanvasGroupBy): GroupBy => (v === 'ungrouped' ? 'none' : v);
 export type FilterType = 'project' | 'priority' | 'startDate' | 'repeat' | 'status';
 
 export interface FilterState {
