@@ -319,7 +319,11 @@ rather than taking the flag.
   non-hovered day columns, and lime inside them composites for as long as the pointer
   is on another day. It is allowed because it is transient — pointer-only, under a
   `(hover: hover)` guard, never at rest — and because the token version that spared
-  the lime cost ~250ms a hover. Nothing else may cite this exception.
+  the lime cost ~250ms a hover. **A second, Kirby's OK 2026-11-20:** Day × Schedule's
+  top fade ([use-grid-top-fade.ts](hooks/use-grid-top-fade.ts), rule in globals.css) masks
+  the port's top 24px only while the hour grid is scrolled under the edge, so a lime now
+  line fades as it passes out of view; never at rest, never over Anytime. Nothing else may
+  cite either exception.
 - **The week views dim a day with a transient opacity, and nothing dims at rest.** Hovering
   one day column recedes the other six (`[data-week-cols]` / `[data-week-col]`, the rule
   is in [globals.css](app/globals.css), the dial is `--day-recede`). It is the accent rule's

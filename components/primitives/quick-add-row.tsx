@@ -37,7 +37,9 @@ export const QuickAddRow = forwardRef<HTMLDivElement, ComponentPropsWithoutRef<'
       ref={ref}
       data-quick-add=""
       className={cn(
-        'group/qa flex items-center gap-2.5 rounded-md transition-[background-color,box-shadow] duration-150 hover:bg-accent',
+        // At rest it hovers exactly like the rows above it (task-row.tsx): the
+        // same 5px corners and the same --accent wash, landing instantly.
+        'group/qa flex items-center gap-2.5 rounded-[5px] transition-[box-shadow] duration-150 hover:bg-accent',
         // The draft: raised, with the field's ink hairline held faint.
         'focus-within:bg-card focus-within:shadow-[0_0_0_1px_var(--border),0_2px_8px_oklch(0_0_0/6%)] focus-within:hover:bg-card',
         className

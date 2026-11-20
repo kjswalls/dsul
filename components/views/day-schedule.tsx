@@ -36,7 +36,8 @@ import {
 } from '@/lib/schedule-overlap';
 import { planLanes, isReceded } from '@/lib/schedule-lanes';
 import { useScheduleFocusStore } from '@/lib/schedule-focus-store';
-import { LaneCapRow } from '@/components/primitives/lane-cap';
+import { LaneCapRow, LANE_CAP_H } from '@/components/primitives/lane-cap';
+import { useGridTopFade } from '@/hooks/use-grid-top-fade';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { milestoneItemIds } from '@/lib/goals';
 import { canMoveToNextDay, canReschedule as canRescheduleItem, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
@@ -1638,6 +1639,8 @@ export function DaySchedule({
   const hours = Array.from({ length: gridEndHour - gridStartHour }, (_, i) => gridStartHour + i);
   const { hourPx, anchorRef } = useFitHourPx(hours.length, resizing);
   useResizeScrollCompensation(gridStartHour, hourPx, resizing, anchorRef);
+  // The top fade, once the hour grid has slid under the edge (hooks/use-grid-top-fade.ts).
+  const scrollRootRef = useRef<HTMLDivElement>(null);
 
   // Still a range check: the drag/resize override swaps in the full day, and the
   // widening above doesn't apply to it.
@@ -1699,6 +1702,7 @@ export function DaySchedule({
   const isMobile = useIsMobile();
   const addHere = !isMobile;
   const dayStr = completionDateStr;
+  useGridTopFade(scrollRootRef, anchorRef, lanePlan.mode === 'lanes' ? LANE_CAP_H : 0, selectedDate.toDateString());
   const anytimeAdd = (
     <AddRow
       persistent
@@ -1710,7 +1714,7 @@ export function DaySchedule({
   );
 
   return (
-    <ScrollArea className="h-full flex-1">
+    <ScrollArea ref={scrollRootRef} className="h-full flex-1">
       <div
         key={selectedDate.toDateString()}
         className={cn(
