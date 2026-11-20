@@ -162,7 +162,7 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
       // the hover wash of a braindump row at rest, a raised draft row while
       // focused. gap-[11px] after the box's -ml-px keeps the words on the
       // rows' title column.
-      className="mx-[14px] shrink-0 gap-[11px] px-2 py-1.5"
+      className="mx-[14px] shrink-0 gap-[11px] px-2 py-[5.5px]"
     >
       <QuickAddBox onClick={openFull} aria-label="Open the full add dialog" title="Add with all the details (⇧↵)" />
       <input

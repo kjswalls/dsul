@@ -351,7 +351,8 @@ function SubtasksSection({
         <DraftedSteps item={item} />
         <QuickAddRow
           // mt-2 under rows: the list's foot, as on the planner (spacing round B).
-          className={cn('-mx-1.5 gap-[9px] px-1.5 py-[5px]', openRows.length > 0 && 'mt-2')}
+          // rounded-md: the subtask rows' own corners (subtask-row.tsx).
+          className={cn('-mx-1.5 gap-[9px] rounded-md px-1.5 py-[5px]', openRows.length > 0 && 'mt-2')}
           data-testid="subtask-add"
           data-sink-row=""
         >

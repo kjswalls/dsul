@@ -5904,3 +5904,40 @@ body {
   backdrop-filter: blur(2px) saturate(1.12);
   -webkit-backdrop-filter: blur(2px) saturate(1.12);
 }
+
+/* ── The schedule's top fade (hooks/use-grid-top-fade.ts, Kirby's pick
+   2026-11-20) ─────────────────────────────────────────────────────────────
+   Once the hour grid has slid under the top of Day × Schedule's scroll port,
+   its top 24px fades instead of cutting rows and blocks mid-line. Off at rest
+   and over the Anytime rows: the hook sets [data-grid-fade] only once the
+   grid's own top reaches the edge. --grid-fade-top keeps the pinned lane
+   caption (when lanes show) out of the fade. The length is a registered
+   property so the fade eases in rather than snapping.
+
+   It is a mask, so the lime now line passing the edge fades with everything
+   else. Kirby OK'd that on 2026-11-20 as the same kind of exception as the
+   week views' hover recede: transient (only while the grid is scrolled under
+   the edge, and only in that 24px band), never at rest. */
+@property --grid-fade-len {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+[data-slot='scroll-area'] > [data-slot='scroll-area-viewport'] {
+  --grid-fade-len: 0px;
+}
+[data-grid-fade] > [data-slot='scroll-area-viewport'] {
+  --grid-fade-len: 24px;
+  mask-image: linear-gradient(
+    to bottom,
+    #000 var(--grid-fade-top, 0px),
+    transparent var(--grid-fade-top, 0px),
+    #000 calc(var(--grid-fade-top, 0px) + var(--grid-fade-len))
+  );
+  transition: --grid-fade-len 200ms ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-grid-fade] > [data-slot='scroll-area-viewport'] {
+    transition: none;
+  }
+}
