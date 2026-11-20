@@ -25,6 +25,31 @@ let noiseBuf: AudioBuffer;
 /** The fixed lift after the volume: about +14 dB. */
 export const LIFT = 5;
 
+/**
+ * How long the context lives after the last sound. A context kept open for
+ * hours can stay "running" and audible to the browser while macOS has moved
+ * the output elsewhere (sleep, a headset coming or going), so nothing reaches
+ * the speakers (Kirby, 2026-11-13). Closing it when quiet means every burst
+ * of sounds opens on whatever output is current, and an idle tab holds no
+ * audio device.
+ */
+export const IDLE_CLOSE_MS = 10_000;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
+let watchingDevices = false;
+
+function retire() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = null;
+  const old = ctx;
+  ctx = null;
+  if (old && old.state !== 'closed') void old.close().catch(() => {});
+}
+
+function touch() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(retire, IDLE_CLOSE_MS);
+}
+
 function impulse(c: Ctx, sec: number, decay: number): AudioBuffer {
   const len = Math.floor(c.sampleRate * sec);
   const b = c.createBuffer(2, len, c.sampleRate);
@@ -44,6 +69,11 @@ function audio(): Ctx | null {
       : window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AC) return null;
   const c = new AC();
+  if (!watchingDevices && navigator.mediaDevices?.addEventListener) {
+    // A new default output: the next sound opens a context on it.
+    navigator.mediaDevices.addEventListener('devicechange', retire);
+    watchingDevices = true;
+  }
   // The packs' note levels were tuned by ear on headphones, where they sit
   // around -30 dBFS. Through laptop speakers that is below hearing, while the
   // browser still calls the tab audible (Kirby, 2026-11-07). One fixed lift
@@ -400,7 +430,8 @@ export function playSynth(pack: SoundPackId, event: SoundEvent, volume: number):
   try {
     const c = audio();
     if (!c) return;
-    if (c.state === 'suspended') void c.resume().catch(() => {});
+    if (c.state !== 'running') void c.resume().catch(() => {});
+    touch();
     const p = PACKS[pack] ?? PACKS.silk;
     master.gain.setTargetAtTime(volume, c.currentTime, 0.01);
     wet.gain.setTargetAtTime(p.space, c.currentTime, 0.01);
