@@ -1708,8 +1708,6 @@ export function DaySchedule({
       persistent
       target={{ kind: 'row', scope: rowScope('anytime', dayStr), dateStr: dayStr, bucket: 'anytime' }}
       placeholder="Add to Anytime"
-      // Under no rows it follows the strip's label: no breath above it.
-      className={untimed.length > 0 ? undefined : 'mt-0'}
     />
   );
 

@@ -448,7 +448,7 @@ function WeekScheduleColumn({
               <AddRow
                 target={stripTarget}
                 placeholder="Add to Anytime"
-                className={cn('gap-2 py-[3.5px]', col.untimed.length > 0 ? 'mt-1.5' : 'mt-0')}
+                className="gap-2 py-[3.5px]"
               />
             )}
           </div>
