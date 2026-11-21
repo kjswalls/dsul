@@ -151,7 +151,7 @@ const kids = () =>
     .getState()
     .items.filter((i) => (i as { parentItemId?: string }).parentItemId === 'big') as (Item & { assignee?: string })[];
 const rows = () => screen.getAllByTestId('drafted-step');
-const titles = () => rows().map((r) => (r.querySelector('input') as HTMLInputElement).value);
+const titles = () => rows().map((r) => (r.querySelector('textarea') as HTMLTextAreaElement).value);
 
 describe('first steps', () => {
   it('opens only where the AI can break the item down, and opens the item', () => {
@@ -200,7 +200,7 @@ describe('drafted steps', () => {
   it('keeps one row, as edited, on Enter', () => {
     render(<DraftedSteps item={BIG} />);
     stepsArrive();
-    const input = rows()[1].querySelector('input')!;
+    const input = rows()[1].querySelector('textarea')!;
     fireEvent.change(input, { target: { value: 'gather the W-2s and 1099s' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(kids().map((k) => k.title)).toEqual(['gather the W-2s and 1099s']);
@@ -260,6 +260,18 @@ describe('drafted steps', () => {
       'Break this into a few concrete steps. Something to know first: the accountant is booked up',
       'big'
     );
+  });
+
+  it("puts the note and its words in the heading's slot, the rows in place", () => {
+    const head = document.createElement('span');
+    document.body.appendChild(head);
+    const { container } = render(<DraftedSteps item={BIG} head={head} />);
+    stepsArrive();
+    expect(head.querySelector('[data-testid="drafted-steps-label"]')?.textContent).toContain('3 drafted');
+    expect(head.querySelector('[data-testid="drafted-steps-keep-all"]')).not.toBeNull();
+    expect(container.querySelectorAll('[data-testid="drafted-step"]')).toHaveLength(3);
+    expect(container.querySelector('[data-testid="drafted-steps-label"]')).toBeNull();
+    head.remove();
   });
 
   it('drops a breakdown it owns when the panel closes', () => {
