@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ArrowLeftToLine, CalendarDays, Check, ChevronDown, MoreHorizontal, Plus, Redo2, X } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { usePlannerLoaded } from '@/lib/planner-ready';
@@ -42,8 +42,9 @@ import { cn } from '@/lib/utils';
  *
  * Drawn with TaskRow's own geometry and rails (16px box column, title, the
  * start-time slot, tag / priority / duration), so the only new thing on screen
- * is the caption. The motion (arrive, breathe) and the dashed box are in
- * app/globals.css beside the row rules.
+ * is the caption. The motion (arrive) and the dashed box are in
+ * app/globals.css beside the row rules; the settle as the pile shrinks is
+ * GhostFoldSettle, below.
  *
  * Shown only on today, in the Day views, while the account's leftovers switch is
  * on (`morning_check_enabled`, relabelled "Leftovers on Today"), and only once
@@ -64,12 +65,152 @@ export function GhostFold({ dateStr }: { dateStr: string }) {
     [shown, items, todayStr, inactiveIds, goals]
   );
 
-  if (!shown) return null;
-  return <GhostFoldBody ghosts={ghosts} todayStr={todayStr} />;
+  // The fold stays mounted, empty, while its space closes after the person
+  // (or anything else) settles the last ghost; `leaving` is that run. Set in
+  // render, off the count's change, so the box is still in the DOM on the
+  // commit where the pile hits zero.
+  const count = ghosts.length;
+  const [prevCount, setPrevCount] = useState(count);
+  const [leaving, setLeaving] = useState(false);
+  if (prevCount !== count) {
+    setPrevCount(count);
+    setLeaving(shown && count === 0 && prevCount > 0);
+  }
+
+  if (!shown || (count === 0 && !leaving)) return null;
+  return (
+    <GhostFoldSettle count={count} onGone={() => setLeaving(false)}>
+      <GhostFoldBody ghosts={ghosts} todayStr={todayStr} />
+    </GhostFoldSettle>
+  );
 }
 
-/** How long "All sorted, you got this" stays after the last ghost is handled. */
-export const GHOST_DONE_MS = 4000;
+/** How long the space a settled ghost (or the whole fold) leaves takes to close. */
+export const GHOST_SETTLE_MS = 240;
+const SETTLE_EASE = 'cubic-bezier(0.2, 0, 0, 1)';
+
+/**
+ * Closes the space a settled ghost leaves, so the planner below slides back up
+ * rather than jumping. Each time the pile SHRINKS (a verb, catch-up, another
+ * device), the box's height is held at what it was and eased to what it is
+ * now. The last one going takes the whole fold down to nothing, its heading
+ * and the spacing after it included (the box's own margin eases to cancel the
+ * view's gap, so nothing jumps when the empty box finally unmounts). Growth
+ * (the fold arriving, the chevron opening, an undo bringing a ghost back) is
+ * never animated: a fold that crept open would move the day under the pointer,
+ * and the rows' own arrive is the motion there.
+ *
+ * Height on one box, not a FLIP of every row below: everything under the fold
+ * moves as one block, so one box carries all of it, and the day's rows, the
+ * schedule's hours and Anytime take no part. `overflow: hidden` only while it
+ * runs, so a focus ring or a row's hover capsule is never clipped at rest. Off
+ * under reduced motion. The box carries the fold's bottom margin (mb-5, which
+ * the views' space-y defers to, as it did on the fold itself).
+ */
+function GhostFoldSettle({ count, children, onGone }: { count: number; children: ReactNode; onGone: () => void }) {
+  const outer = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  // The content's height as last laid out, kept by a ResizeObserver (the
+  // chevron and the row controls change it without this component rendering).
+  const lastHeight = useRef(0);
+  const lastCount = useRef(count);
+  // Ends the run in flight; `gone` true lets an emptied fold unmount.
+  const running = useRef<((gone: boolean) => void) | null>(null);
+  const goneRef = useRef(onGone);
+  useLayoutEffect(() => {
+    goneRef.current = onGone;
+  });
+
+  useLayoutEffect(() => {
+    const el = inner.current;
+    if (!el) return;
+    lastHeight.current = el.offsetHeight;
+    // Mounted empty (nothing to close): let it go at once.
+    if (count === 0) goneRef.current();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (!running.current) lastHeight.current = el.offsetHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+    // Mount only: count is read once, for the empty-mount backstop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Before paint, after the shrunk rows are in the DOM: the ResizeObserver
+  // has not yet heard of the change, so lastHeight is still the old height.
+  useLayoutEffect(() => {
+    const was = lastCount.current;
+    lastCount.current = count;
+    const box = outer.current;
+    const el = inner.current;
+    if (!box || !el || count === was) return;
+    if (count > was) {
+      // A ghost back mid-run: show it at once.
+      running.current?.(false);
+      return;
+    }
+    const to = el.offsetHeight;
+    // Mid-run (two verbs in a row), start from where the box is now.
+    const from = running.current ? box.getBoundingClientRect().height : lastHeight.current;
+    const margin = parseFloat(getComputedStyle(box).marginBottom) || 0;
+    running.current?.(false);
+    const emptied = count === 0;
+    if (from <= to || prefersReducedMotion()) {
+      lastHeight.current = to;
+      if (emptied) goneRef.current();
+      return;
+    }
+    box.style.overflow = 'hidden';
+    box.style.transition = 'none';
+    box.style.height = `${from}px`;
+    box.style.marginBottom = `${margin}px`;
+    // The space between this box and the next one, the view's gap or space-y
+    // and this box's margin together: what an emptied fold must also close.
+    const next = box.nextElementSibling;
+    const space = emptied && next ? next.getBoundingClientRect().top - box.getBoundingClientRect().bottom : 0;
+    void box.offsetHeight; // commit the start before easing from it
+    box.style.transition = `height ${GHOST_SETTLE_MS}ms ${SETTLE_EASE}, margin-bottom ${GHOST_SETTLE_MS}ms ${SETTLE_EASE}`;
+    box.style.height = `${to}px`;
+    if (emptied) box.style.marginBottom = `${margin - Math.max(0, space)}px`;
+    let timer = 0;
+    const finish = (gone: boolean) => {
+      window.clearTimeout(timer);
+      box.removeEventListener('transitionend', onEnd);
+      running.current = null;
+      // An emptied fold unmounts as it is, closed, so no frame shows it open.
+      if (gone) return goneRef.current();
+      box.style.height = '';
+      box.style.marginBottom = '';
+      box.style.overflow = '';
+      box.style.transition = '';
+      lastHeight.current = el.offsetHeight;
+    };
+    const onEnd = (e: TransitionEvent) => {
+      if (e.target === box && e.propertyName === 'height') finish(emptied);
+    };
+    box.addEventListener('transitionend', onEnd);
+    // A backstop for a transitionend that never comes (a hidden tab).
+    timer = window.setTimeout(() => finish(emptied), GHOST_SETTLE_MS + 100);
+    running.current = finish;
+  }, [count]);
+
+  // An unmount mid-run (the day changes) drops the timer and listener.
+  useEffect(() => () => running.current?.(false), []);
+
+  return (
+    <div ref={outer} data-testid="ghost-fold-settle" className="mb-5">
+      {/* flow-root, so nothing inside collapses a margin through the box. */}
+      <div ref={inner} className="flow-root">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
 
 /** May this ghost be let go? The store's own test (letGoItems), asked first so the control never no-ops. */
 function canLetGo(item: TaskItem): boolean {
@@ -114,25 +255,20 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
   const [sheetFor, setSheetFor] = useState<string | null>(null);
   const sheetItem = sheetFor ? (ghosts.find((g) => g.id === sheetFor) ?? null) : null;
 
-  // "All sorted, you got this" for a few seconds once the person handles the
-  // last ghost, then nothing. Only a verb run from THIS fold counts: `acted` is
-  // set by each one and consumed by the next change of count, so a pile
-  // emptied by anything else (the auto-age sweep at landing, another device's
-  // edit through catch-up, a paused project, an away period) goes quietly. A
-  // day that never had a ghost says nothing at all, and an undo that brings a
-  // ghost back takes the line down with it.
+  // Once the person handles the last ghost, the fold goes (and
+  // GhostFoldSettle slides the day back up into its space); there is no line
+  // after it. Only a verb run from THIS fold counts as the person clearing it:
+  // `acted` is set by each one and consumed by the next change of count, so a
+  // pile emptied by anything else (the auto-age sweep at landing, another
+  // device's edit through catch-up, a paused project, an away period) is not.
   //
-  // The same moment is what recipes and mods hear as `review.saved`, the end of
+  // That moment is what recipes and mods hear as `review.saved`, the end of
   // day review's event, since the review retired (ghost rows phase 2): once a
   // day, through lib/morning-store.ts noteLeftoversCleared, and only for the
   // person's own verbs, never for a pile something else emptied.
-  const [done, setDone] = useState(false);
-  // A ghost back (an undo inside the window) ends the line at once.
-  if (done && count > 0) setDone(false);
   const prevCount = useRef(count);
   const acted = useRef(false);
-  // Read by the effect below without being one of its inputs: a day turning
-  // over inside the line's few seconds must not restart (or strand) its timer.
+  // Read by the effect below without being one of its inputs.
   const today = useRef(todayStr);
   useEffect(() => {
     today.current = todayStr;
@@ -149,27 +285,9 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
     acted.current = false;
     if (!(was > 0 && count === 0 && byUs)) return;
     useMorningStore.getState().noteLeftoversCleared(usePlannerStore.getState().userId, today.current);
-    setDone(true);
-    const t = window.setTimeout(() => setDone(false), GHOST_DONE_MS);
-    return () => window.clearTimeout(t);
   }, [count]);
 
-  if (count === 0) {
-    if (!done) return null;
-    return (
-      <section data-testid="ghost-fold" data-ghost-fold="done" aria-label="Left over from earlier">
-        <p
-          role="status"
-          data-testid="ghost-fold-done"
-          className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground"
-        >
-          {/* The one lime mark, at full strength: nothing above it fades. */}
-          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary" />
-          All sorted, you got this
-        </p>
-      </section>
-    );
-  }
+  if (count === 0) return null;
 
   const keep = act((t: TaskItem) => moveTaskToDate(t.id, todayStr));
   const toTomorrow = act((t: TaskItem) => moveTaskToDate(t.id, tomorrow));
@@ -203,7 +321,6 @@ function GhostFoldBody({ ghosts, todayStr }: { ghosts: TaskItem[]; todayStr: str
       data-testid="ghost-fold"
       data-ghost-fold={open ? 'open' : 'closed'}
       aria-label="Left over from earlier"
-      className="mb-5"
     >
       <div className="flex items-center rounded-[5px] pr-2 hover:bg-accent">
         {/* GroupSection's canvas heading: the same size, ink and chevron. */}

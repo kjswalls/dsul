@@ -1,4 +1,3 @@
-import Accessibility
 import DsulCore
 import SwiftUI
 
@@ -11,9 +10,9 @@ import SwiftUI
 // already makes (GhostRowsModel.swift).
 //
 // No lime in a ghost row: the title is muted, the box a dashed outline in the
-// secondary ink, and arrive's light crosses only those. The one lime mark is
-// "All sorted, you got this"'s dot, drawn at full strength with nothing above
-// it faded and no transition on it.
+// secondary ink, and arrive's light crosses only those. Once the last one is
+// settled the fold goes with no line after it, and the verb's own animation
+// slides what was below back up.
 
 /// The fold's words, the web's exactly where the web has them
 /// (ghost-fold.tsx).
@@ -28,12 +27,9 @@ enum GhostCopy {
     static let sidebar = "Send to sidebar"
     static let letGo = "Let it go"
     static let keptInHistory = "Kept in history"
-    static let sorted = "All sorted, you got this"
     static let cancel = "Cancel"
     /// The fold's spoken name (its `aria-label`).
     static let spokenName = "Left over from earlier"
-    /// `GHOST_DONE_MS`, in seconds.
-    static let doneSeconds = 4.0
 
     /// The sheet's line under the title: "Planned for Thu, Oct 15".
     static func plannedFor(_ day: String) -> String {
@@ -118,18 +114,6 @@ struct GhostFold: View {
             switch host {
             case .list: listFold(ghosts)
             case .card: cardFold(ghosts)
-            }
-        } else if planner.isOnToday && planner.showsGhostsSorted {
-            switch host {
-            case .list:
-                Section {
-                    sortedLine
-                        .listRowSeparator(.hidden)
-                }
-            case .card:
-                sortedLine
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 4)
             }
         }
     }
@@ -273,25 +257,6 @@ struct GhostFold: View {
                  onAction: { settle(ghost.id, $0) })
     }
 
-    /// "All sorted, you got this" beside one small lime dot, at full
-    /// strength: no opacity above it, and it comes and goes with no
-    /// transition (the verb that brings it is sent unanimated, see
-    /// `settle`).
-    private var sortedLine: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(Color.accentColor)
-                .frame(width: 6, height: 6)
-                .accessibilityHidden(true)
-            Text(GhostCopy.sorted)
-                .font(.footnote)
-                .foregroundStyle(Color.secondary)
-        }
-        .padding(.vertical, 4)
-        .transition(.identity)
-        .accessibilityElement(children: .combine)
-    }
-
     // MARK: Doing
 
     private func firstSight(_ count: Int) {
@@ -311,32 +276,19 @@ struct GhostFold: View {
         }
     }
 
-    /// A verb that empties the fold goes with no animation at all, so the
-    /// sorted line, and its lime dot, are never faded in: in the List host it
-    /// arrives as a new row, which List would fade through its own opacity
-    /// whatever `.transition` the line asks for.
+    /// Every verb, the one that empties the fold included, goes under one
+    /// animation, so the rows and bands below slide up into the space a
+    /// settled ghost (or the whole fold) leaves, rather than jumping.
     private func settle(_ id: UUID, _ verb: GhostVerb) {
-        let still = reduceMotion || planner.ghostVerbEmptiesFold(verb, id)
-        withAnimation(still ? nil : .snappy) { planner.settleGhost(id, verb) }
-        announceIfSorted()
+        withAnimation(reduceMotion ? nil : .snappy) { planner.settleGhost(id, verb) }
     }
 
     private func markDone(_ id: UUID) {
-        let still = reduceMotion || planner.ghostDoneEmptiesFold(id)
-        withAnimation(still ? nil : .snappy) { planner.markGhostDone(id) }
-        announceIfSorted()
+        withAnimation(reduceMotion ? nil : .snappy) { planner.markGhostDone(id) }
     }
 
     private func settleAll(_ verb: GhostVerb) {
-        let still = reduceMotion || planner.ghostBulkEmptiesFold(verb)
-        withAnimation(still ? nil : .snappy) { planner.settleAllGhosts(verb) }
-        announceIfSorted()
-    }
-
-    private func announceIfSorted() {
-        if planner.showsGhostsSorted {
-            AccessibilityNotification.Announcement(AttributedString(GhostCopy.sorted)).post()
-        }
+        withAnimation(reduceMotion ? nil : .snappy) { planner.settleAllGhosts(verb) }
     }
 }
 
@@ -628,13 +580,8 @@ struct GhostSheet: View {
     }
 
     private func run(_ verb: GhostVerb, on ghost: SampleItem, day: DayString?) {
-        // As the fold's own verbs: one that empties it goes unanimated, so
-        // the sorted line's lime dot never fades in under the sheet.
-        let still = reduceMotion || planner.ghostVerbEmptiesFold(verb, ghost.id)
-        withAnimation(still ? nil : .snappy) { planner.settleGhost(ghost.id, verb, day: day) }
-        if planner.showsGhostsSorted {
-            AccessibilityNotification.Announcement(AttributedString(GhostCopy.sorted)).post()
-        }
+        // As the fold's own verbs: animated, so what was below slides back.
+        withAnimation(reduceMotion ? nil : .snappy) { planner.settleGhost(ghost.id, verb, day: day) }
         dismiss()
     }
 }

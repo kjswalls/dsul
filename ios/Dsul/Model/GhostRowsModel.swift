@@ -44,10 +44,9 @@ extension SamplePlanner {
     var ghostTomorrow: DayString { today.adding(days: 1) }
 
     /// Runs `verb` on the ghost `id`; Reschedule lands on `day`, which the
-    /// others ignore. Asked again here off the item as it is now. When it
-    /// empties the fold, `ghostsSortedAt` marks the moment.
+    /// others ignore. Asked again here off the item as it is now.
     func settleGhost(_ id: UUID, _ verb: GhostVerb, day: DayString? = nil) {
-        noteSorted { runGhostVerb(verb, on: id, day: day) }
+        runGhostVerb(verb, on: id, day: day)
     }
 
     /// Keep all and Send all to sidebar: `verb` on every ghost that takes it,
@@ -59,12 +58,10 @@ extension SamplePlanner {
     /// (`edit(.time)`, behind its own gate); Keep for today on one keeps the
     /// time, as the web's `moveTaskToDate` does.
     func settleAllGhosts(_ verb: GhostVerb) {
-        noteSorted {
-            for ghost in ghostRows where ghostOffers(verb, ghost) {
-                runGhostVerb(verb, on: ghost.id, day: nil)
-                if verb == .keep, item(ghost.id)?.startTime != nil {
-                    edit(ghost.id, .time(bucket: nil, startTime: .clear, duration: nil))
-                }
+        for ghost in ghostRows where ghostOffers(verb, ghost) {
+            runGhostVerb(verb, on: ghost.id, day: nil)
+            if verb == .keep, item(ghost.id)?.startTime != nil {
+                edit(ghost.id, .time(bucket: nil, startTime: .clear, duration: nil))
             }
         }
     }
@@ -75,61 +72,15 @@ extension SamplePlanner {
     /// (ghost-fold.tsx `markDone`). Plenty of leftovers were done and never
     /// ticked; Keep for today is the swipe and the sheet's first row.
     func markGhostDone(_ id: UUID) {
-        noteSorted {
-            guard let ghost = item(id), let day = DayString(ghostDay(ghost)) else { return }
-            toggleRow(id, on: day)
-        }
+        guard let ghost = item(id), let day = DayString(ghostDay(ghost)) else { return }
+        toggleRow(id, on: day)
     }
 
-    /// Would marking `id` done take the fold from its last ghost to none?
-    func ghostDoneEmptiesFold(_ id: UUID) -> Bool {
-        let ghosts = ghostRows
-        return ghosts.count == 1 && ghosts.first?.id == id
-    }
-
-    /// Would `verb` on `id` take the fold from its last ghost to none? The
-    /// views send that change with no animation, so "All sorted, you got
-    /// this" and its lime dot arrive at once (a List would fade the new row
-    /// in through its own opacity).
-    func ghostVerbEmptiesFold(_ verb: GhostVerb, _ id: UUID) -> Bool {
-        let ghosts = ghostRows
-        guard ghosts.count == 1, let ghost = ghosts.first, ghost.id == id else { return false }
-        return ghostOffers(verb, ghost)
-    }
-
-    /// Would the bulk `verb` take every ghost? See `ghostVerbEmptiesFold`.
-    func ghostBulkEmptiesFold(_ verb: GhostVerb) -> Bool {
-        let ghosts = ghostRows
-        return !ghosts.isEmpty && ghosts.allSatisfy { ghostOffers(verb, $0) }
-    }
-
-    /// Stamps `ghostsSortedAt` when `change` took the fold from some ghosts
-    /// to none: the person's own verb cleared it.
-    private func noteSorted(_ change: () -> Void) {
-        let had = !ghostRows.isEmpty
-        change()
-        guard had && ghostRows.isEmpty else { return }
-        let stamp = now()
-        ghostsSortedAt = stamp
-        // The line shows for `GhostCopy.doneSeconds`, then nothing; a later
-        // sort keeps its own stamp, so this one never clears it early.
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(GhostCopy.doneSeconds))
-            if self?.ghostsSortedAt == stamp { self?.ghostsSortedAt = nil }
-        }
-    }
-
-    /// Does the fold draw anything on the selected day: its leftovers, or
-    /// its "All sorted" line? Today only.
+    /// Does the fold draw anything on the selected day? Today only, and only
+    /// while there are leftovers: once the last is settled it goes, and the
+    /// rows below slide back up under the verb's own animation.
     var showsGhostFold: Bool {
-        guard isOnToday else { return false }
-        return !ghostRows.isEmpty || showsGhostsSorted
-    }
-
-    /// Is "All sorted, you got this" on screen? Only after the person's own
-    /// verb emptied the fold, for a few seconds, and only while it stays empty.
-    var showsGhostsSorted: Bool {
-        return ghostsSortedAt != nil && ghostRows.isEmpty
+        return isOnToday && !ghostRows.isEmpty
     }
 
     private func runGhostVerb(_ verb: GhostVerb, on id: UUID, day: DayString?) {

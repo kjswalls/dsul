@@ -16,6 +16,17 @@ iPhone: ios/DsulCore `Overdue.swift` and `GhostRows.swift` (the ports),
 ios/Dsul/Model/GhostRowsModel.swift (the planner's side) and
 ios/Dsul/Today/GhostFold.swift (the fold, its rows and sheet).
 
+**Addendum, 2026-11-21 (Kirby).** "All sorted, you got this" is gone on the web,
+the iPhone and the marketing page: once the last ghost is handled the fold simply
+goes. In its place the planner below slides back up rather than jumping. On the
+web, `GhostFoldSettle` (ghost-fold.tsx) eases the fold's wrapper from its old
+height to its new one each time the pile shrinks (`GHOST_SETTLE_MS`, never on
+growth, off under reduced motion); on the iPhone every verb, the emptying one
+included, now goes under `.snappy` (the unanimated emptying verb, `ghostsSortedAt`
+and the `*EmptiesFold` checks existed only for the line and are removed).
+`review.saved` still fires at the same moment on the web. Where the body below
+describes the line, read this instead.
+
 ## Decisions
 
 - **Shape B: one quiet fold at the top of Today.** Not A (each ghost in its old

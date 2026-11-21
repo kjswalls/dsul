@@ -154,11 +154,6 @@ final class SamplePlanner {
     /// Signed in: why the first fetch failed, for the empty state.
     private(set) var loadError: String? = nil
     var banner: PlannerBanner? = nil
-    /// (Ghost rows phase 3) When the person's own verb last emptied the
-    /// leftovers fold (`settleGhost`, `settleAllGhosts`), for its "All sorted,
-    /// you got this" line. A pile emptied any other way (a fetch, a pause, a
-    /// change on another device) leaves it alone, so it goes quietly.
-    var ghostsSortedAt: Date? = nil
     /// (Ghost rows phase 3) The fold's arrive has played: once for this
     /// planner, whichever layout showed the leftovers first. A layout switch
     /// brings the rows in at rest.
