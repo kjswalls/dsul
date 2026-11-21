@@ -34,7 +34,7 @@ import {
   type ViewOption,
 } from '@/lib/view-options';
 import { useGoalsEnabled } from '@/lib/extension-gates';
-import { AtlasToolbar } from '@/components/views/atlas/atlas-toolbar';
+import { AtlasShowMenu } from '@/components/views/atlas/atlas-filters';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { goToDate, stepScope } from '@/lib/nav-commands';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -173,8 +173,8 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
   // from the store itself rather than taking them through here.
   const { scope, layout, atlasLayout, setScope, setLayout, setAtlasLayout } = useViewStore();
   const isMobile = useIsMobile();
-  // Atlas (components/views/atlas/): row 1 is its toolbar instead of the date
-  // nav, and Display, the shelf and Zen go, since none of them reach it.
+  // Atlas (components/views/atlas/): no row 1 (its controls are on the board),
+  // Show in Display's place, and the shelf and Zen go, since none reach it.
   const atlas = scope === 'atlas';
   const goalsOn = useGoalsEnabled();
   const goalsAvailable = usePlannerStore((s) => s.goalsAvailable);
@@ -213,9 +213,10 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
           Today wraps under it (and the date takes its short form, app/
           globals.css, "The header on a narrow canvas"). At any width where
           they fit this is the one row it always was. */}
-      {atlas ? (
-        <AtlasToolbar />
-      ) : (
+      {/* Atlas has no row 1: its camera and tools are on the board itself
+          (atlas-board-controls.tsx, Kirby's pick A, 2026-11-21), and only the
+          pill, with Show where Display sits, stays up here. */}
+      {!atlas && (
       <div className="flex flex-wrap items-center gap-1 px-1">
         <div className="flex items-center gap-1">
           <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
@@ -361,6 +362,12 @@ export const HeaderCapsule = memo(function HeaderCapsule() {
           onChange={(v) => setScope(v)}
           ariaLabel="Scope"
         />
+        {atlas && (
+          <div className="ml-auto flex items-center">
+            <div className="mx-1 h-4 w-px bg-border" />
+            <AtlasShowMenu />
+          </div>
+        )}
         {!atlas && (
           <div className="ml-auto flex items-center">
             <div className="mx-1 h-4 w-px bg-border" />

@@ -17,12 +17,14 @@ import {
 import { toneColor } from '@/lib/atlas-tones';
 import type { AtlasColors } from '@/components/views/atlas/use-atlas-colors';
 import type { FarCluster } from '@/components/views/atlas/atlas-far-canvas';
+import { ATLAS_CONTROLS_RESERVE_PX } from '@/components/views/atlas/atlas-board-controls';
 import { cn } from '@/lib/utils';
 
 /**
  * The minimap (design PR3, the cards mock): the far zoom in miniature, a
  * tile per item in its Aurora tone, with the viewport as a rounded frame.
- * Bottom left: bottom right is the "?" help bubble.
+ * Bottom left, standing on the board's zoom keys (atlas-board-controls.tsx):
+ * bottom right is the "?" help bubble.
  *
  * It shows while the camera moves and hides ATLAS_MINIMAP_IDLE_MS after; M
  * (the toggle_atlas_minimap command) pins it; a pointer resting on its corner
@@ -200,8 +202,8 @@ export function AtlasMinimap({
     <div
       ref={zoneRef}
       aria-hidden
-      className="atlas-minimap-zone absolute bottom-3 left-3 z-20"
-      style={{ width: ATLAS_MINIMAP_W, height: ATLAS_MINIMAP_H }}
+      className="atlas-minimap-zone absolute left-3 z-20"
+      style={{ width: ATLAS_MINIMAP_W, height: ATLAS_MINIMAP_H, bottom: ATLAS_CONTROLS_RESERVE_PX }}
       data-testid="atlas-minimap-zone"
     >
       <div

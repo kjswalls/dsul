@@ -25,10 +25,23 @@ export const ATLAS_COPY = {
   switchToKeywords: 'atlas map board canvas projects cards overview',
   /** `v` from Atlas goes back to Day (design 1.6). */
   toggleFromAtlas: 'Switch to Day view',
-  /** The toolbar. */
-  fit: 'Fit',
+  /** The board's own controls (atlas-board-controls.tsx). */
   fitLabel: 'Fit every card on screen',
-  zoomLabel: (pct: number) => `Zoom ${pct}%`,
+  zoomLabel: (pct: number) => `Zoom ${pct}%. Click for 100%`,
+  zoomIn: 'Zoom in',
+  zoomOut: 'Zoom out',
+  minimapPin: 'Keep the minimap on screen',
+  minimapUnpin: 'Let the minimap hide at rest',
+  zoomControls: 'Zoom',
+  boardTools: 'Atlas tools',
+  /** The New menu: what you can start on the map. */
+  newButton: 'New',
+  newLabel: 'Make something new on the map',
+  newHeading: 'New on the map',
+  newProject: 'Project',
+  newGoal: 'Goal',
+  newRoutine: 'Routine',
+  newSeason: 'Season',
   /** The card. */
   allDone: "All done. What's next?",
   noMembers: 'Nothing in here yet',
@@ -114,9 +127,13 @@ export const ATLAS_COPY = {
   /** The shortcut rows (keys 1 to 4), as the Keyboard pane lists them. */
   layoutShortcut: (layout: string) => `Atlas: ${layout}`,
   layoutShortcutContext: 'Atlas only, on the desktop.',
-  /** The toolbar's filters (they carry across layouts). */
-  hideFinished: 'Hide finished',
-  hideResting: 'Hide resting',
+  /** The Show menu (they carry across layouts). */
+  show: 'Show',
+  showLabel: (hidden: number) =>
+    hidden === 0 ? 'Show on the map' : hidden === 1 ? 'Show on the map, 1 kind hidden' : `Show on the map, ${hidden} kinds hidden`,
+  showHeading: 'Show on the map',
+  showFinished: 'Finished cards',
+  showResting: 'Resting cards',
 
   /* Momentum's columns. */
   bandNow: 'Now',
@@ -250,10 +267,9 @@ export const ATLAS_COPY = {
   walk: 'Walk Atlas',
   walkDescription: 'A calm look at each card, one at a time. Nothing is graded.',
   walkKeywords: 'atlas walk review tour look over cards weekly calm',
-  /** The toolbar button, and its name while a walk is on. */
+  /** The board's Walk button, and its name while a walk is on. */
   walkButton: 'Walk',
   walkButtonLabel: 'Walk Atlas, one card at a time',
-  walkStopLabel: 'Stop walking Atlas',
   /** The panel's top line. */
   walkStep: (n: number, total: number) => `${n} of ${total}`,
   walkCalm: 'one card at a time, nothing here is due',

@@ -3,7 +3,7 @@ import { act, render, screen, cleanup, fireEvent, within } from '@testing-librar
 
 /**
  * Walk Atlas, the view half (components/views/atlas/atlas-walk.tsx): started
- * from the command or the toolbar, it stands on one card at a time in the
+ * from the command or the board's Walk button, it stands on one card at a time in the
  * layout's order with a veil cut out around it (an element: no card is ever
  * dimmed), asks one question with the existing verbs as buttons, steps with
  * Next, Back, arrows and Enter, keeps Tab in its panel, says each stop to a
@@ -26,7 +26,7 @@ vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }
 vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 
 import { AtlasView } from '@/components/views/atlas/atlas-view';
-import { AtlasToolbar } from '@/components/views/atlas/atlas-toolbar';
+import { AtlasBoardControls } from '@/components/views/atlas/atlas-board-controls';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { useUIStore } from '@/lib/ui-store';
@@ -158,16 +158,19 @@ describe('Walk Atlas: the command', () => {
     expect(useAtlasUiStore.getState().walk).toBeNull();
   });
 
-  it('starts and stops from the toolbar button, which says whether a walk is on', () => {
-    render(<AtlasToolbar />);
+  it('starts from the Walk button on the board, whose controls stand down during a walk', () => {
+    render(
+      <AtlasBoardControls onZoomBy={() => {}} onZoomReset={() => {}} minimap goalsShown collectionsShown />
+    );
     const b = screen.getByTestId('atlas-walk-button');
-    expect(b.getAttribute('aria-pressed')).toBe('false');
+    expect(b.getAttribute('aria-label')).toBe(ATLAS_COPY.walkButtonLabel);
     fireEvent.click(b);
     expect(useAtlasUiStore.getState().walk).not.toBeNull();
-    expect(b.getAttribute('aria-pressed')).toBe('true');
-    expect(b.getAttribute('aria-label')).toBe(ATLAS_COPY.walkStopLabel);
-    fireEvent.click(b);
-    expect(useAtlasUiStore.getState().walk).toBeNull();
+    // The walk's panel takes the bottom middle; Escape or Done ends it.
+    expect(screen.queryByTestId('atlas-walk-button')).toBeNull();
+    expect(screen.queryByTestId('atlas-zoom-controls')).toBeNull();
+    act(() => useAtlasUiStore.getState().endWalk(false));
+    expect(screen.getByTestId('atlas-walk-button')).toBeTruthy();
   });
 });
 
