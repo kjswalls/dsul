@@ -176,8 +176,9 @@ function SubtasksSection({
    * all this panel renders).
    */
   const breakable = canBreakDown(item, canPropose);
-  // Drafts on screen (or coming) are the answer already: Redo lives under them.
+  // Drafts on screen (or coming) are the answer already: Redo lives in their note.
   const drafts = useStepDraftsShowing(item.id, item.title);
+  const [draftHead, setDraftHead] = useState<HTMLSpanElement | null>(null);
 
   /**
    * The same moment before any AI is set up: while the gate invites, the
@@ -334,13 +335,15 @@ function SubtasksSection({
 
   return (
     <div ref={sectionRef} className="flex flex-col">
-      <div className="mb-1.5 flex items-center gap-2">
+      <div className="mb-1.5 flex min-h-4 items-center gap-2">
         <SectionLabel>Subtasks</SectionLabel>
         {children.length > 0 && (
           <span className="text-muted-foreground font-mono text-[10px] tabular-nums" data-testid="subtask-count">
             {done}/{children.length}
           </span>
         )}
+        {/* Where the AI's draft says what it is and what to do with it (drafted-steps.tsx). */}
+        <span ref={setDraftHead} className="flex min-w-0 items-center" data-testid="drafted-steps-head" />
       </div>
 
       {/* One parent for every row, the add row and the fold, so a row that
@@ -348,7 +351,7 @@ function SubtasksSection({
       <div ref={sinkRootRef} className="relative flex flex-col" data-testid="subtask-list">
         {openRows.map(renderRow)}
         {/* What the AI drafted: rows not kept yet, after the kept ones. */}
-        <DraftedSteps item={item} />
+        <DraftedSteps item={item} head={draftHead} />
         <QuickAddRow
           // rounded-md: the subtask rows' own corners (subtask-row.tsx).
           className="-mx-1.5 gap-[9px] rounded-md px-1.5 py-[5px]"

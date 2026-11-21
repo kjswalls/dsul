@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Check, RotateCcw, X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { ArrowRight, Check, X } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useProposalStore } from '@/lib/proposal-store';
@@ -20,6 +21,8 @@ import { buttonVariants } from '@/components/ui/button';
  * A, "drafted rows", 2026-10-23): subtasks you haven't kept yet. A dashed box
  * and softer words set them apart; one aurora label holds Keep all and Clear;
  * each row keeps, hands off or drops itself, and its words edit in place.
+ * Since pick F (2026-11-21) the label and Keep all · Redo · Clear are words in
+ * a note beside the Subtasks heading, and the rows sit on the kept rows' grid.
  *
  * The one home for every way steps reach an item (the same pick's "one
  * home"): the panel's Draft steps (a breakdown, proposal-store `item:<id>`),
@@ -29,7 +32,7 @@ import { buttonVariants } from '@/components/ui/button';
  *
  * Nothing is added until a row is kept. Edits stay in the rows and shape what
  * is kept; they are never written back to the pack. What a gesture did is
- * said on one quiet line under the rows, with its Undo, never in a toast.
+ * said in that note, with its Undo, never in a toast.
  */
 
 type Source = { key: string; titles: string[]; from: 'pack' | 'proposal' };
@@ -52,7 +55,11 @@ export function useStepDraftsShowing(itemId: string, title: string): boolean {
   return pack || asked;
 }
 
-export function DraftedSteps({ item }: { item: Item }) {
+/**
+ * `head` is the Subtasks heading's slot, where the note and its words go
+ * (pick F); null while that slot mounts, and left out to draw it in place.
+ */
+export function DraftedSteps({ item, head }: { item: Item; head?: HTMLElement | null }) {
   const surface = surfaceOf(item.id);
   const stored = usePrepPacksStore((s) => s.packs[item.id]);
   const mine = useProposalStore((s) => s.lastRequest?.surface === surface && s.lastRequest.intent === 'breakdown');
@@ -222,208 +229,283 @@ export function DraftedSteps({ item }: { item: Item }) {
   const edit = (index: number, title: string) =>
     setRows((r) => ({ ...r, titles: r.titles.map((t, i) => (i === index ? title : t)) }));
 
-  const label = (children: React.ReactNode, tail?: React.ReactNode) => (
-    <div className="flex min-h-6 items-center gap-1.5 text-xs" data-testid="drafted-steps-label">
-      <AskMark className="size-3" />
+  // The heading note (Kirby's pick F, 2026-11-21): what the draft is and what
+  // to do with it, as quiet words beside the Subtasks heading, so nothing sits
+  // between the last row and the add row. Portalled into the heading's slot;
+  // with no slot given (a test, a host with no heading) it draws in place.
+  const atHead = (node: React.ReactNode) =>
+    head === undefined ? node : head ? createPortal(node, head) : null;
+
+  const headNote = (children: React.ReactNode, testId = 'drafted-steps-label', role?: 'status') => (
+    <span
+      role={role}
+      className="inline-flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11.5px] leading-4"
+      data-testid={testId}
+    >
       {children}
-      <span className="flex-1" />
-      {tail}
-    </div>
+    </span>
+  );
+  const mark = <AskMark className="size-2.5 shrink-0" />;
+  const dot = (
+    <span aria-hidden className="text-muted-foreground/60">
+      ·
+    </span>
   );
 
-  const noteLine = note && (
-    <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status" data-testid="drafted-steps-note">
-      <Check aria-hidden className="size-3" />
-      {note.text}
-      {note.undo && (
-        <>
-          <span aria-hidden>·</span>
-          <button
-            type="button"
-            onClick={note.undo}
-            data-testid="drafted-steps-undo"
-            className="font-medium text-foreground underline-offset-2 hover:underline"
-          >
-            Undo
-          </button>
-        </>
-      )}
-    </p>
-  );
+  const noteHead =
+    note &&
+    headNote(
+      <>
+        <Check aria-hidden className="text-muted-foreground size-3" />
+        <span className="text-muted-foreground">{note.text}</span>
+        {note.undo && (
+          <>
+            {dot}
+            <HeadWord onClick={note.undo} testId="drafted-steps-undo" ink>
+              Undo
+            </HeadWord>
+          </>
+        )}
+      </>,
+      'drafted-steps-note',
+      'status'
+    );
 
   if (drafting) {
     return (
-      <div className="flex flex-col gap-1" data-testid="drafted-steps" data-state="drafting">
-        {label(
-          <span data-steps-label="drafting" className="font-medium">
-            Drafting steps…
-          </span>,
-          <button
-            type="button"
-            onClick={() => useProposalStore.getState().dismiss()}
-            className="rounded-[6px] px-1.5 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            Stop
-          </button>
+      <>
+        {atHead(
+          headNote(
+            <>
+              {mark}
+              <span data-steps-label="drafting" className="font-medium">
+                Drafting steps…
+              </span>
+              {dot}
+              <HeadWord onClick={() => useProposalStore.getState().dismiss()}>Stop</HeadWord>
+            </>
+          )
         )}
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="flex h-6 items-center gap-2" aria-hidden>
-            <span className="size-4 shrink-0 rounded-[5px] border border-dashed border-muted-foreground/30" />
-            <span className="h-2 flex-1 animate-pulse rounded-full bg-surface-2" style={{ maxWidth: `${80 - i * 15}%` }} />
-          </div>
-        ))}
-      </div>
+        <div className="flex flex-col" data-testid="drafted-steps" data-state="drafting">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center gap-2.5 py-[5px]" aria-hidden>
+              <span className="flex h-5 shrink-0 items-center">
+                <span className="size-4 rounded-[5px] border border-dashed border-muted-foreground/30" />
+              </span>
+              <span className="h-2 flex-1 animate-pulse rounded-full bg-surface-2" style={{ maxWidth: `${80 - i * 15}%` }} />
+            </div>
+          ))}
+        </div>
+      </>
     );
   }
 
   if (!showing && mine && (status === 'empty' || status === 'error')) {
     return (
-      <div className="flex flex-col gap-1" data-testid="drafted-steps" data-state={status}>
-        {label(
-          <span className={cn(status === 'error' ? 'text-muted-foreground' : 'text-foreground')}>
-            {status === 'empty' ? emptyMessage || 'This one is small enough to just do.' : error || "Couldn't draft steps."}
-          </span>,
-          <span className="flex items-center gap-0.5">
-            {status === 'error' && (
-              <button
-                type="button"
-                onClick={() => void useProposalStore.getState().retry()}
-                className="rounded-[6px] px-1.5 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-              >
-                Try again
-              </button>
-            )}
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={() => useProposalStore.getState().dismiss()}
-              className="flex size-6 items-center justify-center rounded-[6px] text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
-              <X className="size-3.5" />
-            </button>
-          </span>
+      <>
+        {atHead(
+          headNote(
+            <>
+              {mark}
+              <span className={cn(status === 'error' ? 'text-muted-foreground' : 'text-foreground')}>
+                {status === 'empty' ? emptyMessage || 'This one is small enough to just do.' : error || "Couldn't draft steps."}
+              </span>
+              {status === 'error' && (
+                <>
+                  {dot}
+                  <HeadWord onClick={() => void useProposalStore.getState().retry()}>Try again</HeadWord>
+                </>
+              )}
+              {dot}
+              <HeadWord onClick={() => useProposalStore.getState().dismiss()}>Close</HeadWord>
+            </>
+          )
         )}
-      </div>
+      </>
     );
   }
 
-  if (!showing) return noteLine || null;
+  if (!showing) return noteHead ? atHead(noteHead) : null;
 
   return (
-    <div className="flex flex-col gap-0.5" data-testid="drafted-steps" data-state="ready">
-      {label(
-        <span data-steps-label="" className="font-medium">
-          {rows.titles.length === 1 ? '1 step drafted' : `${rows.titles.length} steps drafted`}
-        </span>,
-        <span className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={keepAll}
-            data-testid="drafted-steps-keep-all"
-            aria-keyshortcuts="Meta+Enter"
-            className={buttonVariants({ size: 'sm' })}
-          >
-            Keep all
-          </button>
-          <button
-            type="button"
-            onClick={clear}
-            data-testid="drafted-steps-clear"
-            className="rounded-[6px] px-1.5 py-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
-          >
-            Clear
-          </button>
-        </span>
+    <>
+      {atHead(
+        noteHead ||
+          headNote(
+            <>
+              {mark}
+              <span data-steps-label="" className="font-medium">
+                {rows.titles.length} drafted
+              </span>
+              {dot}
+              <HeadWord onClick={keepAll} testId="drafted-steps-keep-all" keys="Meta+Enter" ink>
+                Keep all
+              </HeadWord>
+              {dot}
+              <HeadWord onClick={() => setRedo(redo === null ? '' : null)} testId="drafted-steps-redo" expanded={redo !== null}>
+                Redo
+              </HeadWord>
+              {dot}
+              <HeadWord onClick={clear} testId="drafted-steps-clear">
+                Clear
+              </HeadWord>
+            </>
+          )
       )}
-      {rows.titles.map((title, i) => (
-        <div
-          key={i}
-          data-testid="drafted-step"
-          data-first={i === 0 ? 'true' : undefined}
-          className="group/draft relative -mx-1.5 flex min-h-7 items-center gap-2 rounded-[7px] px-1.5 focus-within:bg-accent hover:bg-accent"
-        >
-          <span
-            aria-hidden
-            data-drafted-box=""
-            className="size-4 shrink-0 rounded-[5px] border-[1.5px] border-dashed"
-          />
-          <input
-            value={title}
-            onChange={(e) => edit(i, e.target.value)}
-            onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing) return;
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                keepAll();
-              } else if (e.key === 'Enter') {
-                e.preventDefault();
-                keep(i);
-              } else if (e.key === 'Backspace' && title === '') {
-                e.preventDefault();
-                drop(i);
-              } else if (e.key === 'Escape') {
-                e.currentTarget.blur();
-              }
+      <div className="flex flex-col" data-testid="drafted-steps" data-state="ready">
+        {redo !== null && (
+          <form
+            className="mb-1 flex items-center gap-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              ask(redo);
             }}
-            aria-label={`Step ${i + 1}`}
-            className={cn(
-              '-mx-1 min-w-0 flex-1 bg-transparent px-1 py-1 text-sm outline-none',
-              i === 0 ? 'text-foreground' : 'text-muted-foreground focus:text-foreground'
-            )}
-          />
-          <span className="pointer-events-none flex items-center gap-0.5 opacity-0 group-focus-within/draft:pointer-events-auto group-focus-within/draft:opacity-100 group-hover/draft:pointer-events-auto group-hover/draft:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
-            <RowButton label="Keep" onClick={() => keep(i)} testId="drafted-step-keep">
-              <Check className="size-3.5" />
-            </RowButton>
-            {target && (
-              <RowButton label={`Hand to ${target.name}`} onClick={() => keep(i, true)} testId="drafted-step-hand-off">
-                <ArrowRight className="size-3.5" />
-              </RowButton>
-            )}
-            <RowButton label="Drop" onClick={() => drop(i)} testId="drafted-step-drop">
-              <X className="size-3.5" />
-            </RowButton>
-          </span>
-        </div>
-      ))}
-      {redo === null ? (
-        <button
-          type="button"
-          onClick={() => setRedo('')}
-          data-testid="drafted-steps-redo"
-          className="mt-0.5 flex w-fit items-center gap-1.5 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-        >
-          <RotateCcw className="size-3" />
-          Redo with a note…
-        </button>
-      ) : (
-        <form
-          className="mt-1 flex items-center gap-1.5"
-          onSubmit={(e) => {
-            e.preventDefault();
-            ask(redo);
-          }}
-        >
-          <input
-            autoFocus
-            value={redo}
-            onChange={(e) => setRedo(e.target.value)}
-            onKeyDown={(e) => e.key === 'Escape' && setRedo(null)}
-            placeholder="What should it know? (we already have dates)"
-            aria-label="A note for the redo"
-            data-testid="drafted-steps-redo-note"
-            className="h-7 min-w-0 flex-1 rounded-[8px] border border-input bg-transparent px-2 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          />
-          <button
-            type="submit"
-            className="rounded-full border border-border px-2.5 py-0.5 text-[11.5px] font-medium text-muted-foreground hover:text-foreground"
           >
-            Redo
-          </button>
-        </form>
+            <input
+              autoFocus
+              value={redo}
+              onChange={(e) => setRedo(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Escape') return;
+                e.preventDefault();
+                e.stopPropagation();
+                setRedo(null);
+              }}
+              placeholder="What should it know? (we already have dates)"
+              aria-label="A note for the redo"
+              data-testid="drafted-steps-redo-note"
+              className="h-7 min-w-0 flex-1 rounded-[8px] border border-input bg-transparent px-2 text-[13px] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            <button type="submit" className={buttonVariants({ size: 'sm' })}>
+              Redo
+            </button>
+          </form>
+        )}
+        {rows.titles.map((title, i) => (
+          <div
+            key={i}
+            data-testid="drafted-step"
+            data-first={i === 0 ? 'true' : undefined}
+            // The kept rows' own grid (subtask-row.tsx): a 16px box column,
+            // 10px to the words, 5px above and below a 20px line.
+            className="group/draft relative -mx-1.5 flex items-start gap-2.5 rounded-md px-1.5 py-[5px] focus-within:bg-accent hover:bg-accent"
+          >
+            <span className="flex h-5 shrink-0 items-center">
+              <span aria-hidden data-drafted-box="" className="size-4 rounded-[5px] border-[1.5px] border-dashed" />
+            </span>
+            <StepField
+              value={title}
+              first={i === 0}
+              label={`Step ${i + 1}`}
+              onChange={(next) => edit(i, next)}
+              onKeyDown={(e) => {
+                if (e.nativeEvent.isComposing) return;
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  keepAll();
+                } else if (e.key === 'Enter') {
+                  e.preventDefault();
+                  keep(i);
+                } else if (e.key === 'Backspace' && title === '') {
+                  e.preventDefault();
+                  drop(i);
+                } else if (e.key === 'Escape') {
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+            <span className="pointer-events-none flex h-5 items-center gap-0.5 opacity-0 group-focus-within/draft:pointer-events-auto group-focus-within/draft:opacity-100 group-hover/draft:pointer-events-auto group-hover/draft:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
+              <RowButton label="Keep" onClick={() => keep(i)} testId="drafted-step-keep">
+                <Check className="size-3.5" />
+              </RowButton>
+              {target && (
+                <RowButton label={`Hand to ${target.name}`} onClick={() => keep(i, true)} testId="drafted-step-hand-off">
+                  <ArrowRight className="size-3.5" />
+                </RowButton>
+              )}
+              <RowButton label="Drop" onClick={() => drop(i)} testId="drafted-step-drop">
+                <X className="size-3.5" />
+              </RowButton>
+            </span>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * A step's words: one line tall, growing as they wrap, so a long step reads
+ * whole instead of being cut off. Measured, so every browser grows it the
+ * same way. A step is one line of text, so a pasted line break becomes a space.
+ */
+function StepField({
+  value,
+  first,
+  label,
+  onChange,
+  onKeyDown,
+}: {
+  value: string;
+  first: boolean;
+  label: string;
+  onChange: (next: string) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const ta = ref.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      onChange={(e) => onChange(e.target.value.replace(/\s*[\r\n]+\s*/g, ' '))}
+      onKeyDown={onKeyDown}
+      aria-label={label}
+      className={cn(
+        '-mx-1 block min-w-0 flex-1 resize-none overflow-hidden bg-transparent px-1 py-0 text-sm leading-5 outline-none',
+        first ? 'text-foreground' : 'text-muted-foreground focus:text-foreground'
       )}
-      {noteLine}
-    </div>
+    />
+  );
+}
+
+/** A word in the heading note: quiet, full ink under the pointer; Keep all leads in ink. */
+function HeadWord({
+  onClick,
+  testId,
+  keys,
+  ink,
+  expanded,
+  children,
+}: {
+  onClick: () => void;
+  testId?: string;
+  keys?: string;
+  ink?: boolean;
+  expanded?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={testId}
+      aria-keyshortcuts={keys}
+      aria-expanded={expanded}
+      className={cn(
+        'rounded-[4px] underline decoration-transparent decoration-dashed underline-offset-[3px] transition-colors hover:text-foreground hover:decoration-current focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        ink ? 'font-semibold text-foreground' : 'font-medium text-muted-foreground',
+        expanded && 'text-foreground'
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
