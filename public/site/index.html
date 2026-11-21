@@ -334,7 +334,7 @@ and all the way to done.</h1>
       <ul class="ky-items">
         <li><h3>five, tops</h3><p>it offers up to five things from the past week and leaves the rest alone. a card listing thirty forgotten things is just the pile again.</p></li>
         <li><h3>leftovers, out where you can see them</h3><p>what you didn't get to shows up faded at the top of today. keep it, push it to tomorrow, send it back to the braindump or let it go. a long list starts folded.</p></li>
-        <li><h3>all sorted</h3><p>sort the last one and it says "All sorted, you got this". then it gets out of your way.</p></li>
+        <li><h3>then it's gone</h3><p>sort the last one and the fold just goes. the rest of your day slides back up where it was.</p></li>
       </ul>
       <p class="ky-fn">nothing gets shuffled behind your back. it all waits until you decide.</p>
     </div>
@@ -842,8 +842,6 @@ doing today?</h2>
         h += '<div><div class="ka-fold"><button type="button" class="ka-foldbtn" data-act="fold" aria-expanded="' + S.open + '">From earlier <span>' + S.ghosts.length + '</span>' + CHEV + '</button>' +
           '<span style="margin-left: auto; display: inline-flex; gap: 14px"><button type="button" class="ka-txt" data-act="keepall">Keep all</button><button type="button" class="ka-txt" data-act="sideall">Send all to sidebar</button></span></div>' +
           (S.open ? '<div style="padding-top: 4px">' + S.ghosts.map(ghost).join('') + '</div>' : '') + '</div>';
-      } else if (S.sortedOnce) {
-        h += '<div class="ka-sorted"><b>All sorted</b>, you got this.</div>';
       }
       PARTS.forEach(function (p) {
         var list = S[p[0]];
@@ -1140,7 +1138,7 @@ doing today?</h2>
             '<div class="ka-row ka-ghost"><span class="ka-chk ka-chk-ghost" aria-hidden="true"></span><span class="ka-t">' + esc(H.title) + '</span><span class="ka-verbs" style="opacity: 1">' +
             verbs.map(function (v) { return '<button type="button" class="ka-ib" data-act="ghost" data-v="' + v[0] + '" title="' + v[1] + '" aria-label="' + v[1] + ': ' + esc(H.title) + '">' + icon(v[2], v[0] === 'go' ? 12 : 13) + '</button>'; }).join('') +
             '</span><span class="ka-meta">' + LONG[new Date().getDay()].slice(0, 3) + '</span></div></div>';
-        } else h += '<div class="ka-sorted"><b>All sorted</b>, you got this.</div>';
+        }
         h += '<div class="ka-sorted">no red. no "overdue". no count of how late it is. it just waits for you to pick a verb.</div>';
         return h + toastEl() + '</div>';
       }

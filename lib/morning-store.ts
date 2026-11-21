@@ -135,8 +135,8 @@ interface MorningStore {
   /** After "Put them back", or after the user waves the line away. */
   clearAutoAgeReceipt: (userId: string) => void;
   /**
-   * The person just cleared the leftovers fold with their own verbs ("All
-   * sorted, you got this", components/planner/ghost-fold.tsx). Raises
+   * The person just cleared the leftovers fold with their own verbs
+   * (components/planner/ghost-fold.tsx). Raises
    * `review.saved` for recipes and mods, the end of day review's event, which
    * this moment stands in for since the review retired (ghost rows phase 2).
    * Once per account and day on this device: true when it raised, false when

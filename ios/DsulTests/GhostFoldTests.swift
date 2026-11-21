@@ -5,7 +5,7 @@ import Testing
 
 /// Leftovers on Today on the iPhone (ghost rows phase 3): what the fold
 /// shows, the switch that hides it, the five verbs as the planner's own
-/// writes, and "All sorted, you got this" only after the person's own verb.
+/// writes, and no line left behind once the last one is settled.
 @MainActor
 @Suite struct GhostFoldTests {
     private let ok = "{\"ok\":true}"
@@ -39,8 +39,8 @@ import Testing
     }
 
     /// Keep for today on each: today's date, its time kept, and once the last
-    /// goes, the sorted line, which clears itself.
-    @Test func keepingTheLastOneSaysAllSorted() throws {
+    /// goes, no fold at all.
+    @Test func keepingTheLastOneEmptiesTheFold() throws {
         let planner = SamplePlanner(todayString: "2026-10-01", now: { PlannerJSON.noon })
         let ghosts = planner.ghostRows
         let bike = try #require(ghosts.first)
@@ -48,14 +48,13 @@ import Testing
         let kept = try #require(planner.item(bike.id))
         #expect(kept.startDate == "2026-10-01")
         #expect(kept.startTime == bike.startTime)
-        #expect(planner.ghostsSortedAt == nil)
         #expect(planner.ghostRows.count == 1)
+        #expect(planner.showsGhostFold)
 
         planner.settleGhost(ghosts[1].id, .tomorrow)
         #expect(planner.item(ghosts[1].id)?.startDate == "2026-10-02")
         #expect(planner.ghostRows.isEmpty)
-        #expect(planner.ghostsSortedAt == PlannerJSON.noon)
-        #expect(planner.showsGhostsSorted)
+        #expect(!planner.showsGhostFold)
     }
 
     /// Keep all is a Keep for each, and empties the fold in one tap.
@@ -65,7 +64,7 @@ import Testing
         planner.settleAllGhosts(.keep)
         #expect(ids.allSatisfy { planner.item($0)?.startDate == "2026-10-01" })
         #expect(planner.ghostRows.isEmpty)
-        #expect(planner.showsGhostsSorted)
+        #expect(!planner.showsGhostFold)
     }
 
     /// Keep all drops a stale clock time, as the web's `moveTasksToDate`
@@ -78,7 +77,6 @@ import Testing
         await server.on(itemRoute(parcel), .status(200, ok))
         let planner = await loaded(server)
         #expect(planner.ghostRows.map(\.id) == [parcel])
-        #expect(planner.ghostBulkEmptiesFold(.keep))
 
         planner.settleAllGhosts(.keep)
         let kept = try #require(planner.item(parcel))
@@ -86,7 +84,7 @@ import Testing
         #expect(kept.timeBucket == "afternoon")
         #expect(kept.startTime == nil)
         #expect(planner.ghostRows.isEmpty)
-        #expect(planner.showsGhostsSorted)
+        #expect(!planner.showsGhostFold)
         await drain(planner)
 
         let posts = await server.requests.filter { $0.route == itemRoute(parcel) }
@@ -115,31 +113,17 @@ import Testing
         #expect(ghost.id == parcel)
         #expect(ghost.isScheduled != true && ghost.timeBucket == nil)
         #expect(planner.ghostOffers(.sidebar, ghost))
-        #expect(planner.ghostVerbEmptiesFold(.sidebar, parcel))
 
         planner.settleGhost(parcel, .sidebar)
         #expect(planner.item(parcel)?.startDate == nil)
         #expect(planner.ghostRows.isEmpty)
-        #expect(planner.showsGhostsSorted)
+        #expect(!planner.showsGhostFold)
         await drain(planner)
 
         let posts = await server.requests.filter { $0.route == itemRoute(parcel) }
         #expect(posts.count == 1)
         let body = try #require(posts.first?.body)
         #expect(String(decoding: body, as: UTF8.self) == "{\"action\":\"unschedule\"}")
-    }
-
-    /// Only the verb that takes the last ghost empties the fold, which is
-    /// when the views send the change unanimated.
-    @Test func onlyTheLastGhostEmptiesTheFold() throws {
-        let planner = SamplePlanner(todayString: "2026-10-01", now: { PlannerJSON.noon })
-        let ghosts = planner.ghostRows
-        #expect(ghosts.count == 2)
-        #expect(!planner.ghostVerbEmptiesFold(.keep, ghosts[0].id))
-        #expect(planner.ghostBulkEmptiesFold(.keep))
-        planner.settleGhost(ghosts[0].id, .keep)
-        #expect(planner.ghostVerbEmptiesFold(.keep, ghosts[1].id))
-        #expect(!planner.ghostVerbEmptiesFold(.keep, ghosts[0].id))
     }
 
     /// Off (`leftoversOnToday` false, the account's `morning_check_enabled`):
@@ -171,7 +155,7 @@ import Testing
     }
 
     /// Let it go: cancelled at once, kept in history, the action alone on the
-    /// wire, and the fold empty with the sorted line.
+    /// wire, and the fold empty.
     @Test func lettingGoSendsTheActionAlone() async throws {
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [parcelRow], goals: [])))
@@ -184,7 +168,7 @@ import Testing
         #expect(planner.item(parcel) == lettingGo(before))
         #expect(planner.item(parcel)?.status == "cancelled")
         #expect(planner.ghostRows.isEmpty)
-        #expect(planner.showsGhostsSorted)
+        #expect(!planner.showsGhostFold)
         await drain(planner)
 
         let posts = await server.requests.filter { $0.route == itemRoute(parcel) }
@@ -195,20 +179,19 @@ import Testing
     }
 
     /// The box marks a ghost done where it was: a `complete` on its own day,
-    /// the status flipped at once, and the fold empty with the sorted line.
+    /// the status flipped at once, and the fold empty.
     @Test func theBoxMarksItDone() async throws {
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [parcelRow], goals: [])))
         await server.on(itemRoute(parcel), .status(200, ok))
         let planner = await loaded(server)
         let before = try #require(planner.item(parcel))
-        #expect(planner.ghostDoneEmptiesFold(parcel))
 
         planner.markGhostDone(parcel)
         #expect(planner.item(parcel)?.status == "completed")
         #expect(planner.item(parcel)?.startDate == before.startDate)
         #expect(planner.ghostRows.isEmpty)
-        #expect(planner.showsGhostsSorted)
+        #expect(!planner.showsGhostFold)
         await drain(planner)
 
         let posts = await server.requests.filter { $0.route == itemRoute(parcel) }
@@ -234,22 +217,6 @@ import Testing
         #expect(planner.item(parcel) == ghost)
     }
 
-    /// Send to sidebar is Move to Braindump's write, and a leftover moved
-    /// some other way (here, a fetch) goes quietly: no sorted line.
-    @Test func aPileEmptiedElsewhereGoesQuietly() async throws {
-        let server = FakeServer()
-        let gone = parcelRow.replacingOccurrences(of: "\"status\":\"pending\"", with: "\"status\":\"completed\"")
-        await server.on(plannerRoute,
-                        .status(200, PlannerJSON.payload(fetchedAt: "fetch-1", extra: [parcelRow], goals: [])),
-                        .status(200, PlannerJSON.payload(fetchedAt: "fetch-2", extra: [gone], goals: [])))
-        let planner = await loaded(server)
-        #expect(planner.ghostRows.count == 1)
-        await planner.refresh()
-        #expect(planner.ghostRows.isEmpty)
-        #expect(planner.ghostsSortedAt == nil)
-        #expect(!planner.showsGhostsSorted)
-    }
-
     /// The fold's words, the web's exactly.
     @Test func theWordsAreTheWebs() {
         #expect(GhostCopy.caption == "From earlier")
@@ -258,8 +225,6 @@ import Testing
         #expect(GhostVerb.allCases.map(GhostCopy.word)
             == ["Keep for today", "Move to tomorrow", "Reschedule", "Send to sidebar", "Let it go"])
         #expect(GhostCopy.keptInHistory == "Kept in history")
-        #expect(GhostCopy.sorted == "All sorted, you got this")
         #expect(GhostCopy.plannedFor("2026-10-15") == "Planned for Thu, Oct 15")
-        #expect(GhostCopy.doneSeconds == 4)
     }
 }

@@ -52,7 +52,7 @@ vi.mock('@/lib/ui-store', async (orig) => {
 const mobile = vi.hoisted(() => ({ on: false }));
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => mobile.on }));
 
-import { GhostFold, GHOST_DONE_MS } from '@/components/planner/ghost-fold';
+import { GhostFold, GHOST_SETTLE_MS } from '@/components/planner/ghost-fold';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { __resetModEventsForTests, subscribeModEvents, type ModEvent } from '@/lib/mod-events';
@@ -268,12 +268,11 @@ describe('the verbs are the store’s own', () => {
     expect(taskById('thu').startDate).toBe('2026-07-09');
   });
 
-  it('says “All sorted, you got this” after the last one, then nothing', () => {
+  it('goes the moment the last one is handled, with no line after it', () => {
     render(<GhostFold dateStr={TODAY} />);
     fireEvent.click(screen.getByTestId('ghost-keep-all'));
-    expect(screen.getByTestId('ghost-fold-done')).toHaveTextContent('All sorted, you got this');
-    act(() => vi.advanceTimersByTime(GHOST_DONE_MS + 10));
     expect(screen.queryByTestId('ghost-fold')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
   });
 });
 
@@ -318,32 +317,87 @@ describe('a legacy full-ISO start date', () => {
   });
 });
 
-describe('“All sorted” is for the person’s own last verb', () => {
-  it('stays quiet when the pile empties from outside the fold', () => {
+/**
+ * The settle: the space a handled ghost leaves closes over GHOST_SETTLE_MS, so
+ * the planner below slides back up instead of jumping. jsdom lays nothing out,
+ * so each box's height is stubbed off what it holds: 24px of heading while the
+ * fold is drawn, and 30px a ghost row.
+ */
+describe('the planner slides back as the pile shrinks', () => {
+  const ROW = 30;
+  const HEAD = 24;
+  beforeEach(() => {
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      if (!this.querySelector('[data-testid="ghost-fold"]')) return 0;
+      return HEAD + this.querySelectorAll('[data-ghost-row]').length * ROW;
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
+  const box = () => screen.getByTestId('ghost-fold-settle');
+
+  it('rests at its own height, with nothing held', () => {
     render(<GhostFold dateStr={TODAY} />);
-    // As a catch-up fold or the auto-age sweep would: no verb here.
-    act(() => store().unscheduleTasks(['thu', 'mon']));
-    expect(screen.queryByTestId('ghost-fold-done')).toBeNull();
-    expect(screen.queryByTestId('ghost-fold')).toBeNull();
+    expect(box().style.height).toBe('');
+    expect(box().style.overflow).toBe('');
   });
 
-  it('stays quiet when only some of the emptying was the fold’s', () => {
+  it('eases from the old height to the new one when a ghost is handled, then lets go', () => {
     render(<GhostFold dateStr={TODAY} />);
     fireEvent.click(within(row('thu')).getByTestId('ghost-keep'));
-    expect(rows()).toHaveLength(1);
-    act(() => store().moveTaskToDate('mon', TODAY));
-    expect(screen.queryByTestId('ghost-fold-done')).toBeNull();
+    expect(box().style.height).toBe(`${HEAD + ROW}px`);
+    expect(box().style.transition).toContain(`height ${GHOST_SETTLE_MS}ms`);
+    expect(box().style.overflow).toBe('hidden');
+    act(() => vi.advanceTimersByTime(GHOST_SETTLE_MS + 100));
+    expect(box().style.height).toBe('');
+    expect(box().style.overflow).toBe('');
   });
 
-  it('an undo of the last keep brings the row back and takes the line down', () => {
+  it('closes the whole fold, heading and all, when the last one goes', () => {
     render(<GhostFold dateStr={TODAY} />);
     fireEvent.click(screen.getByTestId('ghost-keep-all'));
-    expect(screen.getByTestId('ghost-fold-done')).toBeInTheDocument();
+    expect(screen.queryByTestId('ghost-fold')).toBeNull();
+    expect(box().style.height).toBe('0px');
+    expect(box().style.transition).toContain('margin-bottom');
+    act(() => vi.advanceTimersByTime(GHOST_SETTLE_MS + 100));
+    // Closed, the empty box goes too, so the view's gap goes with it.
+    expect(screen.queryByTestId('ghost-fold-settle')).toBeNull();
+  });
+
+  it('draws no box at all on a day with nothing from earlier', async () => {
+    await load([task('today', TODAY)]);
+    render(<GhostFold dateStr={TODAY} />);
+    expect(screen.queryByTestId('ghost-fold-settle')).toBeNull();
+  });
+
+  it('an undo mid-close shows the ghost again at once', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    fireEvent.click(screen.getByTestId('ghost-keep-all'));
+    expect(box().style.height).toBe('0px');
     act(() => store().undo());
     expect(rows()).toHaveLength(2);
-    expect(screen.queryByTestId('ghost-fold-done')).toBeNull();
-    act(() => vi.advanceTimersByTime(GHOST_DONE_MS + 10));
+    expect(box().style.height).toBe('');
+    expect(box().style.overflow).toBe('');
+  });
+
+  it('never animates growth: an undo brings the ghost back at once', () => {
+    render(<GhostFold dateStr={TODAY} />);
+    fireEvent.click(screen.getByTestId('ghost-keep-all'));
+    act(() => vi.advanceTimersByTime(GHOST_SETTLE_MS + 100));
+    act(() => store().undo());
     expect(rows()).toHaveLength(2);
+    expect(box().style.height).toBe('');
+  });
+
+  it('jumps under reduced motion', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('reduce'),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    render(<GhostFold dateStr={TODAY} />);
+    fireEvent.click(screen.getByTestId('ghost-keep-all'));
+    expect(screen.queryByTestId('ghost-fold-settle')).toBeNull();
   });
 });
 
@@ -401,8 +455,6 @@ describe('sorting the last leftover raises review.saved', () => {
     fireEvent.click(screen.getByTestId('ghost-keep-all'));
     dispatch();
     expect(heard).toEqual([{ kind: 'review.saved', date: TODAY }]);
-    // The line still says it, every time.
-    expect(screen.getByTestId('ghost-fold-done')).toBeInTheDocument();
   });
 });
 
