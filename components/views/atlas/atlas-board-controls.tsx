@@ -75,7 +75,12 @@ export function AtlasBoardControls({
         role="toolbar"
         aria-label={ATLAS_COPY.boardTools}
         data-testid="atlas-tools"
-        className={cn(shell, 'absolute bottom-3 left-1/2 z-20 -translate-x-1/2')}
+        // Roomier than the zoom cluster's p-1, and deeper below than above:
+        // New's lime skirt (2px, 3px lifted) hangs under its face and needs
+        // its own room inside the bar, or the key reads as jammed into it.
+        // 4 + 28 + 8 (and the border) keeps the bar the zoom cluster's 42px, so the two
+        // bottom edges line up.
+        className={cn(shell, 'absolute bottom-3 left-1/2 z-20 -translate-x-1/2 gap-1 px-1.5 pt-1 pb-2')}
       >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -87,7 +92,7 @@ export function AtlasBoardControls({
               type="button"
               data-testid="atlas-new"
               title={ATLAS_COPY.newLabel}
-              className="key key-main mr-1 inline-flex h-8 items-center gap-1.5 rounded-[calc(var(--radius)*0.5)] px-3 text-[13px] font-semibold text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              className="key key-main inline-flex h-7 items-center gap-1.5 rounded-[calc(var(--radius)*0.5)] px-3 text-[13px] font-semibold text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
               <Plus className="size-4" aria-hidden />
               {ATLAS_COPY.newButton}
@@ -116,7 +121,7 @@ export function AtlasBoardControls({
           aria-label={ATLAS_COPY.walkButtonLabel}
           title={ATLAS_COPY.walkButtonLabel}
           data-testid="atlas-walk-button"
-          className={cn(key, 'text-foreground')}
+          className={cn(key, 'h-7 text-foreground')}
         >
           <Footprints className="size-4" aria-hidden />
           {ATLAS_COPY.walkButton}
