@@ -17,7 +17,7 @@ import {
 
 import { AskMarkIcon } from '@/components/ai/ask-mark';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useViewStore, type TypeMode, type ScheduleMarkStyle, type BucketStyle } from '@/lib/view-store';
+import { useViewStore, type TypeMode, type BucketStyle } from '@/lib/view-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useReminderStore } from '@/lib/reminder-store';
@@ -1218,7 +1218,7 @@ export const SETTINGS: SettingRecord[] = [
     label: 'Celebrate a finished day',
     description: 'A little aurora when everything on today is done.',
     control: 'switch',
-    // Device-local like look.markStyle: view-store has no user_settings column,
+    // Device-local like look.typeface: view-store has no user_settings column,
     // and naming one would PGRST204 the whole debounced flush.
     keywords: ['celebrate', 'celebration', 'aurora', 'day done', 'all done', 'finished', 'confetti', 'reward', 'perfect'],
     read: () => view().celebrateDayDone,
@@ -1251,23 +1251,6 @@ export const SETTINGS: SettingRecord[] = [
     read: () => planner().showPausedOnGrid,
     write: (v) => planner().setShowPausedOnGrid(Boolean(v)),
     defaultValue: false,
-  },
-  {
-    id: 'look.markStyle',
-    pane: 'look',
-    label: 'Schedule handles',
-    description: 'The corner and resize marks on a schedule block.',
-    control: 'enum',
-    advanced: true,
-    options: [
-      { value: 'nodes', label: 'Nodes' },
-      { value: 'target', label: 'Target' },
-      { value: 'trim', label: 'Trim marks' },
-    ],
-    keywords: ['resize', 'corner', 'grips', 'drag', 'block'],
-    read: () => view().scheduleMarkStyle,
-    write: (v) => view().setScheduleMarkStyle(v as ScheduleMarkStyle),
-    defaultValue: 'nodes',
   },
   {
     id: 'look.sidebarHover',

@@ -73,9 +73,9 @@ test.describe('Settings page', () => {
     await expect(row(page, 'look.animations')).toBeVisible();
 
     // Advanced rows are behind their disclosure, not rendered-and-hidden.
-    await expect(row(page, 'look.markStyle')).toHaveCount(0);
+    await expect(row(page, 'look.showPaused')).toHaveCount(0);
     await page.getByRole('button', { name: /^Advanced/ }).click();
-    await expect(row(page, 'look.markStyle')).toBeVisible();
+    await expect(row(page, 'look.showPaused')).toBeVisible();
   });
 
   test('the rail navigates by URL and each pane is deep-linkable', async ({ page }) => {

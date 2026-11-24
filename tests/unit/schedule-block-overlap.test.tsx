@@ -221,17 +221,17 @@ describe('ScheduleBlock — DOUBLE-BOOKED tiles, each rail beside its pane', () 
     expect(tieOf(byId('standup'))).toBeUndefined();
   });
 
-  it('registers the corner marks against each pane’s real edge', () => {
+  it('seats the resize handles against each pane’s real edge', () => {
     const { byId } = paint(entries);
-    // Default mark style is 'nodes' — hollow squares filled with --canvas, one
-    // per vertex. A mark left at the literal LANE_PX would annotate empty grid
-    // for member 1, so it must anchor off the pane's real inset (50% + 12px now
-    // that each tile carries its own lane). Asserted on the parts, not the
-    // string: the CSS serialiser is free to reorder a calc's terms, and does.
-    const marks = byId('standup').querySelectorAll('[class*="bg-\\[var(--canvas)\\]"]');
-    const left = Array.from(marks).find((m) => (m as HTMLElement).style.left) as HTMLElement;
-    expect(left.style.left).toContain(`50% + ${LANE_PX}px`);
-    expect(left.style.left).not.toBe(`${LANE_PX - 3}px`);
+    // A handle left at the literal LANE_PX would sit over empty grid for
+    // member 1, so it anchors off the pane's real inset (50% + 12px now that
+    // each tile carries its own lane), and its edge tab centres on that pane.
+    // Asserted on the parts: the CSS serialiser is free to reorder a calc's terms.
+    for (const label of ['Resize start', 'Resize duration']) {
+      const zone = byId('standup').querySelector(`[aria-label="${label}"]`) as HTMLElement;
+      expect(zone.style.left).toContain(`50% + ${LANE_PX}px`);
+      expect(zone.querySelector('.sched-tab')).not.toBeNull();
+    }
   });
 });
 
