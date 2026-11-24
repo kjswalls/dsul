@@ -333,7 +333,6 @@ describe('settings manifest — persistence contract', () => {
     const localOnly = [
       'look.typeface',
       'look.buckets',
-      'look.markStyle',
       'look.showPaused',
       'look.celebrate',
       'beacon.provider',
@@ -907,13 +906,13 @@ describe('settings search', () => {
   });
 
   it('excludes advanced rows unless asked', () => {
-    const plain = searchSettings('resize', ctx).settings.map((h) => h.record.id);
-    expect(plain).not.toContain('look.markStyle');
+    const plain = searchSettings('greyed', ctx).settings.map((h) => h.record.id);
+    expect(plain).not.toContain('look.showPaused');
 
-    const withAdv = searchSettings('resize', ctx, { includeAdvanced: true }).settings.map(
+    const withAdv = searchSettings('greyed', ctx, { includeAdvanced: true }).settings.map(
       (h) => h.record.id
     );
-    expect(withAdv).toContain('look.markStyle');
+    expect(withAdv).toContain('look.showPaused');
   });
 
   it('does not index desktop-only rows on mobile', () => {
@@ -964,8 +963,8 @@ describe('settings search', () => {
   it('an advanced row can still be reached by typing its exact label', () => {
     // The escape hatch: `terms` is split on whitespace, so comparing against
     // terms[0] made this unreachable for every multi-word advanced label.
-    const hits = searchSettings('schedule handles', ctx).settings.map((h) => h.record.id);
-    expect(hits).toContain('look.markStyle');
+    const hits = searchSettings('paused items on the grid', ctx).settings.map((h) => h.record.id);
+    expect(hits).toContain('look.showPaused');
   });
 
   it('names the value that actually matched, including on the reverse-word tier', () => {

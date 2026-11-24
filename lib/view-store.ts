@@ -92,12 +92,10 @@ const renamedAxis = (v: unknown): unknown => (v === 'program' ? 'season' : v);
 /** Content typeface: sans = Inter Medium 13 (Linear look), serif = Source Serif SemiBold 15. */
 export type TypeMode = 'sans' | 'serif';
 /**
- * Chrome drawn on a schedule block when it's hovered/selected — the corner
- * registration plus the resize grips. All three are 1px --ink-1 hairline and
- * reveal on hover; they differ only in FORM (see components/views/day-schedule).
- *   nodes  — CAD bounding-box handles: hollow squares on the vertices (default)
- *   target — prepress registration crosshairs floating off each corner
- *   trim   — trim-mark lozenges + a three-patch ink strip for the grip
+ * RETIRED 2026-11-24. This picked the corner and resize marks a schedule block
+ * drew on hover (nodes, target, trim). Every block now draws one edge tab
+ * (HandleGrip in components/views/day-schedule.tsx) and no view reads this; it
+ * stays persisted, unread, like the other settings CLAUDE.md says to leave alone.
  */
 export type ScheduleMarkStyle = 'nodes' | 'target' | 'trim';
 /**

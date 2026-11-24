@@ -378,7 +378,7 @@ export default function SettingsPage() {
       `${s.timeFormat}|${s.weekStartDay}|${s.defaultTimeBucket}|${s.showCompletedTasks}|` +
       `${s.animationsEnabled}|${s.showCurrentTimeIndicator}|${s.showPausedOnGrid}|${s.userTimezone}`
   );
-  const viewTick = useViewStore((s) => `${s.typeMode}|${s.bucketStyle}|${s.scheduleMarkStyle}`);
+  const viewTick = useViewStore((s) => `${s.typeMode}|${s.bucketStyle}`);
   const sidebarTick = useSidebarStore((s) => s.leftSidebarHoverEnabled);
   const morningTick = useMorningStore(
     (s) => `${s.morningCheckEnabled}|${s.morningAutoAgeEnabled}|${s.morningAutoAgeDays}`

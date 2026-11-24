@@ -27,7 +27,7 @@ const GRIP_CLASS =
  * The drag glyph: a 2×3 grid of 2px squares, the universal "take hold of this"
  * mark. Squares rather than lucide's GripVertical, whose dots are circles —
  * this palette spends round marks on values and square ones on identity and
- * chrome (see the schedule block's HandleGrip, same 1px-radius square).
+ * chrome.
  *
  * 2px squares on a 1.5px gap, and those two numbers are coupled: take the
  * squares to 2.5 and the gap no longer separates them — each row fuses into a

@@ -48,7 +48,6 @@ import { useBraindumpArrows } from '@/hooks/use-braindump-arrows';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useAwayStore } from '@/lib/away-store';
 import { openEditFor } from '@/lib/ui-store';
-import { useViewStore, type ScheduleMarkStyle } from '@/lib/view-store';
 import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useNowMinutes } from '@/lib/use-now-minutes';
@@ -91,9 +90,8 @@ const BLOCK_ASK_CHOICES_H = 104;
  * on a skirt tinted with the item's colour, which is the only place the colour
  * shows, so it reads as a mark on an object rather than a coloured container.
  *
- * On hover the block picks up drafting-style REGISTRATION MARKS: four corner
- * crops and a caliper datum centred on each resizable edge. They sit OUTSIDE the
- * pane, the way real crop marks sit off the object they register, which is why
+ * On hover the block shows an EDGE TAB on the middle of each resizable edge
+ * (HandleGrip). The tabs straddle the pane's edge, half outside it, which is why
  * the component is built as an outer positioning wrapper around an
  * overflow-hidden pane — the pane would clip them — and why a hovered block
  * raises its z-index, so a flush neighbour can't paint over them.
@@ -409,146 +407,27 @@ function HourSlot({
 }
 
 /**
- * The four corner marks a schedule block shows, in the user's chosen style
- * (Settings → Appearance → Schedule handles). Aria-hidden, anchored off the
- * pane's real inset so a tiled conflict member's marks track its own edges.
+ * The visible grip inside a resize hit-zone: an EDGE TAB, a tiny keycap in the
+ * block's own paper finish, seated on the middle of the edge (the hit-zone
+ * straddles the edge, its line 9px in from the zone's outer side). Hover or
+ * selection reveals both tabs; the edge under the pointer or being dragged
+ * widens its tab and turns it solid grey, so the edge that will move is the one
+ * that changes. No lime: selection already lights the pane's rim, and the tab
+ * spends no colour of its own. The look is `.sched-tab` in app/globals.css.
  *
- * Two states share one set of marks:
- *   • HOVER reveals them in neutral --ink-1 (transient).
- *   • SELECTED latches them on and turns them lime — the colour rides
- *     --blk-mk (set on the block wrapper), so a selected block's marks stay lit
- *     even while it's hovered. That's the signal a shared pane-brightness can't
- *     give: hover and selection now report on different channels.
- *
- *   nodes  — 6px hollow square on each vertex (a CAD bounding box)
- *   target — 9px open registration crosshair off each corner
- *   trim   — 5px trim-mark lozenge (rotated square) off each corner
- *
- * The LEFT-column marks seat at the pane's own left edge rather than off it: the
- * 12px lane (start bead + accent rail) lives just outside that edge, and a mark
- * pushed further left would collide with it.
+ * It replaced the corner registration marks and the Schedule handles setting
+ * (Kirby, 2026-11-24): the corners read as a drafting tool, not as this app.
  */
-function BlockCorners({
-  style,
-  paneLeftCss,
-  paneRightCss,
-  selected,
-}: {
-  style: ScheduleMarkStyle;
-  paneLeftCss: string;
-  paneRightCss: string;
-  selected: boolean;
-}) {
-  const reveal = selected
-    ? 'pointer-events-none absolute opacity-100'
-    : 'pointer-events-none absolute opacity-0 transition-opacity group-hover/blk:opacity-100';
-
-  if (style === 'target') {
-    const left = paneLeftCss;
-    const right = `calc(${paneRightCss} - 8.5px)`;
-    const corners: Array<{ pos: React.CSSProperties; y: string }> = [
-      { pos: { left }, y: '-top-[8.5px]' },
-      { pos: { right }, y: '-top-[8.5px]' },
-      { pos: { left }, y: '-bottom-[8.5px]' },
-      { pos: { right }, y: '-bottom-[8.5px]' },
-    ];
-    return (
-      <>
-        {corners.map((c, i) => (
-          <span key={i} aria-hidden className={cn(reveal, 'h-[9px] w-[9px]', c.y)} style={c.pos}>
-            <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--blk-mk)]" />
-            <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[var(--blk-mk)]" />
-            {/* the reticle's empty eye — a canvas dot punches the centre gap */}
-            <span className="absolute left-1/2 top-1/2 h-[3px] w-[3px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[var(--canvas)]" />
-          </span>
-        ))}
-      </>
-    );
-  }
-
-  if (style === 'trim') {
-    const left = paneLeftCss;
-    const right = `calc(${paneRightCss} - 6.5px)`;
-    const loz = 'h-[5px] w-[5px] rotate-45 border border-[var(--blk-mk)]';
-    return (
-      <>
-        <span aria-hidden className={cn(reveal, loz, '-top-[6.5px]')} style={{ left }} />
-        <span aria-hidden className={cn(reveal, loz, '-top-[6.5px]')} style={{ right }} />
-        <span aria-hidden className={cn(reveal, loz, '-bottom-[6.5px]')} style={{ left }} />
-        <span aria-hidden className={cn(reveal, loz, '-bottom-[6.5px]')} style={{ right }} />
-      </>
-    );
-  }
-
-  // 'nodes' (default) — 6px hollow square seated just inside each pane corner.
-  // Both columns hug their own edge (not straddling the vertex) so the frame is
-  // symmetric AND the left pair clears the lane's rail + bead.
-  const left = paneLeftCss;
-  const right = paneRightCss;
-  const node = 'h-1.5 w-1.5 rounded-[1px] border border-[var(--blk-mk)] bg-[var(--canvas)]';
-  return (
-    <>
-      <span aria-hidden className={cn(reveal, node, '-top-[3px]')} style={{ left }} />
-      <span aria-hidden className={cn(reveal, node, '-top-[3px]')} style={{ right }} />
-      <span aria-hidden className={cn(reveal, node, '-bottom-[3px]')} style={{ left }} />
-      <span aria-hidden className={cn(reveal, node, '-bottom-[3px]')} style={{ right }} />
-    </>
-  );
-}
-
-/**
- * The visible grip inside a resize hit-zone, in the user's chosen style. Seated
- * on the edge centre — the hit-zone straddles the edge, its line 9px in from the
- * zone's outer side. Colour rides --blk-mk (neutral on hover, lime when the
- * block is selected). A SECOND lime glyph — the reticle eye / centre patch —
- * lights only while THIS edge is being dragged: colour spent on one small active
- * glyph, and lime never dims. 'nodes' stays neutral apart from the select tint.
- */
-function HandleGrip({
-  style,
-  edge,
-  active,
-  selected,
-}: {
-  style: ScheduleMarkStyle;
-  edge: 'top' | 'bottom';
-  active: boolean;
-  selected: boolean;
-}) {
-  const reveal = selected
-    ? 'pointer-events-none absolute left-1/2 -translate-x-1/2 opacity-100'
-    : 'pointer-events-none absolute left-1/2 -translate-x-1/2 opacity-0 transition-opacity group-hover/blk:opacity-100';
-  const seat = edge === 'top' ? 'top-[9px] -translate-y-1/2' : 'bottom-[9px] translate-y-1/2';
-
-  if (style === 'target') {
-    return (
-      <span aria-hidden className={cn(reveal, seat, 'h-3 w-3 rounded-full border border-[var(--blk-mk)]')}>
-        <span className="absolute -top-1 -bottom-1 left-1/2 w-px -translate-x-1/2 bg-[var(--blk-mk)]" />
-        <span
-          className={cn(
-            'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full',
-            active ? 'h-[3px] w-[3px] bg-[var(--primary)]' : 'h-[2px] w-[2px] bg-[var(--blk-mk)]'
-          )}
-        />
-      </span>
-    );
-  }
-
-  if (style === 'trim') {
-    return (
-      <span aria-hidden className={cn(reveal, seat, 'flex h-[3px] w-[14px] gap-px')}>
-        <span className="h-full w-1 rounded-[0.5px] bg-[var(--blk-mk)]" />
-        <span className={cn('h-full w-1 rounded-[0.5px]', active ? 'bg-[var(--primary)]' : 'bg-[var(--blk-mk)]')} />
-        <span className="h-full w-1 rounded-[0.5px] bg-[var(--blk-mk)]" />
-      </span>
-    );
-  }
-
-  // 'nodes' (default) — a solid square grip matching the corner nodes.
+function HandleGrip({ edge, active, selected }: { edge: 'top' | 'bottom'; active: boolean; selected: boolean }) {
   return (
     <span
       aria-hidden
-      className={cn(reveal, seat, 'h-1.5 w-1.5 rounded-[1px] bg-[var(--blk-mk)] shadow-[0_0_0_1px_var(--canvas)]')}
+      data-active={active ? 'true' : undefined}
+      className={cn(
+        'sched-tab pointer-events-none absolute left-1/2 -translate-x-1/2',
+        edge === 'top' ? 'top-[9px] -translate-y-1/2' : 'bottom-[9px] translate-y-1/2',
+        selected || active ? 'opacity-100' : 'opacity-0 transition-opacity group-hover/blk:opacity-100'
+      )}
     />
   );
 }
@@ -701,9 +580,9 @@ export function ScheduleBlock({
   // open, or they'd fade out from under it as the pointer leaves the block.
   const canReschedule = canRescheduleItem(item, itemType, dateStr);
   const [picking, setPicking] = useState(false);
-  // Which edge is under an active resize — drives the one lime glyph the target/
-  // trim mark styles light on the handle being dragged (see HandleGrip). A ref
-  // alone won't do: the grip has to re-render to recolour.
+  // Which edge is under an active resize — holds that edge's tab wide and dark
+  // for the whole drag, even once the pointer has left the hit zone (see
+  // HandleGrip). A ref alone won't do: the grip has to re-render.
   const [activeEdge, setActiveEdge] = useState<'top' | 'bottom' | null>(null);
   const effStartMin = preview?.startMin ?? entry.startMin;
   const effDuration = preview?.duration ?? entry.duration;
@@ -893,17 +772,14 @@ export function ScheduleBlock({
 
   /*
    * The pane's own edges, as CSS lengths, for everything that has to register
-   * against them from outside: the corner registration and both resize handles.
-   * When a conflict member's pane starts at `calc(50% + 6px)`, marks pinned to
-   * the literal LANE_PX would annotate empty grid, so they anchor off these.
+   * against them from outside: both resize handles. When a conflict member's
+   * pane starts at `calc(50% + 6px)`, handles pinned to the literal LANE_PX
+   * would sit over empty grid, so they anchor off these.
    */
   const paneLeftCss = L?.paneLeft ?? `${LANE_PX}px`;
   const paneRightCss = L?.paneRight ?? '0px';
   const handleLeft = paneLeftCss;
   const handleRight = paneRightCss;
-  // Which corner + handle treatment to draw (Settings → Appearance → Schedule
-  // handles). The forms are defined in BlockCorners / HandleGrip below.
-  const scheduleMarkStyle = useViewStore((s) => s.scheduleMarkStyle);
 
   /*
    * NARROW is a width, not a view.
@@ -1141,7 +1017,7 @@ export function ScheduleBlock({
     // pointer-events-none so the 12px lane stays click-through to the hour slot
     // underneath, with the pane and the resize targets opting back in — hover
     // still propagates up here from those children, which is what drives the
-    // registration marks and the z-index raise.
+    // edge tabs and the z-index raise.
     <div
       data-testid="schedule-block"
       data-item-id={item.id}
@@ -1167,10 +1043,9 @@ export function ScheduleBlock({
         // Tailwind's JIT only keeps class names it can see as literals, which
         // this file already documents at LINE_CLAMP.
         'z-[var(--blk-z)] hover:z-[var(--blk-zh)]',
-        // The hover-expand. Everything that annotates the block — corners,
-        // caliper marks — hangs off this wrapper, so they travel with it and the
-        // grown block stays a coherent object rather than a pane escaping its
-        // own registration.
+        // The hover-expand. Everything that annotates the block — the edge
+        // tabs — hangs off this wrapper, so they travel with it and the grown
+        // block stays a coherent object rather than a pane escaping its handles.
         canExpand && 'hover:h-auto hover:min-h-[var(--blk-h)]',
         isDragging && 'drag-source'
       )}
@@ -1181,10 +1056,6 @@ export function ScheduleBlock({
           // The block's accent, which tints its keycap skirt (.sched-block in
           // globals.css). It is the only place the colour reaches the block.
           '--blk-acc': accent,
-          // The registration marks' ink: neutral --ink-1 normally, lime when the
-          // block is selected. This is how selection reads THROUGH a hover — the
-          // pane brightness is shared, but the mark colour is not (see BlockCorners).
-          '--blk-mk': isMultiSelected && !done ? 'var(--primary)' : 'var(--ink-1)',
           '--blk-z': L?.z ?? 2,
           // A container lifts by ONE on hover, never to the leaf lift: raising it
           // to the top would put it above its own child, and since the pointer
@@ -1264,7 +1135,7 @@ export function ScheduleBlock({
       ))}
 
       {/* The pane. overflow-hidden for the pockets and the title, which is exactly
-          why the registration marks below are siblings, not children. */}
+          why the resize handles below are siblings, not children. */}
       {/* Right-click acts on THIS block's day — the week column it sits in. */}
       <ItemContextMenu item={item} date={rowDate}>
         <div
@@ -1476,22 +1347,10 @@ export function ScheduleBlock({
         </div>
       </ItemContextMenu>
 
-      {/* Registration corners — the block's hover/select chrome, in whichever
-          style the user picked (Settings → Appearance → Schedule handles). Each
-          anchors off the PANE's own inset, not the literal LANE_PX: a tiled
-          conflict member's pane starts at 50%, and marks left behind at x=8 would
-          register a pane that is not there. Aria-hidden; revealed on hover. */}
-      <BlockCorners
-        style={scheduleMarkStyle}
-        paneLeftCss={paneLeftCss}
-        paneRightCss={paneRightCss}
-        selected={isMultiSelected}
-      />
-
       {/* Resize handles — drag the top or bottom edge to set start/duration. The
           hit zone straddles the edge (9px out, 3px in) so the target stays
-          reachable; the visible grip inside it (HandleGrip) follows the chosen
-          mark style and lights one lime glyph on the edge being dragged.
+          reachable; the visible grip inside it (HandleGrip) is an edge tab that
+          widens and darkens on the edge under the pointer or being dragged.
 
           A FLUSH shared edge — a container and its child both ending 17:00 — would
 
@@ -1508,7 +1367,7 @@ export function ScheduleBlock({
             onPointerMove={onResizeMove}
             onPointerUp={onResizeUp}
             onClick={(e) => e.stopPropagation()}
-            className="pointer-events-auto absolute -top-[9px] z-[3] h-3 cursor-ns-resize"
+            className="sched-resize pointer-events-auto absolute -top-[9px] z-[3] h-3 cursor-ns-resize"
             style={
               L?.handleTopLane
                 ? { left: 0, width: LANE_PX + 8 }
@@ -1516,14 +1375,14 @@ export function ScheduleBlock({
             }
             aria-label="Resize start"
           >
-            <HandleGrip style={scheduleMarkStyle} edge="top" active={activeEdge === 'top'} selected={isMultiSelected} />
+            <HandleGrip edge="top" active={activeEdge === 'top'} selected={isMultiSelected} />
           </div>
           <div
             onPointerDown={(e) => onResizeDown('bottom', e)}
             onPointerMove={onResizeMove}
             onPointerUp={onResizeUp}
             onClick={(e) => e.stopPropagation()}
-            className="pointer-events-auto absolute -bottom-[9px] z-[3] h-3 cursor-ns-resize"
+            className="sched-resize pointer-events-auto absolute -bottom-[9px] z-[3] h-3 cursor-ns-resize"
             style={
               L?.handleBottomLane
                 ? { left: 0, width: LANE_PX + 8 }
@@ -1531,7 +1390,7 @@ export function ScheduleBlock({
             }
             aria-label="Resize duration"
           >
-            <HandleGrip style={scheduleMarkStyle} edge="bottom" active={activeEdge === 'bottom'} selected={isMultiSelected} />
+            <HandleGrip edge="bottom" active={activeEdge === 'bottom'} selected={isMultiSelected} />
           </div>
         </>
       )}
