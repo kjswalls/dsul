@@ -493,11 +493,11 @@ test.describe('atlas', () => {
     const world = page.getByTestId('atlas-world');
     const before = await world.evaluate((el) => (el as HTMLElement).style.transform);
 
-    // From the palette (no default key). The toolbar's Walk says it is on.
+    // From the palette (no default key). The board's tools stand down for it.
     await runCommand(page, 'atlas.walk', { query: '/Walk Atlas' });
     const walk = page.getByTestId('atlas-walk');
     await expect(walk).toBeVisible();
-    await expect(page.getByTestId('atlas-walk-button')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('atlas-tools')).toHaveCount(0);
     await expect(walk.getByTestId('atlas-walk-next')).toBeFocused();
     await expect(page.getByTestId('atlas-walk-veil')).toHaveAttribute('data-up', 'true');
 
@@ -537,7 +537,7 @@ test.describe('atlas', () => {
     // Escape ends it and the camera goes back where it was.
     await page.keyboard.press('Escape');
     await expect(walk).toHaveCount(0);
-    await expect(page.getByTestId('atlas-walk-button')).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByTestId('atlas-walk-button')).toBeVisible();
     await expect.poll(() => world.evaluate((el) => (el as HTMLElement).style.transform)).toBe(before);
 
     await setScope(page, 'Day');

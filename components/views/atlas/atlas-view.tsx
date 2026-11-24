@@ -19,6 +19,7 @@ import { AtlasFocusSheet } from '@/components/views/atlas/atlas-focus-sheet';
 import { AtlasFarCanvas, type FarCluster, type FarScene } from '@/components/views/atlas/atlas-far-canvas';
 import { AtlasHandoffCanvas } from '@/components/views/atlas/atlas-handoff-canvas';
 import { AtlasMinimap } from '@/components/views/atlas/atlas-minimap';
+import { AtlasBoardControls } from '@/components/views/atlas/atlas-board-controls';
 import { AtlasStrands } from '@/components/views/atlas/atlas-strands';
 import { strandPolicy, type AtlasFrameSpec, type AtlasStrandLink } from '@/lib/atlas-strands';
 import { AtlasDropRemeasure } from '@/components/views/atlas/atlas-card-drop';
@@ -51,6 +52,7 @@ import {
   ensureVisible,
   fitBounds,
   flyCamera,
+  zoomAt,
   type AtlasCamera,
   type Point,
   type Rect,
@@ -559,6 +561,23 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
     };
     flight.current = requestAnimationFrame(step);
   }, []);
+
+  // The board's zoom keys (atlas-board-controls.tsx): a step about the
+  // viewport's middle, or back to 100%, flown like a fly-in.
+  const zoomBy = useCallback(
+    (factor: number) => {
+      const vp = viewportRef.current;
+      const cam = useAtlasUiStore.getState().camera;
+      const next = zoomAt(cam, { x: vp.w / 2, y: vp.h / 2 }, factor);
+      if (next !== cam) flyTo(next);
+    },
+    [flyTo]
+  );
+  const zoomReset = useCallback(() => {
+    const cam = useAtlasUiStore.getState().camera;
+    zoomBy(1 / (cam.z || 1));
+  }, [zoomBy]);
+
   // A flourish never outlives the view.
   useEffect(() => () => useAtlasUiStore.setState({ flourish: null }), []);
   const clustersRef = useRef(clusters);
@@ -1046,6 +1065,15 @@ export function AtlasView({ activeId }: { activeId?: string | null }) {
         </AtlasSurface>
         {minimapLayout && (
           <AtlasMinimap content={content} clusters={clusters} viewport={viewport} colors={colors} reduced={reduced} />
+        )}
+        {!sheetOpen && (
+          <AtlasBoardControls
+            onZoomBy={zoomBy}
+            onZoomReset={zoomReset}
+            minimap={minimapLayout}
+            goalsShown={goalsShown}
+            collectionsShown={collectionsShown}
+          />
         )}
       </div>
       <AtlasWalk
